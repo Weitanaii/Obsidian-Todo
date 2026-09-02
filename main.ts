@@ -58,18 +58,18 @@ export default class ObsidianTodoPlugin extends Plugin {
     // 注册设置页
     this.addSettingTab(new ObsidianTodoSettingTab(this.app, this));
 
-    // 注册侧边栏视图（M2 T-201）
+    // 注册视图（M2 T-201）
     this.registerView(VIEW_TYPE_TODO, (leaf) => new TodoView(leaf, this));
 
-    // 在左侧边栏添加图标
+    // 添加入口图标
     this.addRibbonIcon("check-square", "Obsidian Todo", async () => {
       await this.activateView();
     });
 
     // 注册命令面板命令
     this.addCommand({
-      id: "open-todo-sidebar",
-      name: "Open Todo tab",
+      id: "open-todo-tab",
+      name: "Open Obsidian Todo",
       callback: async () => {
         await this.activateView();
       },
@@ -83,7 +83,7 @@ export default class ObsidianTodoPlugin extends Plugin {
         const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TODO);
         const view = leaves[0]?.view;
         if (view instanceof TodoView) {
-          view.focusQuickInput();
+          view.promptQuickCreate();
         }
       },
     });

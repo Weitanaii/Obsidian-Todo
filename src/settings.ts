@@ -24,6 +24,8 @@ export interface ObsidianTodoSettings {
   activeViewNav: ViewNav;
   /** 当前选中的自定义列表 ID */
   selectedListId: string | null;
+  /** 已完成分组是否折叠 */
+  completedCollapsed: boolean;
 }
 
 /**
@@ -37,6 +39,7 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
   logLevel: "INFO",
   activeViewNav: "myday",
   selectedListId: null,
+  completedCollapsed: true,
 };
 
 /**

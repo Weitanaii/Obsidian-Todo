@@ -1,4 +1,96 @@
-import { ItemView, Menu, WorkspaceLeaf } from "obsidian";
+
+class ConfirmModal extends Modal {
+  private message: string;
+  private resolve!: (value: boolean) => void;
+
+  constructor(app: App, message: string) {
+    super(app);
+    this.message = message;
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.createEl("p", { text: this.message });
+
+    const actions = contentEl.createDiv({ cls: "todo-prompt-actions" });
+    const cancelBtn = actions.createEl("button", { text: "取消" });
+    const confirmBtn = actions.createEl("button", { text: "删除", cls: "mod-warning" });
+
+    cancelBtn.addEventListener("click", () => this.finish(false));
+    confirmBtn.addEventListener("click", () => this.finish(true));
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+
+  async openAndConfirm(): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      this.resolve = resolve;
+      this.open();
+    });
+  }
+
+  private finish(value: boolean): void {
+    this.resolve(value);
+    this.close();
+  }
+}
+
+class PromptModal extends Modal {
+  private promptText: string;
+  private resolve!: (value: string | null) => void;
+  private value = "";
+
+  constructor(app: App, promptText: string) {
+    super(app);
+    this.promptText = promptText;
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.createEl("p", { text: this.promptText });
+
+    const input = contentEl.createEl("input", { cls: "todo-prompt-input" });
+    input.value = this.value;
+    input.placeholder = this.promptText;
+    input.addEventListener("input", () => {
+      this.value = input.value;
+    });
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        this.resolveAndClose(input.value.trim());
+      }
+    });
+
+    const actions = contentEl.createDiv({ cls: "todo-prompt-actions" });
+    const cancelBtn = actions.createEl("button", { text: "取消" });
+    const confirmBtn = actions.createEl("button", { text: "确定", cls: "mod-cta" });
+
+    cancelBtn.addEventListener("click", () => this.resolveAndClose(null));
+    confirmBtn.addEventListener("click", () => this.resolveAndClose(input.value.trim()));
+
+    window.setTimeout(() => input.focus(), 30);
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+
+  async openAndGetValue(): Promise<string | null> {
+    return new Promise<string | null>((resolve) => {
+      this.resolve = resolve;
+      this.open();
+    });
+  }
+
+  private resolveAndClose(value: string | null): void {
+    this.resolve(value ?? null);
+    this.close();
+  }
+}
+import { App, ItemView, Menu, Modal, Notice, WorkspaceLeaf } from "obsidian";
 import type ObsidianTodoPlugin from "../../main";
 import { Task } from "../models/Task";
 
@@ -27,6 +119,7 @@ export interface TodoPluginLike {
   settings: {
     activeViewNav: ViewNav;
     selectedListId: string | null;
+    completedCollapsed: boolean;
   };
   saveSettings(): Promise<void>;
 }
@@ -71,11 +164,13 @@ export class TodoView extends ItemView {
   async onOpen(): Promise<void> {
     const container = this.containerEl.children[1];
     container.empty();
-    container.addClass("obsidian-todo-sidebar");
+    container.addClass("obsidian-todo-tab");
 
-    const nav = container.createDiv({ cls: "todo-nav" });
-    this.taskListEl = container.createDiv({ cls: "todo-task-list" });
-    const quick = container.createDiv({ cls: "todo-quick-add" });
+    const layout = container.createDiv({ cls: "todo-layout" });
+    const nav = layout.createDiv({ cls: "todo-nav" });
+    const main = layout.createDiv({ cls: "todo-main" });
+    this.taskListEl = main.createDiv({ cls: "todo-task-list" });
+    const quick = main.createDiv({ cls: "todo-quick-add" });
 
     this.navEls["myday"] = nav.createDiv({ cls: "todo-nav-item", text: "我的一天" });
     this.navEls["all"] = nav.createDiv({ cls: "todo-nav-item", text: "所有任务" });
@@ -91,12 +186,10 @@ export class TodoView extends ItemView {
     this.listItemsEl = this.listNavEl.createDiv({ cls: "todo-nav-lists" });
 
     const addListBtn = this.listNavEl.createDiv({ cls: "todo-nav-add", text: "+ 新建列表" });
-    addListBtn.addEventListener("click", async () => {
-      await this.createListByInput();
+    addListBtn.addEventListener("click", () => {
+      void this.createListByInput();
     });
 
-    await this.activateNav(this.plugin.settings.activeViewNav);
-    await this.renderLists();
     this.quickInputEl = quick.createEl("input", { attr: { placeholder: "添加任务..." } });
     this.updateQuickPlaceholder();
     this.quickInputEl.addEventListener("keydown", async (ev) => {
@@ -105,6 +198,9 @@ export class TodoView extends ItemView {
         await this.createTaskFromQuickInput();
       }
     });
+
+    await this.activateNav(this.plugin.settings.activeViewNav);
+    await this.renderLists();
   }
 
   async onClose(): Promise<void> {
@@ -165,8 +261,15 @@ export class TodoView extends ItemView {
       deleteBtn.addEventListener("click", async (ev) => {
         ev.stopPropagation();
         if (list.isDefault) {
+          new Notice("默认列表不可删除");
           return;
         }
+
+        const confirmed = await new ConfirmModal(this.app, `确认删除列表「${list.name}」？`).openAndConfirm();
+        if (!confirmed) {
+          return;
+        }
+
         await this.plugin.listService.delete(list.id);
         if (this.plugin.settings.selectedListId === list.id) {
           await this.activateNav("myday");
@@ -198,58 +301,81 @@ export class TodoView extends ItemView {
       return;
     }
 
-    normalizeTasks(tasks).forEach((task) => {
-      const row = this.taskListEl.createDiv({
-        cls: `todo-task-item${task.isCompleted ? " completed" : ""}${task.isImportant ? " important-row" : ""}`,
+    const sorted = normalizeTasks(tasks);
+    const incomplete = sorted.filter((t) => !t.isCompleted);
+    const completed = sorted.filter((t) => t.isCompleted);
+    const currentView = this.plugin.settings.selectedListId ? "list" : this.plugin.settings.activeViewNav;
+
+    incomplete.forEach((task) => this.renderTaskRow(this.taskListEl, task, currentView));
+
+    if (completed.length) {
+      const group = this.taskListEl.createDiv({ cls: "todo-completed-group" });
+      const header = group.createDiv({ cls: "todo-completed-header" });
+      const arrow = header.createSpan({
+        cls: `todo-completed-arrow${this.plugin.settings.completedCollapsed ? " collapsed" : ""}`,
+        text: "▼",
       });
+      header.createSpan({ cls: "todo-completed-label", text: `已完成 ${completed.length}` });
 
-      const checkbox = row.createDiv({
-        cls: `todo-checkbox${task.isCompleted ? " checked" : ""}`,
-        text: task.isCompleted ? "✓" : "",
-      });
-
-      const content = row.createDiv({ cls: "todo-task-content" });
-      const title = content.createDiv({ cls: "todo-task-title", text: task.title || "未命名任务" });
-      title.toggleClass("todo-task-muted", task.isCompleted);
-
-      if (task.dueDate) {
-        const due = content.createDiv({ cls: "todo-task-due", text: task.dueDate.slice(0, 10) });
-        due.toggleClass("todo-task-due-overdue", !task.isCompleted && task.dueDate < new Date().toISOString());
+      const list = group.createDiv({ cls: "todo-completed-list" });
+      if (this.plugin.settings.completedCollapsed) {
+        list.style.display = "none";
       }
 
-      const star = row.createDiv({
-        cls: `todo-star${task.isImportant ? " important" : ""}`,
-        text: task.isImportant ? "★" : "☆",
-      });
+      completed.forEach((task) => this.renderTaskRow(list, task, currentView));
 
-      const currentView = this.plugin.settings.selectedListId ? "list" : this.plugin.settings.activeViewNav;
-
-      checkbox.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        if (task.isCompleted) {
-          await this.plugin.taskService.update(task.id, {
-            isCompleted: false,
-            completedAt: null,
-          });
-        } else {
-          await this.plugin.taskService.update(task.id, {
-            isCompleted: true,
-            completedAt: new Date().toISOString(),
-          });
-        }
-        await this.renderTasks(currentView);
+      header.addEventListener("click", async () => {
+        this.plugin.settings.completedCollapsed = !this.plugin.settings.completedCollapsed;
+        await this.plugin.saveSettings();
+        list.style.display = this.plugin.settings.completedCollapsed ? "none" : "";
+        arrow.toggleClass("collapsed", this.plugin.settings.completedCollapsed);
       });
+    }
+  }
 
-      star.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        await this.plugin.taskService.update(task.id, { isImportant: !task.isImportant });
-        await this.renderTasks(currentView);
-      });
+  private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "all" | "list"): void {
+    const row = container.createDiv({
+      cls: `todo-task-item${task.isCompleted ? " completed" : ""}${task.isImportant ? " important-row" : ""}`,
+    });
 
-      row.addEventListener("contextmenu", (ev) => {
-        ev.preventDefault();
-        this.showTaskContextMenu(ev, task, currentView);
-      });
+    const checkbox = row.createDiv({
+      cls: `todo-checkbox${task.isCompleted ? " checked" : ""}`,
+      text: task.isCompleted ? "✓" : "",
+    });
+
+    const content = row.createDiv({ cls: "todo-task-content" });
+    const title = content.createDiv({ cls: "todo-task-title", text: task.title || "未命名任务" });
+    title.toggleClass("todo-task-muted", task.isCompleted);
+
+    if (task.dueDate) {
+      const due = content.createDiv({ cls: "todo-task-due", text: task.dueDate.slice(0, 10) });
+      due.toggleClass("todo-task-due-overdue", !task.isCompleted && task.dueDate < new Date().toISOString());
+    }
+
+    const star = row.createDiv({
+      cls: `todo-star${task.isImportant ? " important" : ""}`,
+      text: task.isImportant ? "★" : "☆",
+    });
+
+    checkbox.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      if (task.isCompleted) {
+        await this.plugin.taskService.update(task.id, { isCompleted: false, completedAt: null });
+      } else {
+        await this.plugin.taskService.update(task.id, { isCompleted: true, completedAt: new Date().toISOString() });
+      }
+      await this.renderTasks(currentView);
+    });
+
+    star.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      await this.plugin.taskService.update(task.id, { isImportant: !task.isImportant });
+      await this.renderTasks(currentView);
+    });
+
+    row.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      this.showTaskContextMenu(ev, task, currentView);
     });
   }
 
@@ -261,7 +387,9 @@ export class TodoView extends ItemView {
       empty.createDiv({ cls: "todo-empty-title", text: "今天还没有安排" });
       empty.createDiv({ cls: "todo-empty-desc", text: "从下方输入一个任务，或从其它列表把重要事项加入今天计划。" });
       const action = empty.createDiv({ cls: "todo-empty-action", text: "添加一个今日任务" });
-      action.addEventListener("click", () => this.focusQuickInput());
+      action.addEventListener("click", () => {
+        void this.promptQuickCreate();
+      });
       return;
     }
 
@@ -269,19 +397,26 @@ export class TodoView extends ItemView {
       empty.createDiv({ cls: "todo-empty-title", text: "还没有任务" });
       empty.createDiv({ cls: "todo-empty-desc", text: "在输入框里写下第一件要做的事，按回车即可创建。" });
       const action = empty.createDiv({ cls: "todo-empty-action", text: "立即创建任务" });
-      action.addEventListener("click", () => this.focusQuickInput());
+      action.addEventListener("click", () => {
+        void this.promptQuickCreate();
+      });
       return;
     }
 
     empty.createDiv({ cls: "todo-empty-title", text: "当前列表是空的" });
     empty.createDiv({ cls: "todo-empty-desc", text: "给这个清单起一个明确目标，然后先添加第一件最小行动项。" });
     const action = empty.createDiv({ cls: "todo-empty-action", text: "为当前列表新增任务" });
-    action.addEventListener("click", () => this.focusQuickInput());
+    action.addEventListener("click", () => {
+      void this.promptQuickCreate();
+    });
   }
 
   private async createListByInput(): Promise<void> {
-    const name = prompt("请输入新列表名称");
-    if (!name?.trim()) return;
+    const name = await new PromptModal(this.app, "请输入新列表名称").openAndGetValue();
+    if (!name?.trim()) {
+      return;
+    }
+
     const created = await this.plugin.listService.create({ name: name.trim() });
     await this.renderLists();
     await this.activateList(created.id);
@@ -319,8 +454,16 @@ export class TodoView extends ItemView {
   }
 
   focusQuickInput(): void {
-    if (this.quickInputEl) {
-      this.quickInputEl.focus();
+    if (!this.quickInputEl) {
+      this.promptQuickCreate();
+      return;
+    }
+
+    this.quickInputEl.scrollIntoView({ behavior: "smooth", block: "end" });
+    this.quickInputEl.focus({ preventScroll: true });
+
+    if (document.activeElement !== this.quickInputEl) {
+      this.promptQuickCreate();
     }
   }
 
@@ -336,6 +479,37 @@ export class TodoView extends ItemView {
       return;
     }
     this.quickInputEl.placeholder = "添加任务到默认列表...";
+  }
+
+  
+  async promptQuickCreate(): Promise<void> {
+    const title = await new PromptModal(this.app, "输入任务标题").openAndGetValue();
+    if (!title?.trim()) {
+      return;
+    }
+
+    const { activeViewNav, selectedListId } = this.plugin.settings;
+    let listId = selectedListId || undefined;
+
+    if (!listId) {
+      const defaultList = this.plugin.listService.getDefault();
+      listId = defaultList?.id;
+    }
+
+    if (!listId) {
+      return;
+    }
+
+    this.plugin.taskService
+      .create({
+        title: title.trim(),
+        listId,
+        isMyDay: activeViewNav === "myday",
+      })
+      .then(async () => {
+        await this.renderLists();
+        await this.renderTasks(selectedListId ? "list" : activeViewNav);
+      });
   }
 
   private async createTaskFromQuickInput(): Promise<void> {
@@ -426,3 +600,6 @@ export class TodoView extends ItemView {
   }
 
 }
+
+
+
