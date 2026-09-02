@@ -1,0 +1,96 @@
+/* Obsidian Todo - Base Styles */
+
+/* Sidebar container */
+.obsidian-todo-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Navigation section */
+.todo-nav {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.todo-nav-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: var(--radius-s);
+  gap: 8px;
+}
+
+.todo-nav-item:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.todo-nav-item.active {
+  background-color: var(--background-modifier-active-hover);
+}
+
+/* Task list */
+.todo-task-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.todo-task-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.todo-task-item:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.todo-task-item.completed .todo-task-title {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+/* Quick add input */
+.todo-quick-add {
+  padding: 8px 12px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.todo-quick-add input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+}
+
+.todo-quick-add input::placeholder {
+  color: var(--text-faint);
+}
+
+/* Important star */
+.todo-star {
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 16px;
+}
+
+.todo-star.important {
+  color: var(--text-accent);
+}
+
+/* Empty state */
+.todo-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-muted);
+}
