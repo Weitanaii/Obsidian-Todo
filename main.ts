@@ -20,10 +20,13 @@ import {
 // 导入日志工具，用于在控制台输出调试信息
 import { logger, LogLevel } from "./src/utils/logger";
 
-// 视图类型的唯一标识符
-// Obsidian 用这个字符串区分不同的侧边栏视图（文件浏览、日历等）
-// 目前未使用，M2 阶段注册自定义侧边栏视图时会用到
-const VIEW_TYPE_TODO = "obsidian-todo-view";
+// 导入数据服务（M1 新增）
+// TaskService - 任务的增删改查，持久化到 todo/database.json
+// ListService - 列表的增删改查，持久化到 todo/lists.json
+import { TaskService } from "./src/services/TaskService";
+import { ListService } from "./src/services/ListService";
+
+import { TodoView, VIEW_TYPE_TODO } from "./src/views/TodoView";
 
 // 插件主类
 // export default - 默认导出，Obsidian 会找到这个类并实例化
@@ -33,73 +36,86 @@ export default class ObsidianTodoPlugin extends Plugin {
   // 在 loadSettings() 中赋值，整个插件生命周期内通过 this.settings 访问
   settings: ObsidianTodoSettings;
 
+  // M1 新增：数据服务实例
+  // 通过这两个服务操作所有任务和列表数据
+  taskService!: TaskService;
+  listService!: ListService;
+
   // ============ onload() - 插件启动入口 ============
   // Obsidian 加载插件时自动调用，相当于插件的 main 函数
-  // async 表示函数内可以使用 await 等待异步操作（如读取文件）
   async onload(): Promise<void> {
     // 第一步：加载用户设置
-    // loadData() 是 Plugin 基类方法，读取插件目录下的 data.json
     await this.loadSettings();
     logger.info("Obsidian Todo loaded");
 
+    // 第二步：初始化数据服务（M1 新增）
+    // 使用用户配置的 todoFolder 作为数据存储目录
+    this.taskService = new TaskService(this.app.vault, this.settings.todoFolder);
+    this.listService = new ListService(this.app.vault, this.settings.todoFolder, this.settings.defaultListName);
+    await this.taskService.init();
+    await this.listService.init();
+
     // 注册设置页
-    // 用户在「设置 -> 第三方插件」里点齿轮图标时，会打开这个页面
-    // this.app - Obsidian 应用实例；this - 当前插件实例
     this.addSettingTab(new ObsidianTodoSettingTab(this.app, this));
 
+    // 注册侧边栏视图（M2 T-201）
+    this.registerView(VIEW_TYPE_TODO, (leaf) => new TodoView(leaf, this));
+
     // 在左侧边栏添加图标
-    // 参数1: "checklist" - Obsidian 内置图标名
-    // 参数2: 鼠标悬停时显示的文字
-    // 参数3: 点击图标时执行的回调函数
-    // M2 阶段会把回调改为「打开侧边栏视图」
-    this.addRibbonIcon("checklist", "Obsidian Todo", () => {
-      logger.info("Ribbon icon clicked");
+    this.addRibbonIcon("check-square", "Obsidian Todo", async () => {
+      await this.activateView();
     });
 
     // 注册命令面板命令
-    // 用户按 Ctrl+P 打开命令面板后，可以搜索到这些命令
-    // id: 命令唯一标识，格式建议「插件名-动作名」
-    // name: 用户在命令面板里看到的文字
-    // callback: 命令被触发时执行的函数
     this.addCommand({
       id: "open-todo-sidebar",
-      name: "Open Todo sidebar",
-      callback: () => {
-        // M2 阶段改为：激活侧边栏自定义视图
-        logger.info("Command: open todo sidebar");
+      name: "Open Todo tab",
+      callback: async () => {
+        await this.activateView();
       },
     });
 
     this.addCommand({
       id: "quick-add-task",
       name: "Quick add task",
-      callback: () => {
-        // M2 阶段改为：弹出快速添加任务的弹窗
-        logger.info("Command: quick add task");
+      callback: async () => {
+        await this.activateView();
+        const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TODO);
+        const view = leaves[0]?.view;
+        if (view instanceof TodoView) {
+          view.focusQuickInput();
+        }
       },
     });
   }
 
   // ============ onunload() - 插件关闭 ============
-  // 插件被禁用或 Obsidian 关闭时自动调用
-  // 目前只打印日志，后续需要在这里做清理：移除视图、取消事件监听等
   onunload(): void {
     logger.info("Obsidian Todo unloaded");
   }
 
-  // ============ 设置读写 ============
-  // 从 data.json 读取用户设置
-  async loadSettings(): Promise<void> {
-    // Object.assign 合并默认设置和用户保存的设置
-    // 好处：插件升级新增配置项时，旧 data.json 缺少的字段会自动用默认值填充
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  async activateView(): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_TODO);
+    if (existing.length) {
+      this.app.workspace.revealLeaf(existing[0]);
+      return;
+    }
 
-    // 设置日志级别，根据用户配置控制控制台输出的详细程度
-    // as keyof typeof LogLevel 是类型断言，告诉 TypeScript 这个字符串一定是 LogLevel 枚举的合法键名
+    const leaf = this.app.workspace.getLeaf("tab");
+    if (!leaf) {
+      return;
+    }
+
+    await leaf.setViewState({ type: VIEW_TYPE_TODO, active: true });
+    this.app.workspace.revealLeaf(leaf);
+  }
+
+  // ============ 设置读写 ============
+  async loadSettings(): Promise<void> {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     logger.setLevel(LogLevel[this.settings.logLevel as keyof typeof LogLevel]);
   }
 
-  // 把当前设置写入 data.json
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
   }

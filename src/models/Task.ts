@@ -36,6 +36,8 @@ export interface Task {
   isCompleted: boolean;
   /** 是否标记为重要（星标） */
   isImportant: boolean;
+  /** 是否加入「我的一天」 */
+  isMyDay: boolean;
   /** 开始日期，ISO 8601 格式或 null */
   startDate: string | null;
   /** 截止日期，ISO 8601 格式或 null */
@@ -98,6 +100,7 @@ export function createTask(overrides: Partial<Task> = {}): Task {
     note: "",
     isCompleted: false,
     isImportant: false,
+    isMyDay: false,
     startDate: null,
     dueDate: null,
     reminder: null,

@@ -6,6 +6,7 @@
 
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type ObsidianTodoPlugin from "../main";
+import type { ViewNav } from "./views/TodoView";
 import { logger, LogLevel } from "./utils/logger";
 
 /**
@@ -19,6 +20,10 @@ export interface ObsidianTodoSettings {
   defaultListName: string;
   /** 控制台日志级别：DEBUG / INFO / WARN / ERROR */
   logLevel: string;
+  /** 当前侧边栏激活的导航视图 */
+  activeViewNav: ViewNav;
+  /** 当前选中的自定义列表 ID */
+  selectedListId: string | null;
 }
 
 /**
@@ -30,6 +35,8 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
   todoFolder: "todo",
   defaultListName: "Tasks",
   logLevel: "INFO",
+  activeViewNav: "myday",
+  selectedListId: null,
 };
 
 /**
