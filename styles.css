@@ -1,6 +1,6 @@
-/* Obsidian Todo - Base Styles */
 
-/* View container */
+
+
 .obsidian-todo-tab {
   display: flex;
   flex-direction: row;
@@ -28,7 +28,7 @@
   height: 100%;
 }
 
-/* Navigation section */
+
 .todo-nav {
   padding: 8px 0;
 }
@@ -50,7 +50,7 @@
   background-color: var(--background-modifier-active-hover);
 }
 
-/* Task list */
+
 .todo-task-list {
   flex: 1;
   overflow-y: auto;
@@ -74,7 +74,7 @@
   color: var(--text-muted);
 }
 
-/* Quick add input */
+
 .todo-quick-add {
   padding: 8px 12px;
   border-top: 1px solid var(--background-modifier-border);
@@ -93,7 +93,7 @@
   color: var(--text-faint);
 }
 
-/* Important star */
+
 .todo-star {
   cursor: pointer;
   color: var(--text-faint);
@@ -104,7 +104,7 @@
   color: var(--text-accent);
 }
 
-/* Empty state */
+
 .todo-empty-state {
   display: flex;
   flex-direction: column;
@@ -115,7 +115,7 @@
   color: var(--text-muted);
 }
 
-/* List navigation */
+
 .todo-nav-section {
   padding: 8px 0;
   border-top: 1px solid var(--background-modifier-border);
@@ -199,7 +199,7 @@
   color: var(--text-normal);
 }
 
-/* Task rendering - T-205 */
+
 .todo-task-item {
   align-items: flex-start;
 }
@@ -260,7 +260,7 @@
   font-weight: 600;
 }
 
-/* Empty guide - T-206 */
+
 .todo-guide {
   gap: 8px;
 }
@@ -289,7 +289,7 @@
   background: var(--interactive-hover);
 }
 
-/* Prompt modal helpers */
+
 .todo-prompt-input {
   width: 100%;
   padding: 6px 8px;
@@ -318,7 +318,7 @@
   }
 }
 
-/* Completed group - Microsoft To-Do style */
+
 .todo-completed-group {
   margin-top: 4px;
 }
