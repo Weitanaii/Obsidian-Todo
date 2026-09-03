@@ -93,14 +93,16 @@ class PromptModal extends Modal {
 import { App, ItemView, Menu, Modal, Notice, WorkspaceLeaf } from "obsidian";
 import type ObsidianTodoPlugin from "../../main";
 import { Task } from "../models/Task";
+import { TaskDetailView } from "./TaskDetailView";
 
-export type ViewNav = "myday" | "all";
+export type ViewNav = "myday" | "inbox";
 
 export const VIEW_TYPE_TODO = "obsidian-todo-view";
 
 export interface TodoPluginLike {
   taskService: {
     getMyDay(): Task[];
+    getInbox(defaultListId: string): Task[];
     getAll(): Task[];
     getByListId(listId: string): Task[];
     update(id: string, changes: Partial<Task>): Promise<Task | null>;
@@ -120,6 +122,7 @@ export interface TodoPluginLike {
     activeViewNav: ViewNav;
     selectedListId: string | null;
     completedCollapsed: boolean;
+    selectedTaskId: string | null;
   };
   saveSettings(): Promise<void>;
 }
@@ -143,6 +146,8 @@ export class TodoView extends ItemView {
   private listNavEl!: HTMLDivElement;
   private listItemsEl!: HTMLDivElement;
   private quickInputEl!: HTMLInputElement;
+  private detailEl!: HTMLDivElement;
+  private detailView!: TaskDetailView;
 
   constructor(leaf: WorkspaceLeaf, plugin: TodoPluginLike) {
     super(leaf);
@@ -172,8 +177,12 @@ export class TodoView extends ItemView {
     this.taskListEl = main.createDiv({ cls: "todo-task-list" });
     const quick = main.createDiv({ cls: "todo-quick-add" });
 
-    this.navEls["myday"] = nav.createDiv({ cls: "todo-nav-item", text: "我的一天" });
-    this.navEls["all"] = nav.createDiv({ cls: "todo-nav-item", text: "所有任务" });
+    // Upper section: fixed views
+    const upperNav = nav.createDiv({ cls: "todo-nav-section" });
+    upperNav.createDiv({ cls: "todo-nav-label", text: "视图" });
+    const upperItems = upperNav.createDiv({ cls: "todo-nav-lists" });
+    this.navEls["myday"] = upperItems.createDiv({ cls: "todo-nav-item", text: "我的一天" });
+    this.navEls["inbox"] = upperItems.createDiv({ cls: "todo-nav-item", text: "任务" });
 
     Object.entries(this.navEls).forEach(([key, el]) => {
       el.addEventListener("click", async () => {
@@ -199,6 +208,18 @@ export class TodoView extends ItemView {
       }
     });
 
+    this.detailEl = layout.createDiv({ cls: "todo-detail" });
+    this.detailView = new TaskDetailView(this.app, this.plugin, this.detailEl, (taskId) => {
+      this.refreshDetailIfActive(taskId);
+      const view = this.plugin.settings.selectedListId ? "list" : this.plugin.settings.activeViewNav;
+      void this.renderTasks(view);
+    }, () => {
+      const layout = this.containerEl.querySelector(".todo-layout");
+      if (layout) layout.removeClass("todo-layout-detail-open");
+    });
+
+    this.plugin.settings.selectedTaskId = null;
+
     await this.activateNav(this.plugin.settings.activeViewNav);
     await this.renderLists();
   }
@@ -208,6 +229,7 @@ export class TodoView extends ItemView {
   }
 
   private async activateNav(nav: ViewNav): Promise<void> {
+    this.closeDetail();
     this.plugin.settings.activeViewNav = nav;
     this.plugin.settings.selectedListId = null;
     await this.plugin.saveSettings();
@@ -222,7 +244,7 @@ export class TodoView extends ItemView {
   }
 
   private async activateList(listId: string): Promise<void> {
-    this.plugin.settings.activeViewNav = "all";
+    this.closeDetail();
     this.plugin.settings.selectedListId = listId;
     await this.plugin.saveSettings();
 
@@ -239,7 +261,7 @@ export class TodoView extends ItemView {
     if (!this.listItemsEl) return;
     this.listItemsEl.empty();
 
-    const lists = this.plugin.listService.getActive();
+    const lists = this.plugin.listService.getActive().filter((l) => !l.isDefault);
     lists.forEach((list) => {
       const row = this.listItemsEl.createDiv({ cls: `todo-nav-item todo-list-item${this.plugin.settings.selectedListId === list.id ? " active" : ""}` });
       row.dataset.listId = list.id;
@@ -287,10 +309,11 @@ export class TodoView extends ItemView {
     this.taskListEl.empty();
     let tasks: Task[] = [];
 
-    if (view === "myday") {
+    if (view === "myday" && !this.plugin.settings.selectedListId) {
       tasks = this.plugin.taskService.getMyDay();
-    } else if (view === "all") {
-      tasks = this.plugin.taskService.getAll();
+    } else if (view === "inbox") {
+      const defaultList = this.plugin.listService.getDefault();
+      tasks = defaultList ? this.plugin.taskService.getInbox(defaultList.id) : [];
     } else {
       const listId = this.plugin.settings.selectedListId;
       tasks = listId ? this.plugin.taskService.getByListId(listId) : [];
@@ -333,10 +356,11 @@ export class TodoView extends ItemView {
     }
   }
 
-  private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "all" | "list"): void {
+  private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "inbox" | "list"): void {
     const row = container.createDiv({
-      cls: `todo-task-item${task.isCompleted ? " completed" : ""}${task.isImportant ? " important-row" : ""}`,
+      cls: `todo-task-item${task.isCompleted ? " completed" : ""}${task.isImportant ? " important-row" : ""}${this.plugin.settings.selectedTaskId === task.id ? " todo-task-selected" : ""}`,
     });
+    row.dataset.taskId = task.id;
 
     const checkbox = row.createDiv({
       cls: `todo-checkbox${task.isCompleted ? " checked" : ""}`,
@@ -347,10 +371,11 @@ export class TodoView extends ItemView {
     const title = content.createDiv({ cls: "todo-task-title", text: task.title || "未命名任务" });
     title.toggleClass("todo-task-muted", task.isCompleted);
 
-    if (task.dueDate) {
-      const due = content.createDiv({ cls: "todo-task-due", text: task.dueDate.slice(0, 10) });
-      due.toggleClass("todo-task-due-overdue", !task.isCompleted && task.dueDate < new Date().toISOString());
-    }
+    // due date display temporarily disabled
+    // if (task.dueDate) {
+    //   const due = content.createDiv({ cls: "todo-task-due", text: task.dueDate.slice(0, 10) });
+    //   due.toggleClass("todo-task-due-overdue", !task.isCompleted && task.dueDate < new Date().toISOString());
+    // }
 
     const star = row.createDiv({
       cls: `todo-star${task.isImportant ? " important" : ""}`,
@@ -364,13 +389,24 @@ export class TodoView extends ItemView {
       } else {
         await this.plugin.taskService.update(task.id, { isCompleted: true, completedAt: new Date().toISOString() });
       }
+      this.refreshDetailIfActive(task.id);
       await this.renderTasks(currentView);
     });
 
     star.addEventListener("click", async (ev) => {
       ev.stopPropagation();
       await this.plugin.taskService.update(task.id, { isImportant: !task.isImportant });
+      this.refreshDetailIfActive(task.id);
       await this.renderTasks(currentView);
+    });
+
+    row.addEventListener("click", async () => {
+      this.plugin.settings.selectedTaskId = task.id;
+      await this.plugin.saveSettings();
+      this.detailView.open(task.id);
+      this.highlightSelectedTask(task.id);
+      const layout = this.containerEl.querySelector(".todo-layout");
+      if (layout) layout.addClass("todo-layout-detail-open");
     });
 
     row.addEventListener("contextmenu", (ev) => {
@@ -380,7 +416,7 @@ export class TodoView extends ItemView {
   }
 
   
-  private renderEmptyState(view: "myday" | "all" | "list"): void {
+  private renderEmptyState(view: "myday" | "inbox" | "list"): void {
     const empty = this.taskListEl.createDiv({ cls: "todo-empty-state todo-guide" });
 
     if (view === "myday") {
@@ -393,8 +429,8 @@ export class TodoView extends ItemView {
       return;
     }
 
-    if (view === "all") {
-      empty.createDiv({ cls: "todo-empty-title", text: "还没有任务" });
+    if (view === "inbox") {
+      empty.createDiv({ cls: "todo-empty-title", text: "收件箱是空的" });
       empty.createDiv({ cls: "todo-empty-desc", text: "在输入框里写下第一件要做的事，按回车即可创建。" });
       const action = empty.createDiv({ cls: "todo-empty-action", text: "立即创建任务" });
       action.addEventListener("click", () => {
@@ -540,7 +576,36 @@ export class TodoView extends ItemView {
   }
 
 
-  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "list"): void {
+
+
+  private closeDetailIfTarget(taskId: string): void {
+    if (this.detailView?.isActive() && this.detailView.getTaskId() === taskId) {
+      this.closeDetail();
+    }
+  }
+
+  private highlightSelectedTask(taskId: string): void {
+    this.taskListEl?.querySelectorAll(".todo-task-item").forEach((el) => {
+      el.toggleClass("todo-task-selected", (el as HTMLElement).dataset.taskId === taskId);
+    });
+  }
+
+  private refreshDetailIfActive(taskId: string): void {
+    if (this.detailView?.isActive() && this.detailView.getTaskId() === taskId) {
+      const task = this.plugin.taskService.getAll().find((t) => t.id === taskId);
+      if (task) this.detailView.refresh(task);
+    }
+  }
+
+  private closeDetail(): void {
+    this.plugin.settings.selectedTaskId = null;
+    void this.plugin.saveSettings();
+    this.detailView?.close();
+    const layout = this.containerEl.querySelector(".todo-layout");
+    if (layout) layout.removeClass("todo-layout-detail-open");
+  }
+
+  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "inbox" | "list"): void {
     const menu = new Menu();
 
     menu.addItem((item) =>
@@ -591,6 +656,7 @@ export class TodoView extends ItemView {
         .setIcon("trash")
         .onClick(async () => {
           await this.plugin.taskService.delete(task.id);
+          this.closeDetailIfTarget(task.id);
           await this.renderLists();
           await this.renderTasks(currentView);
         }),

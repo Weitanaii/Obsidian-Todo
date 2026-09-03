@@ -62,10 +62,15 @@ export class TaskService {
 
   getMyDay(): Task[] {
     this.ensureLoaded();
-    return this.tasks.filter((t) => t.isMyDay && !t.isCompleted);
+    return this.tasks.filter((t) => t.isMyDay);
   }
 
   
+  getInbox(defaultListId: string): Task[] {
+    this.ensureLoaded();
+    return this.tasks.filter((t) => t.listId === defaultListId);
+  }
+
   getCompleted(): Task[] {
     this.ensureLoaded();
     return this.tasks.filter((t) => t.isCompleted);
