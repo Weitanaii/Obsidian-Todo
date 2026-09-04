@@ -288,6 +288,8 @@ class DatePickerModal extends Modal {
         this.renderCalendar(year, month);
       });
     }
+    const trailing = 42 - offset - daysInMonth;
+    for (let i = 0; i < trailing; i++) { grid.createDiv({ cls: "todo-dp-day todo-dp-day-empty" }); }
 
     // Action buttons
     const actions = this.contentEl.createDiv({ cls: "todo-dp-actions" });
