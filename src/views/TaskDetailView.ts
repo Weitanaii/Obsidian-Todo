@@ -157,6 +157,20 @@ export class TaskDetailView {
     });
   }
 
+  private createStartDateRow(parent: HTMLElement, task: Task): void {
+    const hasStart = !!task.startDate;
+    let display = "添加开始日期";
+    if (hasStart && task.startDate) { display = "开始日期：" + this.formatDisplayDate(task.startDate); }
+    this.createPropertyRow(parent, task, {
+      icon: "calendar-days",
+      unsetText: "添加开始日期",
+      isSet: hasStart,
+      displayText: display,
+      onClick: () => { new DatePickerModal(this.app, task.startDate, (date) => { void this.saveChanges({ startDate: date }); }).open(); },
+      onClear: () => { void this.saveChanges({ startDate: null }); },
+    });
+  }
+
   private createRecurrenceRow(parent: HTMLElement, task: Task): void {
     const hasRec = !!task.recurrence;
     let display = "设置重复";
@@ -182,6 +196,7 @@ export class TaskDetailView {
   }
   private renderPropertyRows(container: HTMLElement, task: Task): void {
     this.createMyDayRow(container, task);
+    this.createStartDateRow(container, task);
     this.createDueDateRow(container, task);
     this.createRecurrenceRow(container, task);
   }
