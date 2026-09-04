@@ -90,7 +90,7 @@ class PromptModal extends Modal {
     this.close();
   }
 }
-import { App, ItemView, Menu, Modal, Notice, WorkspaceLeaf } from "obsidian";
+import { App, ItemView, Menu, Modal, Notice, setIcon, WorkspaceLeaf } from "obsidian";
 import type ObsidianTodoPlugin from "../../main";
 import { Task } from "../models/Task";
 import { TaskDetailView } from "./TaskDetailView";
@@ -179,7 +179,6 @@ export class TodoView extends ItemView {
 
     // Upper section: fixed views
     const upperNav = nav.createDiv({ cls: "todo-nav-section" });
-    upperNav.createDiv({ cls: "todo-nav-label", text: "视图" });
     const upperItems = upperNav.createDiv({ cls: "todo-nav-lists" });
     this.navEls["myday"] = upperItems.createDiv({ cls: "todo-nav-item", text: "我的一天" });
     this.navEls["inbox"] = upperItems.createDiv({ cls: "todo-nav-item", text: "任务" });
@@ -191,7 +190,6 @@ export class TodoView extends ItemView {
     });
 
     this.listNavEl = nav.createDiv({ cls: "todo-nav-section" });
-    this.listNavEl.createDiv({ cls: "todo-nav-label", text: "列表" });
     this.listItemsEl = this.listNavEl.createDiv({ cls: "todo-nav-lists" });
 
     const addListBtn = this.listNavEl.createDiv({ cls: "todo-nav-add", text: "+ 新建列表" });
@@ -379,8 +377,8 @@ export class TodoView extends ItemView {
 
     const star = row.createDiv({
       cls: `todo-star${task.isImportant ? " important" : ""}`,
-      text: task.isImportant ? "★" : "☆",
     });
+    setIcon(star, "star");
 
     checkbox.addEventListener("click", async (ev) => {
       ev.stopPropagation();
