@@ -95,7 +95,7 @@ export class TaskDetailView {
     const noteLabel = noteSection.createDiv({ cls: "todo-detail-label" });
     setIcon(noteLabel, "pen-line");
     noteLabel.createSpan({ text: " 备注" });
-    this.noteInput = noteSection.createEl("textarea", { cls: "todo-detail-textarea", attr: { rows: "8" } }) as HTMLTextAreaElement;
+    this.noteInput = noteSection.createEl("textarea", { cls: "todo-detail-textarea", attr: { rows: "2" } }) as HTMLTextAreaElement;
     this.noteInput.value = task.note || "";
     this.noteInput.addEventListener("blur", () => {
       const next = this.noteInput.value;

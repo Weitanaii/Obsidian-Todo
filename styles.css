@@ -494,7 +494,7 @@
 .todo-detail-props {
   display: flex;
   flex-direction: column;
-  padding: 8px 14px;
+  padding: 8px 14px 0 14px;
   gap: 0;
 }
 
@@ -557,10 +557,10 @@
 }
 
 .todo-detail-note-section {
-  padding: 4px 14px 8px;
+  padding: 8px 14px 8px 18px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
 .todo-detail-textarea {
@@ -572,7 +572,7 @@
   color: var(--text-normal) !important;
     font-size: 11px;
     resize: none;
-    min-height: 50px;
+    min-height: 25px;
   line-height: 1.5;
 }
 
@@ -622,12 +622,22 @@
 .todo-detail-label {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 10px;
   font-size: 14px;
   font-weight: normal;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+.todo-detail-label svg {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  min-width: 20px;
 }
 
 @media (max-width: 960px) {
@@ -783,14 +793,15 @@
 
 /* === Related resources === */
 .todo-detail-related {
-  padding: 4px 14px 8px;
+  flex: 1;
+  padding: 4px 14px 8px 18px;
 }
 
 .todo-related-title-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 0;
+  padding: 8px 0;
 }
 
 .todo-related-label {
@@ -819,7 +830,7 @@
 
 .todo-related-item-icon {
   font-size: 14px;
-  width: 18px;
+  width: 20px;
   text-align: center;
   flex-shrink: 0;
   color: var(--text-muted);
