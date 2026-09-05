@@ -45,6 +45,7 @@ export interface Task {
   sortOrder: number;
   
   relatedPaths: string[];
+  relatedFolders: string[];
   
   attachments: string[];
   
@@ -76,6 +77,7 @@ export function createTask(overrides: Partial<Task> = {}): Task {
     steps: [],
     sortOrder: 0,
     relatedPaths: [],
+    relatedFolders: [],
     attachments: [],
     createdAt: now,
     updatedAt: now,

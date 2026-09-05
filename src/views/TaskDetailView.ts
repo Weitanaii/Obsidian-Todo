@@ -1,6 +1,7 @@
-import { App, Modal, Notice, setIcon } from "obsidian";
+import { App, Modal, Notice, setIcon, TFile, TFolder } from "obsidian";
 import type { TodoPluginLike } from "./TodoView";
 import type { Task } from "../models/Task";
+import { ResourceSuggestModal } from "../ui/ResourceSuggestModal";
 
 export class TaskDetailView {
   private app: App;
@@ -10,6 +11,7 @@ export class TaskDetailView {
   private titleInput!: HTMLInputElement;
   private noteInput!: HTMLTextAreaElement;
   private propsEl!: HTMLElement;
+  private relatedEl!: HTMLElement;
   private pendingSave: Promise<void> | null = null;
   private onTaskUpdated?: (taskId: string) => void;
   private onClose?: () => void;
@@ -90,7 +92,9 @@ export class TaskDetailView {
 
     // --- Note area ---
     const noteSection = this.root.createDiv({ cls: "todo-detail-note-section" });
-    noteSection.createDiv({ cls: "todo-detail-label", text: "备注" });
+    const noteLabel = noteSection.createDiv({ cls: "todo-detail-label" });
+    setIcon(noteLabel, "pen-line");
+    noteLabel.createSpan({ text: " 备注" });
     this.noteInput = noteSection.createEl("textarea", { cls: "todo-detail-textarea", attr: { rows: "8" } }) as HTMLTextAreaElement;
     this.noteInput.value = task.note || "";
     this.noteInput.addEventListener("blur", () => {
@@ -98,6 +102,9 @@ export class TaskDetailView {
       if (next !== (task.note || "")) void this.saveChanges({ note: next });
     });
 
+    // --- Related resources ---
+    this.relatedEl = this.root.createDiv({ cls: "todo-detail-related" });
+    this.renderRelatedSection(this.relatedEl, task);
     // --- Bottom bar ---
     const bottomBar = this.root.createDiv({ cls: "todo-detail-bottom" });
     bottomBar.createDiv({ cls: "todo-detail-created", text: this.formatCreatedDate(task.createdAt) });
@@ -193,12 +200,101 @@ export class TaskDetailView {
     // Refresh property rows
     this.propsEl.empty();
     this.renderPropertyRows(this.propsEl, task);
+    this.relatedEl.empty();
+    this.renderRelatedSection(this.relatedEl, task);
   }
   private renderPropertyRows(container: HTMLElement, task: Task): void {
     this.createMyDayRow(container, task);
     this.createStartDateRow(container, task);
     this.createDueDateRow(container, task);
     this.createRecurrenceRow(container, task);
+  }
+
+  private renderRelatedSection(container: HTMLElement, task: Task): void {
+    const directPaths = task.relatedPaths || [];
+    const folderPaths = task.relatedFolders || [];
+
+    // Resolve folders to file lists
+    const folderContents: { folderPath: string; files: string[] }[] = [];
+    const allDisplayItems: { path: string; isFolder: boolean; fromFolder?: string }[] = [];
+
+    for (const fp of directPaths) {
+      allDisplayItems.push({ path: fp, isFolder: false });
+    }
+
+    for (const folderPath of folderPaths) {
+      const abs = this.app.vault.getAbstractFileByPath(folderPath);
+      if (abs instanceof TFolder) {
+        const files: string[] = [];
+        const collect = (folder: TFolder) => {
+          for (const child of folder.children) {
+            if (child instanceof TFile) {
+              files.push(child.path);
+            } else if (child instanceof TFolder) {
+              collect(child);
+            }
+          }
+        };
+        collect(abs);
+        folderContents.push({ folderPath, files });
+        allDisplayItems.push({ path: folderPath, isFolder: true });
+        for (const f of files) {
+          allDisplayItems.push({ path: f, isFolder: false, fromFolder: folderPath });
+        }
+      }
+    }
+
+    const totalCount = allDisplayItems.length;
+    const titleRow = container.createDiv({ cls: "todo-related-title-row" });
+    const titleIcon = titleRow.createDiv({ cls: "todo-prop-icon" });
+    setIcon(titleIcon, "link");
+    const labelText = totalCount > 0 ? "关联 (" + totalCount + ")" : "关联";
+    titleRow.createSpan({ cls: "todo-related-label", text: labelText });
+
+    if (totalCount > 0) {
+      const list = container.createDiv({ cls: "todo-related-list" });
+      for (const item of allDisplayItems) {
+        const row = list.createDiv({ cls: "todo-related-item" + (item.isFolder ? " is-folder" : " is-file") });
+        const itemIcon = row.createSpan({ cls: "todo-related-item-icon" });
+        setIcon(itemIcon, item.isFolder ? "folder" : "file-text");
+        const nameEl = row.createSpan({ cls: "todo-related-item-name", text: item.path });
+        if (!item.isFolder) {
+          nameEl.addEventListener("click", () => {
+            this.app.workspace.openLinkText(item.path, "", true);
+          });
+        }
+        const removeBtn = row.createSpan({ cls: "todo-related-item-remove" });
+        setIcon(removeBtn, "x");
+        removeBtn.addEventListener("click", () => {
+          if (item.isFolder) {
+            const next = folderPaths.filter((fp) => fp !== item.path);
+            void this.saveChanges({ relatedFolders: next });
+          } else if (item.fromFolder) {
+            const next = folderPaths.filter((fp) => fp !== item.fromFolder);
+            void this.saveChanges({ relatedFolders: next });
+          } else {
+            const next = directPaths.filter((dp) => dp !== item.path);
+            void this.saveChanges({ relatedPaths: next });
+          }
+        });
+      }
+    }
+
+    const addBtn = container.createDiv({ cls: "todo-related-add" });
+    setIcon(addBtn, "plus");
+    addBtn.createSpan({ text: " 添加关联" });
+    addBtn.addEventListener("click", () => {
+      const excludePaths = [...directPaths, ...folderPaths];
+      new ResourceSuggestModal(this.app, excludePaths, (result) => {
+        if (result.isFolder) {
+          const next = [...folderPaths, result.path];
+          void this.saveChanges({ relatedFolders: next });
+        } else {
+          const next = [...directPaths, result.path];
+          void this.saveChanges({ relatedPaths: next });
+        }
+      }).open();
+    });
   }
 
   private async saveChanges(changes: Partial<Task>): Promise<void> {

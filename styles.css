@@ -558,7 +558,6 @@
 
 .todo-detail-note-section {
   padding: 4px 14px 8px;
-  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -571,9 +570,9 @@
   border-radius: var(--radius-s);
   background: transparent;
   color: var(--text-normal) !important;
-  font-size: 14px;
-  resize: vertical;
-  min-height: 100px;
+    font-size: 11px;
+    resize: none;
+    min-height: 50px;
   line-height: 1.5;
 }
 
@@ -621,8 +620,11 @@
 }
 
 .todo-detail-label {
-  font-size: 11px;
-  font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  font-size: 14px;
+  font-weight: normal;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -779,3 +781,121 @@
   font-size: var(--font-ui-small);
 }
 
+/* === Related resources === */
+.todo-detail-related {
+  padding: 4px 14px 8px;
+}
+
+.todo-related-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.todo-related-label {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.todo-related-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 4px;
+}
+
+.todo-related-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+  font-size: 13px;
+}
+
+.todo-related-item:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.todo-related-item-icon {
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.todo-related-item.is-folder .todo-related-item-icon {
+  color: var(--text-accent);
+}
+
+.todo-related-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.todo-related-item.is-file .todo-related-item-name:hover {
+  color: var(--text-accent);
+  cursor: pointer;
+}
+
+.todo-related-item-remove {
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.todo-related-item:hover .todo-related-item-remove {
+  opacity: 1;
+}
+
+.todo-related-item-remove:hover {
+  color: var(--text-error);
+}
+
+.todo-related-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-s);
+}
+
+.todo-related-add:hover {
+  color: var(--text-normal);
+  background-color: var(--background-modifier-hover);
+}
+
+/* Resource suggest modal */
+.todo-resource-suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.todo-resource-suggest-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.todo-resource-suggest-name {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
