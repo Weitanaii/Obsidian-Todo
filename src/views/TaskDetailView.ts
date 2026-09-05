@@ -159,7 +159,7 @@ export class TaskDetailView {
       unsetText: "添加截止日期",
       isSet: hasDue,
       displayText: display,
-      onClick: () => { new DatePickerModal(this.app, task.dueDate, (date) => { void this.saveChanges({ dueDate: date }); }).open(); },
+      onClick: () => { new DatePickerModal(this.app, task.dueDate, "end", (date) => { void this.saveChanges({ dueDate: date }); }).open(); },
       onClear: () => { void this.saveChanges({ dueDate: null }); },
     });
   }
@@ -173,7 +173,7 @@ export class TaskDetailView {
       unsetText: "添加开始日期",
       isSet: hasStart,
       displayText: display,
-      onClick: () => { new DatePickerModal(this.app, task.startDate, (date) => { void this.saveChanges({ startDate: date }); }).open(); },
+      onClick: () => { new DatePickerModal(this.app, task.startDate, "start", (date) => { void this.saveChanges({ startDate: date }); }, (startIso, endIso) => { void this.saveChanges({ startDate: startIso, dueDate: endIso }); }).open(); },
       onClear: () => { void this.saveChanges({ startDate: null }); },
     });
   }
@@ -319,7 +319,13 @@ export class TaskDetailView {
     if (!isoValue) return "";
     const d = new Date(isoValue);
     if (Number.isNaN(d.getTime())) return "";
-    return d.getFullYear() + "年" + (d.getMonth() + 1) + "月" + d.getDate() + "日";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const h = pad(d.getHours());
+    const m = pad(d.getMinutes());
+    if (h === "00" && m === "00") {
+      return d.getFullYear() + "年" + (d.getMonth() + 1) + "月" + d.getDate() + "日";
+    }
+    return d.getFullYear() + "年" + (d.getMonth() + 1) + "月" + d.getDate() + "日 " + h + ":" + m;
   }
 
   private formatCreatedDate(isoValue: string): string {
@@ -350,12 +356,26 @@ export class TaskDetailView {
 class DatePickerModal extends Modal {
   private currentDate: Date;
   private onSelect: (isoDate: string | null) => void;
+  private onLinkedUpdate?: (startIso: string, endIso: string) => void;
+  private mode: "start" | "end";
+  private selectedHour: number;
+  private selectedMinute: number;
 
-  constructor(app: App, currentIsoDate: string | null, onSelect: (isoDate: string | null) => void) {
+  constructor(
+    app: App,
+    currentIsoDate: string | null,
+    mode: "start" | "end",
+    onSelect: (isoDate: string | null) => void,
+    onLinkedUpdate?: (startIso: string, endIso: string) => void
+  ) {
     super(app);
-    this.currentDate = currentIsoDate ? new Date(currentIsoDate) : new Date();
-    if (Number.isNaN(this.currentDate.getTime())) this.currentDate = new Date();
+    this.mode = mode;
     this.onSelect = onSelect;
+    this.onLinkedUpdate = onLinkedUpdate;
+    const d = currentIsoDate ? new Date(currentIsoDate) : new Date();
+    this.currentDate = Number.isNaN(d.getTime()) ? new Date() : d;
+    this.selectedHour = this.currentDate.getHours();
+    this.selectedMinute = this.currentDate.getMinutes();
   }
 
   onOpen(): void {
@@ -364,6 +384,11 @@ class DatePickerModal extends Modal {
   }
 
   onClose(): void { this.contentEl.empty(); }
+
+    private formatIso(d: Date, h: number, m: number): string {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(h) + ":" + pad(m) + ":00";
+  }
 
   private renderCalendar(year: number, month: number): void {
     this.contentEl.empty();
@@ -402,13 +427,63 @@ class DatePickerModal extends Modal {
     const trailing = 42 - offset - daysInMonth;
     for (let i = 0; i < trailing; i++) { grid.createDiv({ cls: "todo-dp-day todo-dp-day-empty" }); }
 
+    // Quick time presets
+    const presets = this.contentEl.createDiv({ cls: "todo-dp-presets" });
+    const presetData = [
+      { label: "全天", icon: "🕐", hour: 7, minute: 0, endHour: 23, endMinute: 30 },
+      { label: "早上", icon: "🌅", hour: 7, minute: 0, endHour: 12, endMinute: 0 },
+      { label: "中午", icon: "🌞", hour: 12, minute: 0, endHour: 14, endMinute: 0 },
+      { label: "下午", icon: "☀️", hour: 14, minute: 0, endHour: 18, endMinute: 0 },
+      { label: "晚上", icon: "🌙", hour: 18, minute: 0, endHour: 23, endMinute: 30 },
+    ];
+    presetData.forEach((p) => {
+      const btn = presets.createEl("button", { cls: "todo-dp-preset-btn", text: p.icon + " " + p.label });
+      btn.addEventListener("click", () => {
+        this.selectedHour = p.hour;
+        this.selectedMinute = p.minute;
+        this.currentDate.setHours(p.hour, p.minute);
+        // Update dropdowns to reflect selected preset
+        hourSelect.value = String(p.hour);
+        minuteSelect.value = String(p.minute);
+        // If start mode and linked update exists, trigger linked update
+        if (this.mode === "start" && this.onLinkedUpdate) {
+          const startIso = this.formatIso(this.currentDate, p.hour, p.minute);
+          const endDate = new Date(this.currentDate);
+          endDate.setHours(p.endHour, p.endMinute);
+          const endIso = this.formatIso(endDate, p.endHour, p.endMinute);
+          this.onLinkedUpdate(startIso, endIso);
+        }
+      });
+    });
+
+    // Time picker
+    const timeRow = this.contentEl.createDiv({ cls: "todo-dp-time" });
+    timeRow.createSpan({ text: "时间: " });
+    const hourSelect = timeRow.createEl("select", { cls: "todo-dp-time-select" });
+    for (let h = 0; h < 24; h++) {
+      const opt = hourSelect.createEl("option", { value: String(h), text: String(h).padStart(2, "0") });
+      if (h === this.selectedHour) opt.selected = true;
+    }
+    hourSelect.addEventListener("change", () => {
+      this.selectedHour = parseInt(hourSelect.value);
+    });
+    timeRow.createSpan({ text: " : " });
+    const minuteSelect = timeRow.createEl("select", { cls: "todo-dp-time-select" });
+    [0, 15, 30, 45].forEach((m) => {
+      const opt = minuteSelect.createEl("option", { value: String(m), text: String(m).padStart(2, "0") });
+      if (m === this.selectedMinute) opt.selected = true;
+    });
+    minuteSelect.addEventListener("change", () => {
+      this.selectedMinute = parseInt(minuteSelect.value);
+    });
+
     // Action buttons
     const actions = this.contentEl.createDiv({ cls: "todo-dp-actions" });
     actions.createEl("button", { text: "取消" }).addEventListener("click", () => this.close());
     actions.createEl("button", { text: "保存", cls: "mod-cta" }).addEventListener("click", () => {
-      const d = this.currentDate;
-      const pad = (n: number) => String(n).padStart(2, "0");
-      this.onSelect(d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T00:00:00.000Z");
+      this.currentDate.setHours(this.selectedHour, this.selectedMinute);
+      const isoStr = this.formatIso(this.currentDate, this.selectedHour, this.selectedMinute);
+      this.onSelect(isoStr);
       this.close();
     });
   }
