@@ -430,38 +430,8 @@ class DatePickerModal extends Modal {
     const trailing = 42 - offset - daysInMonth;
     for (let i = 0; i < trailing; i++) { grid.createDiv({ cls: "todo-dp-day todo-dp-day-empty" }); }
 
-    // Quick time presets
-    const presets = this.contentEl.createDiv({ cls: "todo-dp-presets" });
-    const presetData = [
-      { label: "全天", icon: "🕐", hour: 7, minute: 0, endHour: 23, endMinute: 30 },
-      { label: "早上", icon: "🌅", hour: 7, minute: 0, endHour: 12, endMinute: 0 },
-      { label: "中午", icon: "🌞", hour: 12, minute: 0, endHour: 14, endMinute: 0 },
-      { label: "下午", icon: "☀️", hour: 14, minute: 0, endHour: 18, endMinute: 0 },
-      { label: "晚上", icon: "🌙", hour: 18, minute: 0, endHour: 23, endMinute: 30 },
-    ];
-    presetData.forEach((p) => {
-      const btn = presets.createEl("button", { cls: "todo-dp-preset-btn", text: p.icon + " " + p.label });
-      btn.addEventListener("click", () => {
-        this.selectedHour = p.hour;
-        this.selectedMinute = p.minute;
-        this.currentDate.setHours(p.hour, p.minute);
-        // Update dropdowns to reflect selected preset
-        hourSelect.value = String(p.hour);
-        minuteSelect.value = String(p.minute);
-        // If start mode and linked update exists, trigger linked update
-        if (this.mode === "start" && this.onLinkedUpdate) {
-          const startIso = this.formatIso(this.currentDate, p.hour, p.minute);
-          const endDate = new Date(this.currentDate);
-          endDate.setHours(p.endHour, p.endMinute);
-          const endIso = this.formatIso(endDate, p.endHour, p.endMinute);
-          this.onLinkedUpdate(startIso, endIso);
-        }
-      });
-    });
-
     // Time picker
     const timeRow = this.contentEl.createDiv({ cls: "todo-dp-time" });
-    timeRow.createSpan({ text: "时间: " });
     const hourSelect = timeRow.createEl("select", { cls: "todo-dp-time-select" });
     for (let h = 0; h < 24; h++) {
       const opt = hourSelect.createEl("option", { value: String(h), text: String(h).padStart(2, "0") });
@@ -480,6 +450,34 @@ class DatePickerModal extends Modal {
       this.selectedMinute = parseInt(minuteSelect.value);
     });
 
+    // Quick time presets
+    const presets = this.contentEl.createDiv({ cls: "todo-dp-presets" });
+    const presetData = [
+      { label: "全天", icon: "clock", hour: 7, minute: 0, endHour: 23, endMinute: 30 },
+      { label: "早上", icon: "sunrise", hour: 7, minute: 0, endHour: 12, endMinute: 0 },
+      { label: "中午", icon: "sun", hour: 12, minute: 0, endHour: 14, endMinute: 0 },
+      { label: "下午", icon: "sun-dim", hour: 14, minute: 0, endHour: 18, endMinute: 0 },
+      { label: "晚上", icon: "moon", hour: 18, minute: 0, endHour: 23, endMinute: 30 },
+    ];
+    presetData.forEach((p) => {
+      const btn = presets.createEl("button", { cls: "todo-dp-preset-btn" });
+      setIcon(btn, p.icon);
+      btn.createSpan({ text: p.label });
+      btn.addEventListener("click", () => {
+        this.selectedHour = p.hour;
+        this.selectedMinute = p.minute;
+        this.currentDate.setHours(p.hour, p.minute);
+        hourSelect.value = String(p.hour);
+        minuteSelect.value = String(p.minute);
+        if (this.mode === "start" && this.onLinkedUpdate) {
+          const startIso = this.formatIso(this.currentDate, p.hour, p.minute);
+          const endDate = new Date(this.currentDate);
+          endDate.setHours(p.endHour, p.endMinute);
+          const endIso = this.formatIso(endDate, p.endHour, p.endMinute);
+          this.onLinkedUpdate(startIso, endIso);
+        }
+      });
+    });
     // Action buttons
     const actions = this.contentEl.createDiv({ cls: "todo-dp-actions" });
     actions.createEl("button", { text: "取消" }).addEventListener("click", () => this.close());
