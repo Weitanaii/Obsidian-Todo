@@ -94,6 +94,8 @@ import { App, ItemView, Menu, Modal, Notice, setIcon, WorkspaceLeaf } from "obsi
 import type ObsidianTodoPlugin from "../../main";
 import { Task } from "../models/Task";
 import { TaskDetailView } from "./TaskDetailView";
+import { sortTasks } from "../utils/sort";
+import type { SortConfig, SortField, SortDirection } from "../utils/sort";
 
 export type ViewNav = "myday" | "inbox";
 
@@ -123,25 +125,18 @@ export interface TodoPluginLike {
     selectedListId: string | null;
     completedCollapsed: boolean;
     selectedTaskId: string | null;
+    sortConfig: SortConfig;
   };
   saveSettings(): Promise<void>;
 }
 
-const normalizeTasks = (tasks: Task[]) =>
-  tasks
-    .slice()
-    .sort(
-      (a, b) =>
-        Number(a.isCompleted) - Number(b.isCompleted) ||
-        Number(b.isImportant) - Number(a.isImportant) ||
-        (a.dueDate ? 0 : 1) - (b.dueDate ? 0 : 1) ||
-        a.sortOrder - b.sortOrder ||
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
+const normalizeTasks = (tasks: Task[], config: SortConfig) =>
+  sortTasks(tasks, config);
 
 export class TodoView extends ItemView {
   private plugin: TodoPluginLike;
   private taskListEl!: HTMLDivElement;
+  private sortBtnEl!: HTMLButtonElement;
   private navEls: Record<ViewNav, HTMLDivElement> = {} as Record<ViewNav, HTMLDivElement>;
   private listNavEl!: HTMLDivElement;
   private listItemsEl!: HTMLDivElement;
@@ -174,6 +169,10 @@ export class TodoView extends ItemView {
     const layout = container.createDiv({ cls: "todo-layout" });
     const nav = layout.createDiv({ cls: "todo-nav" });
     const main = layout.createDiv({ cls: "todo-main" });
+    const taskHeader = main.createDiv({ cls: "todo-task-header" });
+    this.sortBtnEl = taskHeader.createEl("button", { cls: "todo-sort-btn" });
+    setIcon(this.sortBtnEl, "arrow-up-down");
+    this.sortBtnEl.addEventListener("click", (ev) => this.showSortMenu(ev));
     this.taskListEl = main.createDiv({ cls: "todo-task-list" });
     const quick = main.createDiv({ cls: "todo-quick-add" });
 
@@ -303,6 +302,35 @@ export class TodoView extends ItemView {
     }
   }
 
+  private showSortMenu(ev: MouseEvent): void {
+    const fields: { field: SortField; label: string }[] = [
+      { field: "manual", label: "手动排序" },
+      { field: "importance", label: "按重要程度" },
+      { field: "dueDate", label: "按截止日期" },
+      { field: "createdAt", label: "按创建时间" },
+      { field: "title", label: "按标题" },
+    ];
+    const menu = new Menu();
+    const currentField = this.plugin.settings.sortConfig.primary.field;
+    fields.forEach(({ field, label }) => {
+      menu.addItem((item) =>
+        item.setTitle(label).setChecked(field === currentField).onClick(async () => {
+          const defaultDir: Record<SortField, SortDirection> = {
+            manual: "asc", importance: "desc", dueDate: "asc", createdAt: "desc", title: "asc",
+          };
+          this.plugin.settings.sortConfig = {
+            primary: { field, direction: defaultDir[field] },
+            secondary: { field: "manual", direction: "asc" },
+          };
+          await this.plugin.saveSettings();
+          const currentView = this.plugin.settings.selectedListId ? "list" : this.plugin.settings.activeViewNav;
+          await this.renderTasks(currentView);
+        })
+      );
+    });
+    menu.showAtMouseEvent(ev);
+  }
+
   private async renderTasks(view: ViewNav | "list"): Promise<void> {
     this.taskListEl.empty();
     let tasks: Task[] = [];
@@ -322,7 +350,7 @@ export class TodoView extends ItemView {
       return;
     }
 
-    const sorted = normalizeTasks(tasks);
+    const sorted = normalizeTasks(tasks, this.plugin.settings.sortConfig);
     const incomplete = sorted.filter((t) => !t.isCompleted);
     const completed = sorted.filter((t) => t.isCompleted);
     const currentView = this.plugin.settings.selectedListId ? "list" : this.plugin.settings.activeViewNav;

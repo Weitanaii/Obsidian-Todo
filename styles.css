@@ -75,6 +75,32 @@
 }
 
 
+.todo-task-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 4px 14px 0;
+  flex-shrink: 0;
+}
+
+.todo-sort-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.todo-sort-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
 .todo-quick-add {
   padding: 10px 14px;
   border-top: 1px solid var(--background-modifier-border);

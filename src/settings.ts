@@ -2,6 +2,7 @@ import { App, PluginSettingTab, Setting } from "obsidian";
 import type ObsidianTodoPlugin from "../main";
 import type { ViewNav } from "./views/TodoView";
 import { logger, LogLevel } from "./utils/logger";
+import type { SortConfig } from "./utils/sort";
 
 export interface ObsidianTodoSettings {
   todoFolder: string;
@@ -11,6 +12,7 @@ export interface ObsidianTodoSettings {
   selectedListId: string | null;
   completedCollapsed: boolean;
   selectedTaskId: string | null;
+  sortConfig: SortConfig;
 }
 
 export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
@@ -21,6 +23,10 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
   selectedListId: null,
   completedCollapsed: true,
   selectedTaskId: null,
+  sortConfig: {
+    primary: { field: "importance", direction: "desc" },
+    secondary: { field: "dueDate", direction: "asc" },
+  },
 };
 
 export class ObsidianTodoSettingTab extends PluginSettingTab {
