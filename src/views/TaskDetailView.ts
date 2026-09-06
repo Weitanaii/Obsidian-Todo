@@ -257,7 +257,10 @@ export class TaskDetailView {
         const row = list.createDiv({ cls: "todo-related-item" + (item.isFolder ? " is-folder" : " is-file") });
         const itemIcon = row.createSpan({ cls: "todo-related-item-icon" });
         setIcon(itemIcon, item.isFolder ? "folder" : "file-text");
-        const nameEl = row.createSpan({ cls: "todo-related-item-name", text: item.path });
+        const pathParts = item.path.split('/');
+        const displayName = pathParts.length >= 2 ? pathParts.slice(-2).join('/') : item.path;
+        const nameEl = row.createSpan({ cls: "todo-related-item-name", text: displayName });
+        nameEl.title = item.path;
         if (!item.isFolder) {
           nameEl.addEventListener("click", () => {
             this.app.workspace.openLinkText(item.path, "", true);
