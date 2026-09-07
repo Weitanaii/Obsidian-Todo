@@ -11,6 +11,7 @@ import { logger, LogLevel } from "./src/utils/logger";
 import { TaskService } from "./src/services/TaskService";
 import { ListService } from "./src/services/ListService";
 import { TagService } from "./src/services/TagService";
+import { GroupService } from "./src/services/GroupService";
 
 import { TodoView, VIEW_TYPE_TODO } from "./src/views/TodoView";
 
@@ -24,6 +25,7 @@ export default class ObsidianTodoPlugin extends Plugin {
   taskService!: TaskService;
   listService!: ListService;
   tagService!: TagService;
+  groupService!: GroupService;
 
   
   
@@ -40,6 +42,8 @@ export default class ObsidianTodoPlugin extends Plugin {
     await this.listService.init();
     this.tagService = new TagService(this.app.vault, this.settings.todoFolder);
     await this.tagService.init();
+    this.groupService = new GroupService(this.app.vault, this.settings.todoFolder);
+    await this.groupService.init();
 
     
     this.addSettingTab(new ObsidianTodoSettingTab(this.app, this));

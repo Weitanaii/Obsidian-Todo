@@ -1,7 +1,5 @@
 export type Priority = "low" | "medium" | "high";
 
-export type PriorityQuadrant = "Q1" | "Q2" | "Q3" | "Q4";
-
 export type MyDayGroup = "allday" | "morning" | "noon" | "afternoon" | "evening";
 
 export interface SubTask {
@@ -42,7 +40,6 @@ export interface Task {
   
   priority: Priority;
   
-  priorityQuadrant: PriorityQuadrant | null;
   
   steps: SubTask[];
   
@@ -78,7 +75,6 @@ export function createTask(overrides: Partial<Task> = {}): Task {
     listId: "",
     tags: [],
     priority: "medium",
-    priorityQuadrant: null,
     steps: [],
     sortOrder: 0,
     relatedPaths: [],

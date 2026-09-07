@@ -124,15 +124,24 @@ export interface TodoPluginLike {
     delete(id: string): Promise<boolean>;
   };
   listService: {
-    getActive(): { id: string; name: string; isDefault: boolean }[];
+    getActive(): { id: string; name: string; isDefault: boolean; groupId: string | null }[];
     getDefault(): { id: string; name: string } | undefined;
     create(fields: { name: string }): Promise<{ id: string; name: string }>;
     rename(id: string, name: string): Promise<{ id: string; name: string } | null>;
     delete(id: string): Promise<boolean>;
+    update(id: string, changes: { groupId?: string | null; name?: string; sortOrder?: number }): Promise<{ id: string; name: string; groupId: string | null } | null>;
   };
   tagService: {
-    getAll(): { id: string; name: string; color: string; icon: string; isDefault: boolean }[];
+    getAll(): { id: string; name: string; color: string; icon: string; isDefault: boolean; sortOrder: number }[];
     getById(id: string): { id: string; name: string; color: string; icon: string } | undefined;
+  };
+  groupService: {
+    getAll(): { id: string; name: string; isCollapsed: boolean; sortOrder: number }[];
+    create(fields: { name: string }): Promise<{ id: string; name: string }>;
+    rename(id: string, name: string): Promise<{ id: string; name: string } | null>;
+    toggleCollapse(id: string): Promise<{ id: string; isCollapsed: boolean } | null>;
+    delete(id: string): Promise<boolean>;
+    update(id: string, changes: { sortOrder?: number; name?: string; isCollapsed?: boolean }): Promise<{ id: string; name: string } | null>;
   };
   settings: {
     activeViewNav: ViewNav;
@@ -224,6 +233,16 @@ export class TodoView extends ItemView {
       s?.open();
       s?.openTabById("obsidian-todo");
     });
+    const addGroupBtn = settingsContainer.createDiv({ cls: "todo-nav-settings-btn" });
+    setIcon(addGroupBtn, "folder-plus");
+    addGroupBtn.title = "\u65b0\u5efa\u5206\u7ec4";
+    addGroupBtn.addEventListener("click", async () => {
+      const name = await new PromptModal(this.app, "\u8f93\u5165\u5206\u7ec4\u540d\u79f0").openAndGetValue();
+      if (name) {
+        await this.plugin.groupService.create({ name });
+        await this.renderLists();
+      }
+    });
 
     this.quickInputEl = this.quickContainerEl.createEl("input", { attr: { placeholder: "添加任务..." } });
     this.updateQuickPlaceholder();
@@ -287,52 +306,313 @@ export class TodoView extends ItemView {
     if (!this.listItemsEl) return;
     this.listItemsEl.empty();
 
-
     const lists = this.plugin.listService.getActive().filter((l) => !l.isDefault);
-    lists.forEach((list) => {
-      const row = this.listItemsEl.createDiv({ cls: `todo-nav-item todo-list-item${this.plugin.settings.selectedListId === list.id ? " active" : ""}` });
-      row.dataset.listId = list.id;
-      row.createSpan({ cls: "todo-list-name", text: list.name });
+    const groups = this.plugin.groupService.getAll();
 
-      const actions = row.createDiv({ cls: "todo-list-actions" });
-      const renameBtn = actions.createSpan({ cls: "todo-list-action", text: "重命名" });
-      const deleteBtn = actions.createSpan({ cls: "todo-list-action todo-list-action-danger", text: "删除" });
+    if (!lists.length && !groups.length) {
+      this.listItemsEl.createDiv({ cls: "todo-empty-state", text: "\u8fd8\u6ca1\u6709\u5217\u8868" });
+      return;
+    }
 
-      row.addEventListener("click", async () => {
-        await this.activateList(list.id);
+    const grouped = new Map<string, typeof lists>();
+    const ungrouped: typeof lists = [];
+    for (const list of lists) {
+      if (list.groupId) {
+        const arr = grouped.get(list.groupId) || [];
+        arr.push(list);
+        grouped.set(list.groupId, arr);
+      } else {
+        ungrouped.push(list);
+      }
+    }
+
+    // Ungrouped drop zone (before groups)
+    this.setupDropZone(this.listItemsEl, null);
+
+    for (const group of groups) {
+      const groupLists = grouped.get(group.id) || [];
+      const groupEl = this.listItemsEl.createDiv({ cls: "todo-nav-group" });
+      const headerEl = groupEl.createDiv({ cls: "todo-nav-group-header" });
+      headerEl.draggable = true;
+      headerEl.dataset.groupId = group.id;
+      const arrow = headerEl.createSpan({ cls: "todo-nav-group-arrow" + (group.isCollapsed ? " collapsed" : ""), text: "\u25bc" });
+      headerEl.createSpan({ cls: "todo-nav-group-name", text: group.name });
+      headerEl.createSpan({ cls: "todo-nav-group-count", text: String(groupLists.length) });
+
+      // Group drag events
+      headerEl.addEventListener("dragstart", (ev) => {
+        ev.dataTransfer!.setData("text/plain", JSON.stringify({ type: "group", id: group.id }));
+        ev.dataTransfer!.effectAllowed = "move";
+        headerEl.addClass("dragging");
       });
-
-      renameBtn.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        await this.renameListInline(list.id, list.name, row);
+      headerEl.addEventListener("dragend", () => {
+        headerEl.removeClass("dragging");
+        this.clearAllDragStyles();
       });
+      this.setupGroupDropTarget(headerEl, group.id);
 
-      deleteBtn.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        if (list.isDefault) {
-          new Notice("默认列表不可删除");
-          return;
-        }
-
-        const confirmed = await new ConfirmModal(this.app, `确认删除列表「${list.name}」？`).openAndConfirm();
-        if (!confirmed) {
-          return;
-        }
-
-        await this.plugin.listService.delete(list.id);
-        if (this.plugin.settings.selectedListId === list.id) {
-          await this.activateNav("myday");
-        }
+      headerEl.addEventListener("click", async () => {
+        await this.plugin.groupService.toggleCollapse(group.id);
+        arrow.toggleClass("collapsed", !group.isCollapsed);
+        const listEl = groupEl.querySelector(".todo-nav-group-list") as HTMLElement;
+        if (listEl) listEl.style.display = group.isCollapsed ? "" : "none";
         await this.renderLists();
       });
-    });
 
-    if (!lists.length) {
-      this.listItemsEl.createDiv({ cls: "todo-empty-state", text: "还没有列表" });
+      headerEl.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        this.showGroupContextMenu(ev, group.id, group.name);
+      });
+
+      const listEl = groupEl.createDiv({ cls: "todo-nav-group-list" });
+      if (group.isCollapsed) listEl.style.display = "none";
+      for (const list of groupLists) {
+        this.renderListItem(listEl, list, group.id);
+      }
+      this.setupDropZone(listEl, group.id);
+    }
+
+    for (const list of ungrouped) {
+      this.renderListItem(this.listItemsEl, list, null);
     }
   }
 
-  private getSortLabel(field: SortField): string {
+  private renderListItem(container: HTMLElement, list: { id: string; name: string; isDefault: boolean }, groupId: string | null): void {
+    const row = container.createDiv({ cls: "todo-nav-item todo-list-item" + (this.plugin.settings.selectedListId === list.id ? " active" : "") });
+    row.dataset.listId = list.id;
+    row.draggable = true;
+    row.createSpan({ cls: "todo-list-name", text: list.name });
+
+    const actions = row.createDiv({ cls: "todo-list-actions" });
+    const renameBtn = actions.createSpan({ cls: "todo-list-action", text: "\u91cd\u547d\u540d" });
+    const deleteBtn = actions.createSpan({ cls: "todo-list-action todo-list-action-danger", text: "\u5220\u9664" });
+
+    // Drag events
+    row.addEventListener("dragstart", (ev) => {
+      ev.dataTransfer!.setData("text/plain", JSON.stringify({ type: "list", id: list.id }));
+      ev.dataTransfer!.effectAllowed = "move";
+      row.addClass("dragging");
+    });
+    row.addEventListener("dragend", () => {
+      row.removeClass("dragging");
+      this.clearAllDragStyles();
+    });
+    this.setupListItemDropTarget(row, list.id);
+
+    row.addEventListener("click", async () => {
+      await this.activateList(list.id);
+    });
+
+    renameBtn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      await this.renameListInline(list.id, list.name, row);
+    });
+
+    deleteBtn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      if (list.isDefault) {
+        new Notice("\u9ed8\u8ba4\u5217\u8868\u4e0d\u53ef\u5220\u9664");
+        return;
+      }
+      const confirmed = await new ConfirmModal(this.app, "\u786e\u8ba4\u5220\u9664\u5217\u8868\u300c" + list.name + "\u300d\uff1f").openAndConfirm();
+      if (!confirmed) return;
+      await this.plugin.listService.delete(list.id);
+      if (this.plugin.settings.selectedListId === list.id) {
+        await this.activateNav("myday");
+      }
+      await this.renderLists();
+    });
+
+    row.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      this.showListContextMenu(ev, list.id, list.name);
+    });
+  }
+
+  private setupDropZone(el: HTMLElement, targetGroupId: string | null): void {
+    el.addEventListener("dragover", (ev) => {
+      ev.preventDefault();
+      ev.dataTransfer!.dropEffect = "move";
+    });
+    el.addEventListener("drop", async (ev) => {
+      ev.preventDefault();
+      this.clearAllDragStyles();
+      try {
+        const data = JSON.parse(ev.dataTransfer!.getData("text/plain"));
+        if (data.type === "list") {
+          const allLists = this.plugin.listService.getActive();
+          const dragged = allLists.find((l) => l.id === data.id);
+          if (!dragged) return;
+          // Update groupId if changed
+          if ((dragged.groupId || null) !== targetGroupId) {
+            await this.plugin.listService.update(data.id, { groupId: targetGroupId });
+          }
+          // Reorder: put at end of target group
+          const targetLists = allLists.filter((l) => (l.groupId || null) === targetGroupId && l.id !== data.id);
+          for (let i = 0; i < targetLists.length; i++) {
+            await this.plugin.listService.update(targetLists[i].id, { sortOrder: i });
+          }
+          await this.plugin.listService.update(data.id, { sortOrder: targetLists.length });
+          await this.renderLists();
+        }
+      } catch {}
+    });
+  }
+
+  private setupListItemDropTarget(row: HTMLElement, listId: string): void {
+    row.addEventListener("dragover", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.dataTransfer!.dropEffect = "move";
+      row.addClass("drag-over");
+    });
+    row.addEventListener("dragleave", () => {
+      row.removeClass("drag-over");
+    });
+    row.addEventListener("drop", async (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      row.removeClass("drag-over");
+      this.clearAllDragStyles();
+      try {
+        const data = JSON.parse(ev.dataTransfer!.getData("text/plain"));
+        if (data.type === "list" && data.id !== listId) {
+          const allLists = this.plugin.listService.getActive();
+          const dragged = allLists.find((l) => l.id === data.id);
+          const target = allLists.find((l) => l.id === listId);
+          if (!dragged || !target) return;
+          // Move dragged to same group as target
+          if ((dragged.groupId || null) !== (target.groupId || null)) {
+            await this.plugin.listService.update(data.id, { groupId: target.groupId || null });
+          }
+          // Reorder: insert before target
+          const groupLists = allLists.filter((l) => (l.groupId || null) === (target.groupId || null) && l.id !== data.id);
+          const targetIdx = groupLists.findIndex((l) => l.id === listId);
+          groupLists.splice(targetIdx, 0, dragged);
+          for (let i = 0; i < groupLists.length; i++) {
+            await this.plugin.listService.update(groupLists[i].id, { sortOrder: i });
+          }
+          await this.renderLists();
+        }
+        if (data.type === "group") {
+          // Group dropped on list - ignore
+        }
+      } catch {}
+    });
+  }
+
+  private setupGroupDropTarget(headerEl: HTMLElement, groupId: string): void {
+    headerEl.addEventListener("dragover", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.dataTransfer!.dropEffect = "move";
+      headerEl.addClass("drag-over");
+    });
+    headerEl.addEventListener("dragleave", () => {
+      headerEl.removeClass("drag-over");
+    });
+    headerEl.addEventListener("drop", async (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      headerEl.removeClass("drag-over");
+      this.clearAllDragStyles();
+      try {
+        const data = JSON.parse(ev.dataTransfer!.getData("text/plain"));
+        if (data.type === "group" && data.id !== groupId) {
+          const allGroups = this.plugin.groupService.getAll();
+          const dragged = allGroups.find((g) => g.id === data.id);
+          const target = allGroups.find((g) => g.id === groupId);
+          if (!dragged || !target) return;
+          const targetIdx = allGroups.findIndex((g) => g.id === groupId);
+          const filtered = allGroups.filter((g) => g.id !== data.id);
+          filtered.splice(targetIdx, 0, dragged);
+          for (let i = 0; i < filtered.length; i++) {
+            await this.plugin.groupService.update(filtered[i].id, { sortOrder: i });
+          }
+          await this.renderLists();
+        }
+        if (data.type === "list") {
+          // List dropped on group header - move list into this group
+          const allLists = this.plugin.listService.getActive();
+          const dragged = allLists.find((l) => l.id === data.id);
+          if (!dragged) return;
+          if ((dragged.groupId || null) !== groupId) {
+            await this.plugin.listService.update(data.id, { groupId });
+          }
+          const groupLists = allLists.filter((l) => (l.groupId || null) === groupId && l.id !== data.id);
+          for (let i = 0; i < groupLists.length; i++) {
+            await this.plugin.listService.update(groupLists[i].id, { sortOrder: i });
+          }
+          await this.plugin.listService.update(data.id, { sortOrder: groupLists.length });
+          await this.renderLists();
+        }
+      } catch {}
+    });
+  }
+
+  private clearAllDragStyles(): void {
+    this.listItemsEl?.querySelectorAll(".drag-over").forEach((el) => el.removeClass("drag-over"));
+    this.listItemsEl?.querySelectorAll(".dragging").forEach((el) => el.removeClass("dragging"));
+  }
+
+  
+  private showGroupContextMenu(ev: MouseEvent, groupId: string, groupName: string): void {
+    const menu = new Menu();
+    menu.addItem((item) => item.setTitle("\u91cd\u547d\u540d\u5206\u7ec4").setIcon("pencil").onClick(async () => {
+      const name = await new PromptModal(this.app, "\u8f93\u5165\u65b0\u540d\u79f0").openAndGetValue();
+      if (name) {
+        await this.plugin.groupService.rename(groupId, name);
+        await this.renderLists();
+      }
+    }));
+    menu.addItem((item) => item.setTitle("\u5220\u9664\u5206\u7ec4").setIcon("trash").onClick(async () => {
+      const confirmed = await new ConfirmModal(this.app, "\u786e\u8ba4\u5220\u9664\u5206\u7ec4\u300c" + groupName + "\u300d\uff1f\u5206\u7ec4\u5185\u5217\u8868\u5c06\u53d8\u4e3a\u672a\u5206\u7ec4\u3002").openAndConfirm();
+      if (confirmed) {
+        const groupLists = this.plugin.listService.getActive().filter((l) => l.groupId === groupId);
+        for (const l of groupLists) {
+          await this.plugin.listService.update(l.id, { groupId: null });
+        }
+        await this.plugin.groupService.delete(groupId);
+        await this.renderLists();
+      }
+    }));
+    menu.showAtMouseEvent(ev);
+  }
+
+  private showListContextMenu(ev: MouseEvent, listId: string, listName: string): void {
+    const menu = new Menu();
+    const groups = this.plugin.groupService.getAll();
+    if (groups.length > 0) {
+      menu.addItem((item) => item.setTitle("\u79fb\u52a8\u5230\u5206\u7ec4").setIcon("folder").onClick(() => {
+        const subMenu = new Menu();
+        subMenu.addItem((s) => s.setTitle("\u65e0\u5206\u7ec4").onClick(async () => {
+          await this.plugin.listService.update(listId, { groupId: null });
+          await this.renderLists();
+        }));
+        for (const g of groups) {
+          subMenu.addItem((s) => s.setTitle(g.name).onClick(async () => {
+            await this.plugin.listService.update(listId, { groupId: g.id });
+            await this.renderLists();
+          }));
+        }
+        subMenu.showAtMouseEvent(ev);
+      }));
+    }
+    menu.addItem((item) => item.setTitle("\u91cd\u547d\u540d").setIcon("pencil").onClick(async () => {
+      const row = this.listItemsEl.querySelector('[data-list-id="' + listId + '"]') as HTMLDivElement;
+      if (row) await this.renameListInline(listId, listName, row);
+    }));
+    menu.addItem((item) => item.setTitle("\u5220\u9664").setIcon("trash").onClick(async () => {
+      const confirmed = await new ConfirmModal(this.app, "\u786e\u8ba4\u5220\u9664\u5217\u8868\u300c" + listName + "\u300d\uff1f").openAndConfirm();
+      if (confirmed) {
+        await this.plugin.listService.delete(listId);
+        await this.renderLists();
+      }
+    }));
+    menu.showAtMouseEvent(ev);
+  }
+
+    private getSortLabel(field: SortField): string {
     const labels: Record<SortField, string> = {
       importance: "按重要程度",
       dueDate: "按截止日期",
@@ -505,14 +785,33 @@ export class TodoView extends ItemView {
     const startStr = task.startDate ? formatShortDate(task.startDate) : "";
     const dueStr = task.dueDate ? formatShortDate(task.dueDate) : "";
     if (startStr || dueStr) {
-      metaParts.push((startStr || ".") + " - " + (dueStr || "."));
+      }
+    const metaRow = content.createDiv({ cls: "todo-task-meta-row" });
+    const metaLeft = metaRow.createDiv({ cls: "todo-task-meta-left" });
+    const metaRight = metaRow.createDiv({ cls: "todo-task-meta-right" });
+    if (metaParts.length > 0) {
+      metaLeft.createSpan({ text: metaParts[0] });
     }
-    content.createDiv({ cls: "todo-task-meta", text: metaParts.join(" · ") });
-    // due date display temporarily disabled
-    // if (task.dueDate) {
-    //   const due = content.createDiv({ cls: "todo-task-due", text: task.dueDate.slice(0, 10) });
-    //   due.toggleClass("todo-task-due-overdue", !task.isCompleted && task.dueDate < new Date().toISOString());
-    // }
+    if (startStr || dueStr) {
+      metaLeft.createSpan({ cls: "todo-task-meta-dot", text: "\u00b7" });
+      metaLeft.createSpan({ text: (startStr || ".") + " - " + (dueStr || ".") });
+    }
+    if (task.recurrence) {
+      metaLeft.createSpan({ cls: "todo-task-meta-dot", text: "\u00b7" });
+      const recIcon = metaLeft.createSpan({ cls: "todo-task-meta-icon" });
+      setIcon(recIcon, "repeat");
+    }
+    const allTags = this.plugin.tagService.getAll();
+    const taskTags = (task.tags || []).map((id) => allTags.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t);
+    if (taskTags.length > 0) {
+      taskTags.forEach((tag, i) => {
+        if (i > 0) metaRight.createSpan({ cls: "todo-task-meta-dot", text: "\u00b7" });
+        const tagEl = metaRight.createSpan({ cls: "todo-task-tag-label" });
+        const tagIcon = tagEl.createSpan({ cls: "todo-task-tag-icon" });
+        setIcon(tagIcon, tag.icon);
+        tagEl.createSpan({ text: tag.name });
+      });
+    }
 
     const star = row.createDiv({
       cls: `todo-star${task.isImportant ? " important" : ""}`,

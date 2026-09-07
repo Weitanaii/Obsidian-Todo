@@ -155,9 +155,7 @@ export class TaskDetailView {
       const chipsEl = contentEl.createDiv({ cls: "todo-tag-chips" });
       for (const tag of selectedTags) {
         const chip = chipsEl.createDiv({ cls: "todo-tag-chip" });
-        chip.style.backgroundColor = tag.color + "22";
-        chip.style.color = tag.color;
-        chip.style.borderColor = tag.color;
+
         const chipIcon = chip.createSpan({ cls: "todo-tag-chip-icon" });
         setIcon(chipIcon, tag.icon);
         chip.createSpan({ cls: "todo-tag-chip-name", text: tag.name });
@@ -167,7 +165,8 @@ export class TaskDetailView {
         removeBtn.addEventListener("click", (ev) => {
           ev.stopPropagation();
           const next = selectedIds.filter((id) => id !== tag.id);
-          void this.saveChanges({ tags: next });
+          const autoImportant = next.some((id) => { const t = allTags.find((x) => x.id === id); return t && t.sortOrder < 2; });
+          void this.saveChanges({ tags: next, isImportant: autoImportant });
         });
       }
     }
@@ -177,7 +176,9 @@ export class TaskDetailView {
     addBtn.createSpan({ text: selectedTags.length > 0 ? "标签" : "添加标签" });
     addBtn.addEventListener("click", () => {
       new TagPickerModal(this.app, this.plugin, selectedIds, (nextIds) => {
-        void this.saveChanges({ tags: nextIds });
+        const allT = this.plugin.tagService.getAll();
+        const autoImp = nextIds.some((id) => { const t = allT.find((x) => x.id === id); return t && t.sortOrder < 2; });
+        void this.saveChanges({ tags: nextIds, isImportant: autoImp });
       }).open();
     });
   }
@@ -624,13 +625,7 @@ class TagPickerModal extends Modal {
         const isSelected = this.selectedIds.includes(tag.id);
         const opt = gridEl.createDiv({ cls: "todo-tag-option" + (isSelected ? " is-selected" : "") });
         opt.style.setProperty("--tag-color", tag.color);
-        if (isSelected) {
-          opt.style.backgroundColor = tag.color;
-          opt.style.color = "#fff";
-        } else {
-          opt.style.backgroundColor = tag.color + "18";
-          opt.style.color = tag.color;
-        }
+
         const optIcon = opt.createSpan({ cls: "todo-tag-option-icon" });
         setIcon(optIcon, tag.icon);
         opt.createSpan({ cls: "todo-tag-option-name", text: tag.name });
@@ -638,6 +633,11 @@ class TagPickerModal extends Modal {
           if (this.selectedIds.includes(tag.id)) {
             this.selectedIds = this.selectedIds.filter((id) => id !== tag.id);
           } else {
+            // Quadrant tags (sortOrder < 4) are mutually exclusive
+            if (tag.sortOrder < 4) {
+              const quadrantIds = allTags.filter((t) => t.sortOrder < 4).map((t) => t.id);
+              this.selectedIds = this.selectedIds.filter((id) => !quadrantIds.includes(id));
+            }
             this.selectedIds.push(tag.id);
           }
           this.onConfirm(this.selectedIds);

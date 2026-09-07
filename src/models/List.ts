@@ -14,6 +14,8 @@ export interface TodoList {
   
   isDefault: boolean;
   
+  groupId: string | null;
+  
   createdAt: string;
   
   updatedAt: string;
@@ -29,6 +31,7 @@ export function createList(overrides: Partial<TodoList> = {}): TodoList {
     sortOrder: 0,
     isArchived: false,
     isDefault: false,
+    groupId: null,
     createdAt: now,
     updatedAt: now,
     

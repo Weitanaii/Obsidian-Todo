@@ -25,10 +25,14 @@ export function createTag(overrides: Partial<DomainTag> = {}): DomainTag {
 }
 
 export const DEFAULT_DOMAIN_TAGS: Partial<DomainTag>[] = [
-  { name: "事业", color: "#4A90D9", icon: "briefcase", sortOrder: 0, isDefault: true },
-  { name: "财富", color: "#F5A623", icon: "wallet", sortOrder: 1, isDefault: true },
-  { name: "健康", color: "#E74C3C", icon: "heart", sortOrder: 2, isDefault: true },
-  { name: "亲密关系", color: "#9B59B6", icon: "users", sortOrder: 3, isDefault: true },
-  { name: "自我成长", color: "#2ECC71", icon: "trending-up", sortOrder: 4, isDefault: true },
-  { name: "兴趣", color: "#1ABC9C", icon: "palette", sortOrder: 5, isDefault: true },
+  { name: "重要紧急", color: "#E74C3C", icon: "alert-triangle", sortOrder: 0, isDefault: true },
+  { name: "重要不紧急", color: "#4A90D9", icon: "target", sortOrder: 1, isDefault: true },
+  { name: "不重要紧急", color: "#F5A623", icon: "zap", sortOrder: 2, isDefault: true },
+  { name: "不重要不紧急", color: "#95A5A6", icon: "coffee", sortOrder: 3, isDefault: true },
+  { name: "事业", color: "#4A90D9", icon: "briefcase", sortOrder: 4, isDefault: true },
+  { name: "财富", color: "#F5A623", icon: "wallet", sortOrder: 5, isDefault: true },
+  { name: "健康", color: "#E74C3C", icon: "heart", sortOrder: 6, isDefault: true },
+  { name: "亲密关系", color: "#9B59B6", icon: "users", sortOrder: 7, isDefault: true },
+  { name: "自我成长", color: "#2ECC71", icon: "trending-up", sortOrder: 8, isDefault: true },
+  { name: "兴趣", color: "#1ABC9C", icon: "palette", sortOrder: 9, isDefault: true },
 ];
