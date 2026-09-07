@@ -1,6 +1,7 @@
 import { App, Modal, Notice, setIcon, TFile, TFolder } from "obsidian";
 import type { TodoPluginLike } from "./TodoView";
 import type { Task } from "../models/Task";
+import type { DomainTag } from "../models/Tag";
 import { ResourceSuggestModal } from "../ui/ResourceSuggestModal";
 
 export class TaskDetailView {
@@ -139,6 +140,48 @@ export class TaskDetailView {
     }
   }
 
+  private createTagRow(parent: HTMLElement, task: Task): void {
+    const allTags = this.plugin.tagService.getAll();
+    const selectedIds = task.tags || [];
+    const selectedTags = selectedIds.map((id) => allTags.find((t) => t.id === id)).filter(Boolean) as DomainTag[];
+
+    const row = parent.createDiv({ cls: "todo-tag-row" });
+    const iconEl = row.createDiv({ cls: "todo-prop-icon" });
+    setIcon(iconEl, "tag");
+
+    const contentEl = row.createDiv({ cls: "todo-tag-content" });
+
+    if (selectedTags.length > 0) {
+      const chipsEl = contentEl.createDiv({ cls: "todo-tag-chips" });
+      for (const tag of selectedTags) {
+        const chip = chipsEl.createDiv({ cls: "todo-tag-chip" });
+        chip.style.backgroundColor = tag.color + "22";
+        chip.style.color = tag.color;
+        chip.style.borderColor = tag.color;
+        const chipIcon = chip.createSpan({ cls: "todo-tag-chip-icon" });
+        setIcon(chipIcon, tag.icon);
+        chip.createSpan({ cls: "todo-tag-chip-name", text: tag.name });
+        const removeBtn = chip.createSpan({ cls: "todo-tag-chip-remove" });
+        removeBtn.textContent = "\u00d7";
+        removeBtn.title = "移除";
+        removeBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          const next = selectedIds.filter((id) => id !== tag.id);
+          void this.saveChanges({ tags: next });
+        });
+      }
+    }
+
+    const addBtn = contentEl.createDiv({ cls: "todo-tag-add-btn" });
+    setIcon(addBtn, "plus");
+    addBtn.createSpan({ text: selectedTags.length > 0 ? "标签" : "添加标签" });
+    addBtn.addEventListener("click", () => {
+      new TagPickerModal(this.app, this.plugin, selectedIds, (nextIds) => {
+        void this.saveChanges({ tags: nextIds });
+      }).open();
+    });
+  }
+
   private createMyDayRow(parent: HTMLElement, task: Task): void {
     this.createPropertyRow(parent, task, {
       icon: "sun",
@@ -208,6 +251,7 @@ export class TaskDetailView {
     this.createStartDateRow(container, task);
     this.createDueDateRow(container, task);
     this.createRecurrenceRow(container, task);
+    this.createTagRow(container, task);
   }
 
   private renderRelatedSection(container: HTMLElement, task: Task): void {
@@ -547,5 +591,71 @@ class RecurrencePickerModal extends Modal {
       this.close();
     });
   }
+}
+class TagPickerModal extends Modal {
+  private plugin: TodoPluginLike;
+  private selectedIds: string[];
+  private onConfirm: (ids: string[]) => void;
+
+  constructor(app: App, plugin: TodoPluginLike, selectedIds: string[], onConfirm: (ids: string[]) => void) {
+    super(app);
+    this.plugin = plugin;
+    this.selectedIds = [...selectedIds];
+    this.onConfirm = onConfirm;
+  }
+
+  onOpen(): void {
+    this.contentEl.addClass("todo-tag-picker");
+    this.contentEl.createDiv({ cls: "todo-tag-picker-title", text: "选择标签" });
+
+    const searchInput = this.contentEl.createEl("input", {
+      cls: "todo-tag-picker-search",
+      attr: { type: "text", placeholder: "搜索标签..." },
+    }) as HTMLInputElement;
+
+    const gridEl = this.contentEl.createDiv({ cls: "todo-tag-picker-grid" });
+    const allTags = this.plugin.tagService.getAll();
+
+    const renderGrid = (filter: string) => {
+      gridEl.empty();
+      const lower = filter.toLowerCase();
+      const filtered = allTags.filter((t) => !lower || t.name.toLowerCase().includes(lower));
+      for (const tag of filtered) {
+        const isSelected = this.selectedIds.includes(tag.id);
+        const opt = gridEl.createDiv({ cls: "todo-tag-option" + (isSelected ? " is-selected" : "") });
+        opt.style.setProperty("--tag-color", tag.color);
+        if (isSelected) {
+          opt.style.backgroundColor = tag.color;
+          opt.style.color = "#fff";
+        } else {
+          opt.style.backgroundColor = tag.color + "18";
+          opt.style.color = tag.color;
+        }
+        const optIcon = opt.createSpan({ cls: "todo-tag-option-icon" });
+        setIcon(optIcon, tag.icon);
+        opt.createSpan({ cls: "todo-tag-option-name", text: tag.name });
+        opt.addEventListener("click", () => {
+          if (this.selectedIds.includes(tag.id)) {
+            this.selectedIds = this.selectedIds.filter((id) => id !== tag.id);
+          } else {
+            this.selectedIds.push(tag.id);
+          }
+          this.onConfirm(this.selectedIds);
+          renderGrid(searchInput.value);
+        });
+      }
+      if (filtered.length === 0) {
+        gridEl.createDiv({ cls: "todo-tag-picker-empty", text: "没有匹配的标签" });
+      }
+    };
+
+    searchInput.addEventListener("input", () => renderGrid(searchInput.value));
+    renderGrid("");
+
+    const actions = this.contentEl.createDiv({ cls: "todo-tag-picker-actions" });
+    actions.createEl("button", { text: "关闭", cls: "mod-cta" }).addEventListener("click", () => this.close());
+  }
+
+  onClose(): void { this.contentEl.empty(); }
 }
 

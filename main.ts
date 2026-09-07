@@ -10,6 +10,7 @@ import { logger, LogLevel } from "./src/utils/logger";
 
 import { TaskService } from "./src/services/TaskService";
 import { ListService } from "./src/services/ListService";
+import { TagService } from "./src/services/TagService";
 
 import { TodoView, VIEW_TYPE_TODO } from "./src/views/TodoView";
 
@@ -22,6 +23,7 @@ export default class ObsidianTodoPlugin extends Plugin {
   
   taskService!: TaskService;
   listService!: ListService;
+  tagService!: TagService;
 
   
   
@@ -36,6 +38,8 @@ export default class ObsidianTodoPlugin extends Plugin {
     this.listService = new ListService(this.app.vault, this.settings.todoFolder, this.settings.defaultListName);
     await this.taskService.init();
     await this.listService.init();
+    this.tagService = new TagService(this.app.vault, this.settings.todoFolder);
+    await this.tagService.init();
 
     
     this.addSettingTab(new ObsidianTodoSettingTab(this.app, this));

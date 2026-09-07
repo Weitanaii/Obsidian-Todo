@@ -130,6 +130,10 @@ export interface TodoPluginLike {
     rename(id: string, name: string): Promise<{ id: string; name: string } | null>;
     delete(id: string): Promise<boolean>;
   };
+  tagService: {
+    getAll(): { id: string; name: string; color: string; icon: string; isDefault: boolean }[];
+    getById(id: string): { id: string; name: string; color: string; icon: string } | undefined;
+  };
   settings: {
     activeViewNav: ViewNav;
     selectedListId: string | null;
