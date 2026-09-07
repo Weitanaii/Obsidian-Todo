@@ -41,11 +41,11 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Obsidian Todo Settings" });
+    containerEl.createEl("h2", { text: "Obsidian Todo 设置" });
 
     new Setting(containerEl)
-      .setName("Todo data folder")
-      .setDesc("Vault folder where todo data files are stored")
+      .setName("数据存储文件夹")
+      .setDesc("任务数据文件存储在 Vault 中的文件夹路径")
       .addText((text) =>
         text
           .setPlaceholder("todo")
@@ -57,8 +57,8 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Default list name")
-      .setDesc("Name of the default list created on first run")
+      .setName("默认列表名称")
+      .setDesc("首次运行时自动创建的默认列表名称")
       .addText((text) =>
         text
           .setPlaceholder("Tasks")
@@ -70,14 +70,14 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName("Log level")
-      .setDesc("Controls console log verbosity")
+      .setName("日志级别")
+      .setDesc("控制控制台日志的详细程度")
       .addDropdown((dropdown) =>
         dropdown
-          .addOption("DEBUG", "Debug")
-          .addOption("INFO", "Info")
-          .addOption("WARN", "Warn")
-          .addOption("ERROR", "Error")
+          .addOption("DEBUG", "调试")
+          .addOption("INFO", "信息")
+          .addOption("WARN", "警告")
+          .addOption("ERROR", "错误")
           .setValue(this.plugin.settings.logLevel)
           .onChange(async (value) => {
             this.plugin.settings.logLevel = value;

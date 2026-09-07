@@ -138,6 +138,7 @@ export interface TodoPluginLike {
     sortConfig: SortConfig;
   };
   saveSettings(): Promise<void>;
+    app?: App;
 }
 
 const normalizeTasks = (tasks: Task[], config: SortConfig) =>
@@ -208,6 +209,16 @@ export class TodoView extends ItemView {
     const addListBtn = this.listNavEl.createDiv({ cls: "todo-nav-add", text: "+ 新建列表" });
     addListBtn.addEventListener("click", () => {
       void this.createListByInput();
+    });
+
+    // Settings icon at nav bottom
+    const settingsContainer = nav.createDiv({ cls: "todo-nav-settings" });
+    const settingsBtn = settingsContainer.createDiv({ cls: "todo-nav-settings-btn" });
+    setIcon(settingsBtn, "settings");
+        settingsBtn.addEventListener("click", () => {
+      const s = (this.plugin.app as any)?.setting;
+      s?.open();
+      s?.openTabById("obsidian-todo");
     });
 
     this.quickInputEl = this.quickContainerEl.createEl("input", { attr: { placeholder: "添加任务..." } });
