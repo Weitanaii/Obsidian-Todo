@@ -2,6 +2,8 @@ export type Priority = "low" | "medium" | "high";
 
 export type PriorityQuadrant = "Q1" | "Q2" | "Q3" | "Q4";
 
+export type MyDayGroup = "allday" | "morning" | "noon" | "afternoon" | "evening";
+
 export interface SubTask {
   id: string;
   title: string;
@@ -23,6 +25,8 @@ export interface Task {
   isImportant: boolean;
   
   isMyDay: boolean;
+  
+  myDayGroup: MyDayGroup;
   
   startDate: string | null;
   
@@ -66,6 +70,7 @@ export function createTask(overrides: Partial<Task> = {}): Task {
     isCompleted: false,
     isImportant: false,
     isMyDay: false,
+    myDayGroup: "allday",
     startDate: null,
     dueDate: null,
     reminder: null,

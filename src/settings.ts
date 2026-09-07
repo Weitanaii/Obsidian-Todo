@@ -25,7 +25,7 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
   selectedTaskId: null,
   sortConfig: {
     primary: { field: "importance", direction: "desc" },
-    secondary: { field: "dueDate", direction: "asc" },
+    secondary: { field: "createdAt", direction: "desc" },
   },
 };
 

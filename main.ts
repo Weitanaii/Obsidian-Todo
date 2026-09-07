@@ -95,6 +95,15 @@ export default class ObsidianTodoPlugin extends Plugin {
   
   async loadSettings(): Promise<void> {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+
+    // Migrate: if saved sortConfig still uses removed "manual" field, reset to default
+    if (this.settings.sortConfig && (this.settings.sortConfig.primary.field as string) === "manual") {
+      this.settings.sortConfig = {
+        primary: { field: "importance", direction: "desc" },
+        secondary: { field: "createdAt", direction: "desc" },
+      };
+      await this.saveSettings();
+    }
     logger.setLevel(LogLevel[this.settings.logLevel as keyof typeof LogLevel]);
   }
 

@@ -152,11 +152,11 @@ export class TaskDetailView {
 
   private createDueDateRow(parent: HTMLElement, task: Task): void {
     const hasDue = !!task.dueDate;
-    let display = "添加截止日期";
-    if (hasDue && task.dueDate) { display = "截止日期：" + this.formatDisplayDate(task.dueDate); }
+    let display = "添加截止时间";
+    if (hasDue && task.dueDate) { display = "截止时间：" + this.formatDisplayDate(task.dueDate); }
     this.createPropertyRow(parent, task, {
       icon: "calendar",
-      unsetText: "添加截止日期",
+      unsetText: "添加截止时间",
       isSet: hasDue,
       displayText: display,
       onClick: () => { new DatePickerModal(this.app, task.dueDate, "end", (date) => { void this.saveChanges({ dueDate: date }); }).open(); },
@@ -166,11 +166,11 @@ export class TaskDetailView {
 
   private createStartDateRow(parent: HTMLElement, task: Task): void {
     const hasStart = !!task.startDate;
-    let display = "添加开始日期";
-    if (hasStart && task.startDate) { display = "开始日期：" + this.formatDisplayDate(task.startDate); }
+    let display = "添加开始时间";
+    if (hasStart && task.startDate) { display = "开始时间：" + this.formatDisplayDate(task.startDate); }
     this.createPropertyRow(parent, task, {
       icon: "calendar-days",
-      unsetText: "添加开始日期",
+      unsetText: "添加开始时间",
       isSet: hasStart,
       displayText: display,
       onClick: () => { new DatePickerModal(this.app, task.startDate, "start", (date) => { void this.saveChanges({ startDate: date }); }, (startIso, endIso) => { void this.saveChanges({ startDate: startIso, dueDate: endIso }); }).open(); },
@@ -325,10 +325,12 @@ export class TaskDetailView {
     const pad = (n: number) => String(n).padStart(2, "0");
     const h = pad(d.getHours());
     const m = pad(d.getMinutes());
+    const weekdays = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+    const weekday = weekdays[d.getDay()];
     if (h === "00" && m === "00") {
-      return d.getFullYear() + "年" + (d.getMonth() + 1) + "月" + d.getDate() + "日";
+      return d.getFullYear() + "年" + (d.getMonth() + 1) + "月" + d.getDate() + "日 " + weekday;
     }
-    return d.getFullYear() + "年" + (d.getMonth() + 1) + "月" + d.getDate() + "日 " + h + ":" + m;
+    return d.getFullYear() + "年" + (d.getMonth() + 1) + "月" + d.getDate() + "日 " + weekday + " " + h + ":" + m;
   }
 
   private formatCreatedDate(isoValue: string): string {
@@ -453,11 +455,11 @@ class DatePickerModal extends Modal {
     // Quick time presets
     const presets = this.contentEl.createDiv({ cls: "todo-dp-presets" });
     const presetData = [
-      { label: "全天", icon: "clock", hour: 7, minute: 0, endHour: 23, endMinute: 30 },
-      { label: "早上", icon: "sunrise", hour: 7, minute: 0, endHour: 12, endMinute: 0 },
-      { label: "中午", icon: "sun", hour: 12, minute: 0, endHour: 14, endMinute: 0 },
-      { label: "下午", icon: "sun-dim", hour: 14, minute: 0, endHour: 18, endMinute: 0 },
-      { label: "晚上", icon: "moon", hour: 18, minute: 0, endHour: 23, endMinute: 30 },
+      { label: "全天", icon: "clock", hour: 6, minute: 0, endHour: 23, endMinute: 59 },
+      { label: "早上", icon: "sunrise", hour: 6, minute: 0, endHour: 11, endMinute: 59 },
+      { label: "中午", icon: "sun", hour: 12, minute: 0, endHour: 13, endMinute: 59 },
+      { label: "下午", icon: "sun-dim", hour: 14, minute: 0, endHour: 17, endMinute: 59 },
+      { label: "晚上", icon: "moon", hour: 18, minute: 0, endHour: 23, endMinute: 59 },
     ];
     presetData.forEach((p) => {
       const btn = presets.createEl("button", { cls: "todo-dp-preset-btn" });

@@ -92,14 +92,24 @@ class PromptModal extends Modal {
 }
 import { App, ItemView, Menu, Modal, Notice, setIcon, WorkspaceLeaf } from "obsidian";
 import type ObsidianTodoPlugin from "../../main";
-import { Task } from "../models/Task";
+import { Task, MyDayGroup } from "../models/Task";
 import { TaskDetailView } from "./TaskDetailView";
-import { sortTasks } from "../utils/sort";
+import { sortTasks, getMyDayGroupFromTime } from "../utils/sort";
 import type { SortConfig, SortField, SortDirection } from "../utils/sort";
 
-export type ViewNav = "myday" | "inbox";
+export type ViewNav = "myday" | "all" | "inbox";
 
 export const VIEW_TYPE_TODO = "obsidian-todo-view";
+
+
+
+const MYDAY_GROUPS: { key: MyDayGroup; label: string }[] = [
+  { key: "allday", label: "全天" },
+  { key: "morning", label: "早上" },
+  { key: "noon", label: "中午" },
+  { key: "afternoon", label: "下午" },
+  { key: "evening", label: "晚上" },
+];
 
 export interface TodoPluginLike {
   taskService: {
@@ -137,10 +147,12 @@ export class TodoView extends ItemView {
   private plugin: TodoPluginLike;
   private taskListEl!: HTMLDivElement;
   private sortBtnEl!: HTMLButtonElement;
+  private sortLabelEl!: HTMLSpanElement;
   private navEls: Record<ViewNav, HTMLDivElement> = {} as Record<ViewNav, HTMLDivElement>;
   private listNavEl!: HTMLDivElement;
   private listItemsEl!: HTMLDivElement;
   private quickInputEl!: HTMLInputElement;
+  private quickContainerEl!: HTMLDivElement;
   private detailEl!: HTMLDivElement;
   private detailView!: TaskDetailView;
 
@@ -172,14 +184,16 @@ export class TodoView extends ItemView {
     const taskHeader = main.createDiv({ cls: "todo-task-header" });
     this.sortBtnEl = taskHeader.createEl("button", { cls: "todo-sort-btn" });
     setIcon(this.sortBtnEl, "arrow-up-down");
+    this.sortLabelEl = this.sortBtnEl.createSpan({ text: this.getSortLabel(this.plugin.settings.sortConfig.primary.field) });
     this.sortBtnEl.addEventListener("click", (ev) => this.showSortMenu(ev));
     this.taskListEl = main.createDiv({ cls: "todo-task-list" });
-    const quick = main.createDiv({ cls: "todo-quick-add" });
+    this.quickContainerEl = main.createDiv({ cls: "todo-quick-add" });
 
     // Upper section: fixed views
     const upperNav = nav.createDiv({ cls: "todo-nav-section" });
     const upperItems = upperNav.createDiv({ cls: "todo-nav-lists" });
     this.navEls["myday"] = upperItems.createDiv({ cls: "todo-nav-item", text: "我的一天" });
+    this.navEls["all"] = upperItems.createDiv({ cls: "todo-nav-item", text: "所有任务" });
     this.navEls["inbox"] = upperItems.createDiv({ cls: "todo-nav-item", text: "任务" });
 
     Object.entries(this.navEls).forEach(([key, el]) => {
@@ -196,7 +210,7 @@ export class TodoView extends ItemView {
       void this.createListByInput();
     });
 
-    this.quickInputEl = quick.createEl("input", { attr: { placeholder: "添加任务..." } });
+    this.quickInputEl = this.quickContainerEl.createEl("input", { attr: { placeholder: "添加任务..." } });
     this.updateQuickPlaceholder();
     this.quickInputEl.addEventListener("keydown", async (ev) => {
       if (ev.key === "Enter") {
@@ -258,6 +272,7 @@ export class TodoView extends ItemView {
     if (!this.listItemsEl) return;
     this.listItemsEl.empty();
 
+
     const lists = this.plugin.listService.getActive().filter((l) => !l.isDefault);
     lists.forEach((list) => {
       const row = this.listItemsEl.createDiv({ cls: `todo-nav-item todo-list-item${this.plugin.settings.selectedListId === list.id ? " active" : ""}` });
@@ -302,9 +317,18 @@ export class TodoView extends ItemView {
     }
   }
 
+  private getSortLabel(field: SortField): string {
+    const labels: Record<SortField, string> = {
+      importance: "按重要程度",
+      dueDate: "按截止日期",
+      createdAt: "按创建时间",
+      title: "按标题",
+    };
+    return labels[field] ?? field;
+  }
+
   private showSortMenu(ev: MouseEvent): void {
     const fields: { field: SortField; label: string }[] = [
-      { field: "manual", label: "手动排序" },
       { field: "importance", label: "按重要程度" },
       { field: "dueDate", label: "按截止日期" },
       { field: "createdAt", label: "按创建时间" },
@@ -316,13 +340,14 @@ export class TodoView extends ItemView {
       menu.addItem((item) =>
         item.setTitle(label).setChecked(field === currentField).onClick(async () => {
           const defaultDir: Record<SortField, SortDirection> = {
-            manual: "asc", importance: "desc", dueDate: "asc", createdAt: "desc", title: "asc",
+            importance: "desc", dueDate: "asc", createdAt: "desc", title: "asc",
           };
           this.plugin.settings.sortConfig = {
             primary: { field, direction: defaultDir[field] },
-            secondary: { field: "manual", direction: "asc" },
+            secondary: { field: "createdAt", direction: "desc" },
           };
           await this.plugin.saveSettings();
+          this.sortLabelEl.textContent = this.getSortLabel(field);
           const currentView = this.plugin.settings.selectedListId ? "list" : this.plugin.settings.activeViewNav;
           await this.renderTasks(currentView);
         })
@@ -337,12 +362,22 @@ export class TodoView extends ItemView {
 
     if (view === "myday" && !this.plugin.settings.selectedListId) {
       tasks = this.plugin.taskService.getMyDay();
+    } else if (view === "all") {
+      tasks = this.plugin.taskService.getAll();
     } else if (view === "inbox") {
       const defaultList = this.plugin.listService.getDefault();
       tasks = defaultList ? this.plugin.taskService.getInbox(defaultList.id) : [];
     } else {
       const listId = this.plugin.settings.selectedListId;
       tasks = listId ? this.plugin.taskService.getByListId(listId) : [];
+    }
+
+    const currentView = this.plugin.settings.selectedListId ? "list" : this.plugin.settings.activeViewNav;
+
+    // My Day: render grouped view
+    if (currentView === "myday") {
+      await this.renderMyDayGroups(tasks);
+      return;
     }
 
     if (!tasks.length) {
@@ -353,7 +388,6 @@ export class TodoView extends ItemView {
     const sorted = normalizeTasks(tasks, this.plugin.settings.sortConfig);
     const incomplete = sorted.filter((t) => !t.isCompleted);
     const completed = sorted.filter((t) => t.isCompleted);
-    const currentView = this.plugin.settings.selectedListId ? "list" : this.plugin.settings.activeViewNav;
 
     incomplete.forEach((task) => this.renderTaskRow(this.taskListEl, task, currentView));
 
@@ -382,7 +416,37 @@ export class TodoView extends ItemView {
     }
   }
 
-  private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "inbox" | "list"): void {
+  private async renderMyDayGroups(tasks: Task[]): Promise<void> {
+
+    // Auto-update myDayGroup based on time for tasks with dates
+    for (const t of tasks) {
+      if (t.isMyDay && (t.startDate || t.dueDate)) {
+        const autoGroup = getMyDayGroupFromTime(t.startDate, t.dueDate);
+        if (autoGroup !== (t.myDayGroup || "allday")) {
+          t.myDayGroup = autoGroup;
+          await this.plugin.taskService.update(t.id, { myDayGroup: autoGroup });
+        }
+      }
+    }
+    const sorted = normalizeTasks(tasks, this.plugin.settings.sortConfig);
+
+    MYDAY_GROUPS.forEach(({ key, label }) => {
+      const groupTasks = sorted.filter((t) => (t.myDayGroup || "allday") === key);
+      const incomplete = groupTasks.filter((t) => !t.isCompleted);
+      const completed = groupTasks.filter((t) => t.isCompleted);
+
+      const groupEl = this.taskListEl.createDiv({ cls: "todo-myday-group" });
+      const headerEl = groupEl.createDiv({ cls: "todo-myday-group-header" });
+      headerEl.createSpan({ cls: "todo-myday-group-label", text: label });
+      headerEl.createSpan({ cls: "todo-myday-group-count", text: `${incomplete.length}` });
+
+      const listEl = groupEl.createDiv({ cls: "todo-myday-group-list" });
+      incomplete.forEach((task) => this.renderTaskRow(listEl, task, "myday"));
+      completed.forEach((task) => this.renderTaskRow(listEl, task, "myday"));
+    });
+  }
+
+  private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "all" | "inbox" | "list"): void {
     const row = container.createDiv({
       cls: `todo-task-item${task.isCompleted ? " completed" : ""}${task.isImportant ? " important-row" : ""}${this.plugin.settings.selectedTaskId === task.id ? " todo-task-selected" : ""}`,
     });
@@ -397,6 +461,38 @@ export class TodoView extends ItemView {
     const title = content.createDiv({ cls: "todo-task-title", text: task.title || "未命名任务" });
     title.toggleClass("todo-task-muted", task.isCompleted);
 
+    // Task metadata line
+    const metaParts: string[] = [];
+    // List name label
+    const lists = this.plugin.listService.getActive();
+    const taskList = lists.find((l) => l.id === task.listId);
+    if (taskList) {
+      metaParts.push(taskList.isDefault ? "任务" : taskList.name);
+    } else {
+      metaParts.push("任务");
+    }
+    // Date formatting helper
+    const formatShortDate = (iso: string): string => {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const diff = Math.round((target.getTime() - today.getTime()) / 86400000);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const time = pad(d.getHours()) + ":" + pad(d.getMinutes());
+      if (diff === 0) return "今天 " + time;
+      if (diff === 1) return "明天 " + time;
+      if (diff === -1) return "昨天 " + time;
+      return (d.getMonth() + 1) + "/" + d.getDate() + " " + time;
+    };
+    // Build time range string
+    const startStr = task.startDate ? formatShortDate(task.startDate) : "";
+    const dueStr = task.dueDate ? formatShortDate(task.dueDate) : "";
+    if (startStr || dueStr) {
+      metaParts.push((startStr || ".") + " - " + (dueStr || "."));
+    }
+    content.createDiv({ cls: "todo-task-meta", text: metaParts.join(" · ") });
     // due date display temporarily disabled
     // if (task.dueDate) {
     //   const due = content.createDiv({ cls: "todo-task-due", text: task.dueDate.slice(0, 10) });
@@ -442,7 +538,7 @@ export class TodoView extends ItemView {
   }
 
   
-  private renderEmptyState(view: "myday" | "inbox" | "list"): void {
+  private renderEmptyState(view: "myday" | "all" | "inbox" | "list"): void {
     const empty = this.taskListEl.createDiv({ cls: "todo-empty-state todo-guide" });
 
     if (view === "myday") {
@@ -455,13 +551,19 @@ export class TodoView extends ItemView {
       return;
     }
 
-    if (view === "inbox") {
-      empty.createDiv({ cls: "todo-empty-title", text: "收件箱是空的" });
+    if (view === "all") {
+      empty.createDiv({ cls: "todo-empty-title", text: "还没有任务" });
       empty.createDiv({ cls: "todo-empty-desc", text: "在输入框里写下第一件要做的事，按回车即可创建。" });
       const action = empty.createDiv({ cls: "todo-empty-action", text: "立即创建任务" });
       action.addEventListener("click", () => {
         void this.promptQuickCreate();
       });
+      return;
+    }
+
+    if (view === "inbox") {
+      empty.createDiv({ cls: "todo-empty-title", text: "任务是空的" });
+      empty.createDiv({ cls: "todo-empty-desc", text: "将任务从其他列表移动到此处，或右键任务选择“移动到任务”。" });
       return;
     }
 
@@ -531,8 +633,17 @@ export class TodoView extends ItemView {
 
   private updateQuickPlaceholder(): void {
     const { activeViewNav, selectedListId } = this.plugin.settings;
+    this.quickContainerEl.style.display = activeViewNav === "inbox" ? "none" : "";
     if (activeViewNav === "myday") {
       this.quickInputEl.placeholder = "添加任务到我的一天...";
+      return;
+    }
+    if (activeViewNav === "all") {
+      this.quickInputEl.placeholder = "添加任务...";
+      return;
+    }
+    if (activeViewNav === "inbox") {
+      this.quickInputEl.placeholder = "添加任务到任务...";
       return;
     }
     if (selectedListId) {
@@ -540,7 +651,7 @@ export class TodoView extends ItemView {
       this.quickInputEl.placeholder = list ? `添加任务到「${list.name}」...` : "添加任务到当前列表...";
       return;
     }
-    this.quickInputEl.placeholder = "添加任务到默认列表...";
+    this.quickInputEl.placeholder = "添加任务...";
   }
 
   
@@ -566,7 +677,7 @@ export class TodoView extends ItemView {
       .create({
         title: title.trim(),
         listId,
-        isMyDay: activeViewNav === "myday",
+        isMyDay: activeViewNav === "myday" && !selectedListId,
       })
       .then(async () => {
         await this.renderLists();
@@ -593,7 +704,7 @@ export class TodoView extends ItemView {
     await this.plugin.taskService.create({
       title,
       listId,
-      isMyDay: activeViewNav === "myday",
+      isMyDay: activeViewNav === "myday" && !selectedListId,
     });
 
     this.quickInputEl.value = "";
@@ -631,7 +742,7 @@ export class TodoView extends ItemView {
     if (layout) layout.removeClass("todo-layout-detail-open");
   }
 
-  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "inbox" | "list"): void {
+  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "inbox" | "list"): void {
     const menu = new Menu();
 
     menu.addItem((item) =>
@@ -658,12 +769,58 @@ export class TodoView extends ItemView {
         }),
     );
 
+    menu.addItem((item) =>
+      item
+        .setTitle(task.isMyDay ? "从“我的一天”移除" : "添加到“我的一天”")
+        .setIcon(task.isMyDay ? "calendar-minus" : "calendar-plus")
+        .onClick(async () => {
+          await this.plugin.taskService.update(task.id, { isMyDay: !task.isMyDay });
+          await this.renderTasks(currentView);
+        }),
+    );
+
+
+    // Move to My Day group
+    if (currentView === "myday" && task.isMyDay) {
+      menu.addSeparator();
+      MYDAY_GROUPS.forEach(({ key, label }) => {
+        menu.addItem((item) =>
+          item
+            .setTitle(`移动至 ${label}`)
+            .setChecked((task.myDayGroup || "allday") === key)
+            .onClick(async () => {
+              // Update dates based on group
+              const now = new Date();
+              const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+              const groupTimes: Record<MyDayGroup, { startH: number; startM: number; endH: number; endM: number }> = {
+                allday: { startH: 6, startM: 0, endH: 23, endM: 59 },
+                morning: { startH: 6, startM: 0, endH: 11, endM: 59 },
+                noon: { startH: 12, startM: 0, endH: 13, endM: 59 },
+                afternoon: { startH: 14, startM: 0, endH: 17, endM: 59 },
+                evening: { startH: 18, startM: 0, endH: 23, endM: 59 },
+              };
+              const t = groupTimes[key];
+              const startDate = new Date(today);
+              startDate.setHours(t.startH, t.startM);
+              const dueDate = new Date(today);
+              dueDate.setHours(t.endH, t.endM);
+              await this.plugin.taskService.update(task.id, {
+                myDayGroup: key,
+                startDate: startDate.toISOString(),
+                dueDate: dueDate.toISOString(),
+              });
+              await this.renderTasks(currentView);
+            }),
+        );
+      });
+    }
+
     const lists = this.plugin.listService.getActive().filter((l) => l.id !== task.listId);
     if (lists.length) {
       lists.forEach((list) => {
         menu.addItem((item) =>
           item
-            .setTitle(`移动到「${list.name}」`)
+            .setTitle(list.isDefault ? "移动到任务" : `移动到「${list.name}」`)
             .setIcon("folder")
             .onClick(async () => {
               await this.plugin.taskService.update(task.id, { listId: list.id });

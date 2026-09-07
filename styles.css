@@ -74,11 +74,20 @@
   color: var(--text-muted);
 }
 
+.todo-task-meta {
+  font-size: 11px;
+  color: var(--text-faint);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+
+
 
 .todo-task-header {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   padding: 4px 14px 0;
   flex-shrink: 0;
 }
@@ -87,9 +96,8 @@
   all: unset;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
+  gap: 4px;
+  padding: 4px 8px;
   border-radius: var(--radius-s);
   color: var(--text-muted);
   cursor: pointer;
@@ -99,6 +107,38 @@
 .todo-sort-btn:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
+}
+
+
+
+/* ========== My Day Groups ========== */
+.todo-myday-group {
+  margin-bottom: 8px;
+}
+
+.todo-myday-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px 4px;
+  font-size: var(--font-ui-small);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.todo-myday-group-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.todo-myday-group-count {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.todo-myday-group-list {
+  /* No special styling needed */
 }
 
 .todo-quick-add {
