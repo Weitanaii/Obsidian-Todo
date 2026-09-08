@@ -12,8 +12,6 @@ export interface ObsidianTodoSettings {
   selectedListId: string | null;
   completedCollapsed: boolean;
   selectedTaskId: string | null;
-  planModeEnabled: boolean;
-  quadrantModeEnabled: boolean;
   selectedQuadrant: string | null;
   sortConfig: SortConfig;
 }
@@ -30,8 +28,6 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
     primary: { field: "importance", direction: "desc" },
     secondary: { field: "createdAt", direction: "desc" },
   },
-  planModeEnabled: true,
-  quadrantModeEnabled: true,
   selectedQuadrant: null,
 };
 

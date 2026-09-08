@@ -152,8 +152,6 @@ export interface TodoPluginLike {
     completedCollapsed: boolean;
     selectedTaskId: string | null;
     sortConfig: SortConfig;
-    planModeEnabled: boolean;
-    quadrantModeEnabled: boolean;
     selectedQuadrant: string | null;
   };
   saveSettings(): Promise<void>;
@@ -231,7 +229,6 @@ export class TodoView extends ItemView {
 
     // Plan mode nav group
     this.planGroupEl = upperItems.createDiv({ cls: "todo-nav-group todo-plan-group" });
-    this.planGroupEl.style.display = this.plugin.settings.planModeEnabled ? "" : "none";
     const planHeader = this.planGroupEl.createDiv({ cls: "todo-nav-group-header" });
     const planIcon = planHeader.createSpan();
     setIcon(planIcon, "calendar-days");
@@ -256,7 +253,6 @@ export class TodoView extends ItemView {
 
     // Quadrant mode nav group
     this.quadrantGroupEl = upperItems.createDiv({ cls: "todo-nav-group todo-quadrant-group" });
-    this.quadrantGroupEl.style.display = this.plugin.settings.quadrantModeEnabled ? "" : "none";
     const qHeader = this.quadrantGroupEl.createDiv({ cls: "todo-nav-group-header" });
     const qIcon = qHeader.createSpan();
     setIcon(qIcon, "layout-grid");
@@ -358,7 +354,7 @@ export class TodoView extends ItemView {
     await this.plugin.saveSettings();
 
     if (this.planContainerEl) {
-      this.planContainerEl.toggleClass("todo-plan-visible", !!this.plugin.settings.planModeEnabled);
+      this.planContainerEl.addClass("todo-plan-visible");
     }
 
     await this.renderLists();
@@ -705,26 +701,6 @@ export class TodoView extends ItemView {
     menu.showAtMouseEvent(ev);
   }
 
-  
-  async applyQuadrantMode(): Promise<void> {
-    if (this.quadrantGroupEl) {
-      this.quadrantGroupEl.style.display = this.plugin.settings.quadrantModeEnabled ? "" : "none";
-    }
-    if (!this.plugin.settings.quadrantModeEnabled && this.plugin.settings.selectedQuadrant) {
-      this.plugin.settings.selectedQuadrant = null;
-      await this.plugin.saveSettings();
-      await this.renderTasks("all");
-    }
-  }
-
-  async applyPlanMode(): Promise<void> {
-    if (this.planGroupEl) {
-      this.planGroupEl.style.display = this.plugin.settings.planModeEnabled ? "" : "none";
-    }
-    if (!this.plugin.settings.planModeEnabled && this.plugin.settings.activeViewNav === "myday") {
-      await this.renderTasks("myday");
-    }
-  }
 
   private getSortLabel(field: SortField): string {
     const labels: Record<SortField, string> = {
@@ -795,7 +771,7 @@ export class TodoView extends ItemView {
 
 
     // Quadrant mode guidance for tasks without quadrant tags
-    if (this.plugin.settings.quadrantModeEnabled && view === "all") {
+    if (view === "all") {
       const quadTagIds = this.plugin.tagService.getQuadrantTags().map((t: { id: string }) => t.id);
       const untagged = tasks.filter((t) => !t.isCompleted && !t.tags.some((tagId: string) => quadTagIds.includes(tagId)));
       if (untagged.length > 0) {
@@ -809,7 +785,7 @@ export class TodoView extends ItemView {
     }
 
     // Quadrant mode: filter by selected quadrant
-    if (this.plugin.settings.quadrantModeEnabled && this.plugin.settings.selectedQuadrant && !this.plugin.settings.selectedListId) {
+    if (this.plugin.settings.selectedQuadrant && !this.plugin.settings.selectedListId) {
       await this.renderQuadrantGroups();
       return;
     }
