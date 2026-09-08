@@ -37,13 +37,7 @@ export class ListService {
     
     await this.ensureDefaultList();
     this.loaded = true;
-  }
-
-  
-  getAll(): TodoList[] {
-    this.ensureLoaded();
-    return [...this.lists];
-  }
+  }
 
   
   getActive(): TodoList[] {
@@ -96,17 +90,7 @@ export class ListService {
   
   async rename(id: string, newName: string): Promise<TodoList | null> {
     return this.update(id, { name: newName });
-  }
-
-  
-  async archive(id: string): Promise<TodoList | null> {
-    return this.update(id, { isArchived: true });
-  }
-
-  
-  async unarchive(id: string): Promise<TodoList | null> {
-    return this.update(id, { isArchived: false });
-  }
+  }
 
   
   async delete(id: string): Promise<boolean> {

@@ -111,6 +111,13 @@ const MYDAY_GROUPS: { key: MyDayGroup; label: string }[] = [
   { key: "evening", label: "晚上" },
 ];
 
+const SORT_FIELD_LABELS: Record<SortField, string> = {
+  importance: "按重要程度",
+  dueDate: "按截止日期",
+  createdAt: "按创建时间",
+  title: "按标题",
+};
+
 export interface TodoPluginLike {
   taskService: {
     getMyDay(): Task[];
@@ -135,7 +142,6 @@ export interface TodoPluginLike {
     getAll(): { id: string; name: string; color: string; icon: string; isDefault: boolean; sortOrder: number }[];
     getById(id: string): { id: string; name: string; color: string; icon: string } | undefined;
     getQuadrantTags(): { id: string; name: string; color: string; icon: string; sortOrder: number }[];
-    getDomainTags(): { id: string; name: string; color: string; icon: string }[];
     getQuadrantTagForTask(tagIds: string[]): { id: string; name: string; sortOrder: number } | undefined;
   };
   groupService: {
@@ -158,8 +164,6 @@ export interface TodoPluginLike {
     app?: App;
 }
 
-const normalizeTasks = (tasks: Task[], config: SortConfig) =>
-  sortTasks(tasks, config);
 
 export class TodoView extends ItemView {
   private plugin: TodoPluginLike;
@@ -703,25 +707,14 @@ export class TodoView extends ItemView {
 
 
   private getSortLabel(field: SortField): string {
-    const labels: Record<SortField, string> = {
-      importance: "按重要程度",
-      dueDate: "按截止日期",
-      createdAt: "按创建时间",
-      title: "按标题",
-    };
-    return labels[field] ?? field;
+    return SORT_FIELD_LABELS[field] ?? field;
   }
 
   private showSortMenu(ev: MouseEvent): void {
-    const fields: { field: SortField; label: string }[] = [
-      { field: "importance", label: "按重要程度" },
-      { field: "dueDate", label: "按截止日期" },
-      { field: "createdAt", label: "按创建时间" },
-      { field: "title", label: "按标题" },
-    ];
+    const fields = Object.entries(SORT_FIELD_LABELS) as [SortField, string][];
     const menu = new Menu();
     const currentField = this.plugin.settings.sortConfig.primary.field;
-    fields.forEach(({ field, label }) => {
+    fields.forEach(([field, label]) => {
       menu.addItem((item) =>
         item.setTitle(label).setChecked(field === currentField).onClick(async () => {
           const defaultDir: Record<SortField, SortDirection> = {
@@ -790,7 +783,7 @@ export class TodoView extends ItemView {
       return;
     }
 
-    const sorted = normalizeTasks(tasks, this.plugin.settings.sortConfig);
+    const sorted = sortTasks(tasks, this.plugin.settings.sortConfig);
     const incomplete = sorted.filter((t) => !t.isCompleted);
     const completed = sorted.filter((t) => t.isCompleted);
 
@@ -835,7 +828,7 @@ export class TodoView extends ItemView {
       });
       if (selectedTag) {
         const tasks = allTasks.filter((t) => t.tags.includes(selectedTag.id));
-        const sorted = normalizeTasks(tasks, config);
+        const sorted = sortTasks(tasks, config);
         const incomplete = sorted.filter((t) => !t.isCompleted);
         const completed = sorted.filter((t) => t.isCompleted);
         incomplete.forEach((task) => this.renderTaskRow(this.taskListEl, task, "all"));
@@ -870,7 +863,7 @@ export class TodoView extends ItemView {
       const tag = quadTags.find((t) => t.sortOrder === qd.sortOrder);
       if (!tag) continue;
       const tasks = allTasks.filter((t) => t.tags.includes(tag.id));
-      const sorted = normalizeTasks(tasks, config);
+      const sorted = sortTasks(tasks, config);
       const incomplete = sorted.filter((t) => !t.isCompleted);
       const completed = sorted.filter((t) => t.isCompleted);
 
@@ -888,7 +881,7 @@ export class TodoView extends ItemView {
     // Ungrouped tasks
     const ungrouped = allTasks.filter((t) => !quadTags.some((tag) => t.tags.includes(tag.id)));
     if (ungrouped.length > 0) {
-      const sorted = normalizeTasks(ungrouped, config);
+      const sorted = sortTasks(ungrouped, config);
       const groupEl = this.taskListEl.createDiv({ cls: "todo-myday-group" });
       const headerEl = groupEl.createDiv({ cls: "todo-myday-group-header" });
       headerEl.createSpan({ cls: "todo-myday-group-label", text: "\u672a\u5206\u7c7b" });
@@ -911,7 +904,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         }
       }
     }
-    const sorted = normalizeTasks(tasks, this.plugin.settings.sortConfig);
+    const sorted = sortTasks(tasks, this.plugin.settings.sortConfig);
 
     MYDAY_GROUPS.forEach(({ key, label }) => {
       const groupTasks = sorted.filter((t) => (t.myDayGroup || "allday") === key);

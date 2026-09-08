@@ -13,7 +13,6 @@ export interface TodoList {
   isArchived: boolean;
   
   isDefault: boolean;
-  isQuadrant: boolean;
   
   groupId: string | null;
   
@@ -32,7 +31,6 @@ export function createList(overrides: Partial<TodoList> = {}): TodoList {
     sortOrder: 0,
     isArchived: false,
     isDefault: false,
-    isQuadrant: false,
     groupId: null,
     createdAt: now,
     updatedAt: now,

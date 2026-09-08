@@ -52,13 +52,7 @@ export class TaskService {
   getByListId(listId: string): Task[] {
     this.ensureLoaded();
     return this.tasks.filter((t) => t.listId === listId);
-  }
-
-  
-  getImportant(): Task[] {
-    this.ensureLoaded();
-    return this.tasks.filter((t) => t.isImportant && !t.isCompleted);
-  }
+  }
 
   getMyDay(): Task[] {
     this.ensureLoaded();
@@ -69,12 +63,7 @@ export class TaskService {
   getInbox(defaultListId: string): Task[] {
     this.ensureLoaded();
     return this.tasks.filter((t) => t.listId === defaultListId);
-  }
-
-  getCompleted(): Task[] {
-    this.ensureLoaded();
-    return this.tasks.filter((t) => t.isCompleted);
-  }
+  }
 
   
   async create(fields: Partial<Task>): Promise<Task> {
@@ -134,21 +123,7 @@ export class TaskService {
     await this.save();
     logger.info("Task deleted:", removed.title);
     return true;
-  }
-
-  
-  async deleteCompleted(): Promise<number> {
-    this.ensureLoaded();
-    const before = this.tasks.length;
-    
-    this.tasks = this.tasks.filter((t) => !t.isCompleted);
-    const count = before - this.tasks.length;
-    if (count > 0) {
-      await this.save();
-      logger.info("Deleted", count, "completed tasks");
-    }
-    return count;
-  }
+  }
 
   
   private async save(): Promise<void> {

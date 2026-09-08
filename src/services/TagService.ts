@@ -42,11 +42,6 @@ export class TagService {
     return this.tags.find((t) => t.id === id);
   }
 
-  getDefaults(): DomainTag[] {
-    this.ensureLoaded();
-    return this.tags.filter((t) => t.isDefault).sort((a, b) => a.sortOrder - b.sortOrder);
-  }
-
   async create(fields: Partial<DomainTag>): Promise<DomainTag> {
     this.ensureLoaded();
     const tag = createTag(fields);
@@ -93,11 +88,6 @@ export class TagService {
   getQuadrantTags(): DomainTag[] {
     this.ensureLoaded();
     return this.tags.filter((t) => t.isDefault && t.sortOrder < 4).sort((a, b) => a.sortOrder - b.sortOrder);
-  }
-
-  getDomainTags(): DomainTag[] {
-    this.ensureLoaded();
-    return this.tags.filter((t) => t.isDefault && t.sortOrder >= 4).sort((a, b) => a.sortOrder - b.sortOrder);
   }
 
   getQuadrantTagForTask(tagIds: string[]): DomainTag | undefined {

@@ -207,14 +207,6 @@
   border-top: 1px solid var(--background-modifier-border);
 }
 
-.todo-nav-label {
-  padding: 6px 12px 2px;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
 .todo-nav-lists {
   display: flex;
   flex-direction: column;
@@ -350,15 +342,6 @@
 
 .todo-task-muted {
   color: var(--text-muted);
-}
-
-.todo-task-due {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.todo-task-due-overdue {
-  color: var(--text-error);
 }
 
 .todo-task-item.important-row .todo-task-title {
@@ -526,12 +509,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.todo-detail-header-label {
-  font-weight: 600;
-  font-size: var(--font-ui-small);
-  color: var(--text-normal);
 }
 
 .todo-detail-header .todo-detail-close {
@@ -711,10 +688,6 @@
 .todo-detail-delete:hover {
   color: var(--text-error);
   background-color: var(--background-modifier-hover);
-}
-
-.todo-detail-row-note {
-  flex: 1;
 }
 
 .todo-task-selected {
@@ -1367,9 +1340,6 @@
   border-color: var(--text-error);
 }
 
-.todo-setting-add-tag {
-  margin-top: 12px;
-}
 
 /* Settings: title row with count and add button */
 .todo-setting-tag-title-row {
@@ -1558,20 +1528,6 @@
   padding-left: 8px;
 }
 
-.todo-nav-add-group {
-  font-size: 12px;
-  color: var(--text-muted);
-  padding: 6px 10px;
-  cursor: pointer;
-  border-radius: var(--radius-s);
-  transition: background-color 0.15s, color 0.15s;
-  margin-top: 8px;
-}
-
-.todo-nav-add-group:hover {
-  background: var(--background-modifier-hover);
-  color: var(--text-normal);
-}
 
 /* ===== Drag and Drop (T-602) ===== */
 
@@ -1589,21 +1545,6 @@
   border-top: 2px solid var(--interactive-accent);
 }
 
-/* T-608 plan mode styles */
-.todo-plan-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border-radius: var(--radius-s);
-  border: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary);
-  color: var(--text-normal);
-  cursor: pointer;
-}
-.todo-plan-btn:hover {
-  background: var(--background-modifier-hover);
-}
 
 .todo-plan-container {
   display: none;
