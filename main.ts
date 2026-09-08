@@ -112,6 +112,13 @@ export default class ObsidianTodoPlugin extends Plugin {
       };
       await this.saveSettings();
     }
+
+    // Migrate: planMode and quadrantMode are always enabled now
+    if (!this.settings.planModeEnabled || !this.settings.quadrantModeEnabled) {
+      this.settings.planModeEnabled = true;
+      this.settings.quadrantModeEnabled = true;
+      await this.saveSettings();
+    }
     logger.setLevel(LogLevel[this.settings.logLevel as keyof typeof LogLevel]);
   }
 

@@ -30,8 +30,8 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
     primary: { field: "importance", direction: "desc" },
     secondary: { field: "createdAt", direction: "desc" },
   },
-  planModeEnabled: false,
-  quadrantModeEnabled: false,
+  planModeEnabled: true,
+  quadrantModeEnabled: true,
   selectedQuadrant: null,
 };
 
@@ -81,7 +81,32 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
           })
       );
 
-    new Setting(containerEl)
+    // --- Tag Management ---
+    containerEl.createEl("h2", { text: "标签管理" });
+
+    const allTags = this.plugin.tagService.getAll();
+    const quadrantTags = allTags.filter((t) => t.sortOrder < 4);
+    const domainTags = allTags.filter((t) => t.sortOrder >= 4 && t.sortOrder < 10);
+    const customTags = allTags.filter((t) => !t.isDefault);
+
+    this.renderTagGroup(containerEl, "四象限标签", quadrantTags, false, "用于四象限视图的任务分类");
+    this.renderTagGroup(containerEl, "领域标签", domainTags, false, "用于人生领域维度的任务分类");
+    this.renderTagGroup(containerEl, "自定义标签", customTags, true, "自由创建的个性化标签");
+
+    // --- Advanced Settings (collapsible) ---
+    const advHeader = containerEl.createDiv({ cls: "todo-setting-adv-header" });
+    advHeader.createSpan({ cls: "todo-setting-adv-arrow", text: "▶" });
+    advHeader.createSpan({ text: "高级设置" });
+    const advBody = containerEl.createDiv({ cls: "todo-setting-adv-body" });
+    advBody.style.display = "none";
+    advHeader.addEventListener("click", () => {
+      const shown = advBody.style.display !== "none";
+      advBody.style.display = shown ? "none" : "";
+      const arrow = advHeader.querySelector(".todo-setting-adv-arrow");
+      if (arrow) arrow.textContent = shown ? "▶" : "▼";
+    });
+
+    new Setting(advBody)
       .setName("日志级别")
       .setDesc("控制控制台日志的详细程度")
       .addDropdown((dropdown) =>
@@ -97,85 +122,32 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
-
-    // --- Tag Management ---
-    containerEl.createEl("h2", { text: "标签管理" });
-
-    new Setting(containerEl)
-      .setName("计划模式")
-      .setDesc("开启后在列表区域显示固定分组“我的计划”（含人生计划、年度计划、月度计划）")
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.planModeEnabled)
-          .onChange(async (value) => {
-            this.plugin.settings.planModeEnabled = value;
-            await this.plugin.saveSettings();
-            try {
-              const leaves = this.plugin.app.workspace.getLeavesOfType("obsidian-todo-view");
-              for (const leaf of leaves) {
-                const view = leaf.view as any;
-                if (typeof view?.applyPlanMode === "function") await view.applyPlanMode();
-              }
-            } catch (e) {
-              console.error("applyPlanMode failed", e);
-            }
-          })
-      );
-
-    new Setting(containerEl)
-      .setName("四象限模式")
-      .setDesc("开启后自动创建4个四象限任务列表，创建任务时必须选择四象限标签")
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.quadrantModeEnabled)
-          .onChange(async (value) => {
-            this.plugin.settings.quadrantModeEnabled = value;
-            await this.plugin.saveSettings();
-            try {
-              const leaves = this.plugin.app.workspace.getLeavesOfType("obsidian-todo-view");
-              for (const leaf of leaves) {
-                const view = leaf.view as any;
-                if (typeof view?.applyQuadrantMode === "function") await view.applyQuadrantMode();
-              }
-            } catch (e) {
-              console.error("applyQuadrantMode failed", e);
-            }
-          })
-      );
-
-    containerEl.createEl("p", {
-      text: "管理四象限标签和领域标签。预置标签不可删除，自定义标签可编辑和删除。",
-      cls: "setting-item-description",
-    });
-
-    const allTags = this.plugin.tagService.getAll();
-    const quadrantTags = allTags.filter((t) => t.sortOrder < 4);
-    const domainTags = allTags.filter((t) => t.sortOrder >= 4 && t.sortOrder < 10);
-    const customTags = allTags.filter((t) => !t.isDefault);
-
-    this.renderTagGroup(containerEl, "四象限标签", quadrantTags, false);
-    this.renderTagGroup(containerEl, "领域标签", domainTags, false);
-    this.renderTagGroup(containerEl, "自定义标签", customTags, true);
-
-    const addBtnContainer = containerEl.createDiv({ cls: "todo-setting-add-tag" });
-    const addBtn = addBtnContainer.createEl("button", { text: "+ 新增标签", cls: "mod-cta" });
-    addBtn.addEventListener("click", () => {
-      new TagEditModal(this.app, null, async (result) => {
-        await this.plugin.tagService.create({
-          name: result.name,
-          icon: result.icon,
-          color: result.color,
-          sortOrder: 100,
-          isDefault: false,
-        });
-        this.display();
-      }).open();
-    });
   }
 
-  private renderTagGroup(container: HTMLElement, title: string, tags: { id: string; name: string; icon: string; color: string; isDefault: boolean }[], editable: boolean): void {
-    const group = container.createDiv({ cls: "todo-setting-tag-group" });
-    group.createEl("h3", { text: title, cls: "todo-setting-tag-group-title" });
+  private renderTagGroup(container: HTMLElement, title: string, tags: { id: string; name: string; icon: string; color: string; isDefault: boolean }[], editable: boolean, desc?: string): void {
+    const group = container.createDiv({ cls: "todo-setting-tag-group" + (editable ? "" : " todo-setting-tag-preset") });
+    const titleRow = group.createDiv({ cls: "todo-setting-tag-title-row" });
+    const titleLeft = titleRow.createDiv({ cls: "todo-setting-tag-title-left" });
+    titleLeft.createEl("span", { text: title, cls: "todo-setting-tag-group-title" });
+    titleLeft.createEl("span", { text: "(" + tags.length + ")", cls: "todo-setting-tag-group-count" });
+    if (editable) {
+      const addBtn = titleRow.createEl("button", { text: "+ 添加", cls: "todo-setting-tag-add-btn" });
+      addBtn.addEventListener("click", () => {
+        new TagEditModal(this.app, null, async (result) => {
+          await this.plugin.tagService.create({
+            name: result.name,
+            icon: result.icon,
+            color: result.color,
+            sortOrder: 100,
+            isDefault: false,
+          });
+          this.display();
+        }).open();
+      });
+    }
+    if (desc) {
+      group.createEl("p", { text: desc, cls: "todo-setting-tag-desc" });
+    }
 
     if (tags.length === 0) {
       group.createDiv({ cls: "todo-setting-tag-empty", text: "暂无标签" });
@@ -185,6 +157,8 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
     const grid = group.createDiv({ cls: "todo-setting-tag-grid" });
     for (const tag of tags) {
       const item = grid.createDiv({ cls: "todo-setting-tag-item" });
+      const colorBar = item.createDiv({ cls: "todo-setting-tag-color-bar" });
+      colorBar.style.backgroundColor = tag.color || "var(--text-muted)";
       const left = item.createDiv({ cls: "todo-setting-tag-left" });
       const iconEl = left.createSpan({ cls: "todo-setting-tag-icon" });
       setIcon(iconEl, tag.icon);
@@ -214,6 +188,7 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
       }
     }
   }
+
 }
 
 interface TagEditResult {

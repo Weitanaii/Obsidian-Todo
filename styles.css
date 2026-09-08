@@ -1299,8 +1299,8 @@
 }
 
 .todo-setting-tag-grid {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 4px;
 }
 
@@ -1308,10 +1308,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
+  padding: 6px 10px 6px 7px;
   border-radius: var(--radius-s);
   background: var(--background-secondary);
   transition: background-color 0.15s;
+  position: relative;
+  overflow: hidden;
 }
 
 .todo-setting-tag-item:hover {
@@ -1367,6 +1369,79 @@
 
 .todo-setting-add-tag {
   margin-top: 12px;
+}
+
+/* Settings: title row with count and add button */
+.todo-setting-tag-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.todo-setting-tag-title-left {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.todo-setting-tag-group-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.todo-setting-tag-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 8px 0;
+}
+.todo-setting-tag-add-btn {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+}
+.todo-setting-tag-add-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+/* Settings: preset tag group subtle distinction */
+.todo-setting-tag-preset .todo-setting-tag-item {
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+/* Settings: color bar on tag items */
+.todo-setting-tag-color-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: var(--radius-s) 0 0 var(--radius-s);
+}
+
+/* Settings: advanced section collapsible */
+.todo-setting-adv-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.todo-setting-adv-header:hover {
+  color: var(--text-normal);
+}
+.todo-setting-adv-arrow {
+  font-size: 10px;
+  transition: transform 0.15s;
+}
+.todo-setting-adv-body {
+  padding: 4px 0 8px;
 }
 
 /* Tag Edit Modal */

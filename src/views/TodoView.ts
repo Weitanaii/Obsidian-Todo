@@ -275,6 +275,7 @@ export class TodoView extends ItemView {
       qItem.createSpan({ cls: "todo-quadrant-name", text: qd.key });
       qItem.addEventListener("click", async () => {
         this.plugin.settings.selectedQuadrant = qd.key;
+        this.plugin.settings.activeViewNav = "all";
         await this.plugin.saveSettings();
         this.plugin.settings.selectedListId = null;
         qList.querySelectorAll(".todo-nav-item").forEach((el) => el.removeClass("active"));
@@ -1186,10 +1187,6 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       return;
     }
 
-    if (this.plugin.settings.quadrantModeEnabled) {
-      new Notice("\u56db\u8c61\u9650\u6a21\u5f0f\u4e0b\u8bf7\u901a\u8fc7\u4efb\u52a1\u8be6\u60c5\u9762\u677f\u521b\u5efa\u4efb\u52a1\uff0c\u5e76\u9009\u62e9\u56db\u8c61\u9650\u6807\u7b7e");
-      return;
-    }
 
     const { activeViewNav, selectedListId } = this.plugin.settings;
     let listId = selectedListId || undefined;
@@ -1219,11 +1216,6 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const title = this.quickInputEl.value.trim();
     if (!title) return;
 
-    if (this.plugin.settings.quadrantModeEnabled) {
-      new Notice("\u56db\u8c61\u9650\u6a21\u5f0f\u4e0b\u8bf7\u901a\u8fc7\u4efb\u52a1\u8be6\u60c5\u9762\u677f\u521b\u5efa\u4efb\u52a1\uff0c\u5e76\u9009\u62e9\u56db\u8c61\u9650\u6807\u7b7e");
-      this.quickInputEl.value = "";
-      return;
-    }
 
     const { activeViewNav, selectedListId } = this.plugin.settings;
     let listId = selectedListId || undefined;
