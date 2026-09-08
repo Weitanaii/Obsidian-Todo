@@ -90,6 +90,21 @@ export class TagService {
     return true;
   }
 
+  getQuadrantTags(): DomainTag[] {
+    this.ensureLoaded();
+    return this.tags.filter((t) => t.isDefault && t.sortOrder < 4).sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  getDomainTags(): DomainTag[] {
+    this.ensureLoaded();
+    return this.tags.filter((t) => t.isDefault && t.sortOrder >= 4).sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  getQuadrantTagForTask(tagIds: string[]): DomainTag | undefined {
+    this.ensureLoaded();
+    return this.tags.find((t) => t.isDefault && t.sortOrder < 4 && tagIds.includes(t.id));
+  }
+
   private async save(): Promise<void> {
     const store: TagStore = { tags: this.tags };
     await this.storage.write(STORE_FILENAME, store);

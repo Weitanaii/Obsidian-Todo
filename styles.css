@@ -43,6 +43,17 @@
   gap: 8px;
 }
 
+.todo-nav-icon {
+  display: inline-flex;
+  align-items: center;
+  width: 18px;
+  flex-shrink: 0;
+}
+.todo-nav-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
 .todo-nav-item:hover {
   background-color: var(--background-modifier-hover);
 }
@@ -1436,15 +1447,11 @@
 .todo-nav-group-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
+  gap: 8px;
+  padding: 6px 12px;
   cursor: pointer;
   border-radius: var(--radius-s);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  color: var(--text-normal);
   transition: background-color 0.15s;
 }
 
@@ -1505,4 +1512,67 @@
 
 .todo-nav-group-header.drag-over {
   border-top: 2px solid var(--interactive-accent);
+}
+
+/* T-608 plan mode styles */
+.todo-plan-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  cursor: pointer;
+}
+.todo-plan-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.todo-plan-container {
+  display: none;
+}
+.todo-plan-container.todo-plan-visible {
+  display: block;
+}
+
+.todo-quadrant-group .todo-quadrant-item {
+  padding-left: 16px;
+  font-size: 12px;
+}
+.todo-quadrant-group .todo-quadrant-item.active {
+  background-color: var(--background-modifier-active-hover);
+}
+.todo-quadrant-group .todo-quadrant-name {
+  font-weight: 500;
+}
+
+.todo-plan-group .todo-plan-item {
+  padding-left: 16px;
+  font-size: 12px;
+}
+.todo-plan-group .todo-plan-item.active {
+  background-color: var(--background-modifier-active-hover);
+}
+.todo-plan-group .todo-plan-name {
+  font-weight: 500;
+}
+.todo-plan-group .todo-nav-group-arrow,
+.todo-quadrant-group .todo-nav-group-arrow {
+  display: none;
+}
+.todo-plan-group,
+.todo-quadrant-group {
+  margin-bottom: 0;
+}
+
+
+.todo-quadrant-notice {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  font-size: 12px;
+  color: var(--text-muted);
 }

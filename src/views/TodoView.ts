@@ -134,6 +134,9 @@ export interface TodoPluginLike {
   tagService: {
     getAll(): { id: string; name: string; color: string; icon: string; isDefault: boolean; sortOrder: number }[];
     getById(id: string): { id: string; name: string; color: string; icon: string } | undefined;
+    getQuadrantTags(): { id: string; name: string; color: string; icon: string; sortOrder: number }[];
+    getDomainTags(): { id: string; name: string; color: string; icon: string }[];
+    getQuadrantTagForTask(tagIds: string[]): { id: string; name: string; sortOrder: number } | undefined;
   };
   groupService: {
     getAll(): { id: string; name: string; isCollapsed: boolean; sortOrder: number }[];
@@ -149,6 +152,9 @@ export interface TodoPluginLike {
     completedCollapsed: boolean;
     selectedTaskId: string | null;
     sortConfig: SortConfig;
+    planModeEnabled: boolean;
+    quadrantModeEnabled: boolean;
+    selectedQuadrant: string | null;
   };
   saveSettings(): Promise<void>;
     app?: App;
@@ -169,6 +175,11 @@ export class TodoView extends ItemView {
   private quickContainerEl!: HTMLDivElement;
   private detailEl!: HTMLDivElement;
   private detailView!: TaskDetailView;
+  private planContainerEl!: HTMLDivElement;
+  private planGroupCollapsed = true;
+  private quadrantGroupCollapsed = true;
+  private planGroupEl!: HTMLDivElement;
+  private quadrantGroupEl!: HTMLDivElement;
 
   constructor(leaf: WorkspaceLeaf, plugin: TodoPluginLike) {
     super(leaf);
@@ -200,15 +211,81 @@ export class TodoView extends ItemView {
     setIcon(this.sortBtnEl, "arrow-up-down");
     this.sortLabelEl = this.sortBtnEl.createSpan({ text: this.getSortLabel(this.plugin.settings.sortConfig.primary.field) });
     this.sortBtnEl.addEventListener("click", (ev) => this.showSortMenu(ev));
+    this.planContainerEl = main.createDiv({ cls: "todo-plan-container" });
+
     this.taskListEl = main.createDiv({ cls: "todo-task-list" });
     this.quickContainerEl = main.createDiv({ cls: "todo-quick-add" });
 
     // Upper section: fixed views
     const upperNav = nav.createDiv({ cls: "todo-nav-section" });
     const upperItems = upperNav.createDiv({ cls: "todo-nav-lists" });
-    this.navEls["myday"] = upperItems.createDiv({ cls: "todo-nav-item", text: "我的一天" });
-    this.navEls["all"] = upperItems.createDiv({ cls: "todo-nav-item", text: "所有任务" });
-    this.navEls["inbox"] = upperItems.createDiv({ cls: "todo-nav-item", text: "任务" });
+    this.navEls["myday"] = upperItems.createDiv({ cls: "todo-nav-item" });
+    setIcon(this.navEls["myday"].createSpan({ cls: "todo-nav-icon" }), "sun");
+    this.navEls["myday"].createSpan({ text: "我的一天" });
+    this.navEls["all"] = upperItems.createDiv({ cls: "todo-nav-item" });
+    setIcon(this.navEls["all"].createSpan({ cls: "todo-nav-icon" }), "list-checks");
+    this.navEls["all"].createSpan({ text: "所有任务" });
+    this.navEls["inbox"] = upperItems.createDiv({ cls: "todo-nav-item" });
+    setIcon(this.navEls["inbox"].createSpan({ cls: "todo-nav-icon" }), "inbox");
+    this.navEls["inbox"].createSpan({ text: "任务" });
+
+    // Plan mode nav group
+    this.planGroupEl = upperItems.createDiv({ cls: "todo-nav-group todo-plan-group" });
+    this.planGroupEl.style.display = this.plugin.settings.planModeEnabled ? "" : "none";
+    const planHeader = this.planGroupEl.createDiv({ cls: "todo-nav-group-header" });
+    const planIcon = planHeader.createSpan();
+    setIcon(planIcon, "calendar-days");
+    planHeader.createSpan({ cls: "todo-nav-group-name", text: "\u6211\u7684\u8ba1\u5212" });
+    const planList = this.planGroupEl.createDiv({ cls: "todo-nav-group-list" });
+    if (this.planGroupCollapsed) planList.style.display = "none";
+    const planItems = [
+      { name: "\u4eba\u751f\u8ba1\u5212", color: "#9B59B6" },
+      { name: "\u5e74\u5ea6\u8ba1\u5212", color: "#4A90D9" },
+      { name: "\u6708\u5ea6\u8ba1\u5212", color: "#2ECC71" },
+    ];
+    for (const pi of planItems) {
+      const item = planList.createDiv({ cls: "todo-nav-item todo-plan-item" });
+      if (pi.color) item.style.borderLeft = "3px solid " + pi.color;
+      item.createSpan({ cls: "todo-plan-name", text: pi.name });
+      item.addEventListener("click", () => new Notice("\u8ba1\u5212\u5217\u8868\u5360\u4f4d\uff08T-609 \u63a5\u5165\u4e2d\uff09"));
+    }
+    planHeader.addEventListener("click", () => {
+      this.planGroupCollapsed = !this.planGroupCollapsed;
+      planList.style.display = this.planGroupCollapsed ? "none" : "";
+    });
+
+    // Quadrant mode nav group
+    this.quadrantGroupEl = upperItems.createDiv({ cls: "todo-nav-group todo-quadrant-group" });
+    this.quadrantGroupEl.style.display = this.plugin.settings.quadrantModeEnabled ? "" : "none";
+    const qHeader = this.quadrantGroupEl.createDiv({ cls: "todo-nav-group-header" });
+    const qIcon = qHeader.createSpan();
+    setIcon(qIcon, "layout-grid");
+    qHeader.createSpan({ cls: "todo-nav-group-name", text: "\u56db\u8c61\u9650" });
+    const qList = this.quadrantGroupEl.createDiv({ cls: "todo-nav-group-list" });
+    if (this.quadrantGroupCollapsed) qList.style.display = "none";
+    const quadrantDefs = [
+      { key: "\u91cd\u8981\u7d27\u6025", color: "#E74C3C" },
+      { key: "\u91cd\u8981\u4e0d\u7d27\u6025", color: "#4A90D9" },
+      { key: "\u4e0d\u91cd\u8981\u7d27\u6025", color: "#F5A623" },
+      { key: "\u4e0d\u91cd\u8981\u4e0d\u7d27\u6025", color: "#95A5A6" },
+    ];
+    for (const qd of quadrantDefs) {
+      const qItem = qList.createDiv({ cls: "todo-nav-item todo-quadrant-item" + (this.plugin.settings.selectedQuadrant === qd.key ? " active" : "") });
+      if (qd.color) qItem.style.borderLeft = "3px solid " + qd.color;
+      qItem.createSpan({ cls: "todo-quadrant-name", text: qd.key });
+      qItem.addEventListener("click", async () => {
+        this.plugin.settings.selectedQuadrant = qd.key;
+        await this.plugin.saveSettings();
+        this.plugin.settings.selectedListId = null;
+        qList.querySelectorAll(".todo-nav-item").forEach((el) => el.removeClass("active"));
+        qItem.addClass("active");
+        await this.renderTasks("all");
+      });
+    }
+    qHeader.addEventListener("click", () => {
+      this.quadrantGroupCollapsed = !this.quadrantGroupCollapsed;
+      qList.style.display = this.quadrantGroupCollapsed ? "none" : "";
+    });
 
     Object.entries(this.navEls).forEach(([key, el]) => {
       el.addEventListener("click", async () => {
@@ -278,6 +355,12 @@ export class TodoView extends ItemView {
     this.plugin.settings.activeViewNav = nav;
     this.plugin.settings.selectedListId = null;
     await this.plugin.saveSettings();
+
+    if (this.planContainerEl) {
+      this.planContainerEl.toggleClass("todo-plan-visible", !!this.plugin.settings.planModeEnabled);
+    }
+
+    await this.renderLists();
 
     Object.entries(this.navEls).forEach(([key, el]) => {
       el.toggleClass("active", key === nav);
@@ -416,9 +499,18 @@ export class TodoView extends ItemView {
       }
       const confirmed = await new ConfirmModal(this.app, "\u786e\u8ba4\u5220\u9664\u5217\u8868\u300c" + list.name + "\u300d\uff1f").openAndConfirm();
       if (!confirmed) return;
+            // Reassign orphaned tasks to default list before deletion
+      const defaultList = this.plugin.listService.getDefault();
+      if (defaultList) {
+        const orphanTasks = this.plugin.taskService.getByListId(list.id);
+        for (const t of orphanTasks) {
+          await this.plugin.taskService.update(t.id, { listId: defaultList.id });
+        }
+      }
       await this.plugin.listService.delete(list.id);
       if (this.plugin.settings.selectedListId === list.id) {
-        await this.activateNav("myday");
+        this.plugin.settings.selectedQuadrant = null;
+      await this.activateNav("myday");
       }
       await this.renderLists();
     });
@@ -612,7 +704,28 @@ export class TodoView extends ItemView {
     menu.showAtMouseEvent(ev);
   }
 
-    private getSortLabel(field: SortField): string {
+  
+  async applyQuadrantMode(): Promise<void> {
+    if (this.quadrantGroupEl) {
+      this.quadrantGroupEl.style.display = this.plugin.settings.quadrantModeEnabled ? "" : "none";
+    }
+    if (!this.plugin.settings.quadrantModeEnabled && this.plugin.settings.selectedQuadrant) {
+      this.plugin.settings.selectedQuadrant = null;
+      await this.plugin.saveSettings();
+      await this.renderTasks("all");
+    }
+  }
+
+  async applyPlanMode(): Promise<void> {
+    if (this.planGroupEl) {
+      this.planGroupEl.style.display = this.plugin.settings.planModeEnabled ? "" : "none";
+    }
+    if (!this.plugin.settings.planModeEnabled && this.plugin.settings.activeViewNav === "myday") {
+      await this.renderTasks("myday");
+    }
+  }
+
+  private getSortLabel(field: SortField): string {
     const labels: Record<SortField, string> = {
       importance: "按重要程度",
       dueDate: "按截止日期",
@@ -653,6 +766,9 @@ export class TodoView extends ItemView {
 
   private async renderTasks(view: ViewNav | "list"): Promise<void> {
     this.taskListEl.empty();
+
+    
+
     let tasks: Task[] = [];
 
     if (view === "myday" && !this.plugin.settings.selectedListId) {
@@ -675,8 +791,25 @@ export class TodoView extends ItemView {
       return;
     }
 
+
+
+    // Quadrant mode guidance for tasks without quadrant tags
+    if (this.plugin.settings.quadrantModeEnabled && view === "all") {
+      const quadTagIds = this.plugin.tagService.getQuadrantTags().map((t: { id: string }) => t.id);
+      const untagged = tasks.filter((t) => !t.isCompleted && !t.tags.some((tagId: string) => quadTagIds.includes(tagId)));
+      if (untagged.length > 0) {
+        const notice = this.taskListEl.createDiv({ cls: "todo-quadrant-notice" });
+        notice.createSpan({ cls: "todo-quadrant-notice-text", text: "\u2139\ufe0f \u4ee5\u4e0b " + untagged.length + " \u4e2a\u4efb\u52a1\u672a\u5206\u914d\u56db\u8c61\u9650\u6807\u7b7e\uff0c\u5efa\u8bae\u70b9\u51fb\u4efb\u52a1\u8865\u5145\u6807\u7b7e" });
+      }
+    }
     if (!tasks.length) {
       this.renderEmptyState(view);
+      return;
+    }
+
+    // Quadrant mode: filter by selected quadrant
+    if (this.plugin.settings.quadrantModeEnabled && this.plugin.settings.selectedQuadrant && !this.plugin.settings.selectedListId) {
+      await this.renderQuadrantGroups();
       return;
     }
 
@@ -711,7 +844,85 @@ export class TodoView extends ItemView {
     }
   }
 
-  private async renderMyDayGroups(tasks: Task[]): Promise<void> {
+    private async renderQuadrantGroups(): Promise<void> {
+    const allTasks = this.plugin.taskService.getAll();
+    const quadTags = this.plugin.tagService.getQuadrantTags();
+    const config = this.plugin.settings.sortConfig;
+    const selected = this.plugin.settings.selectedQuadrant;
+
+    // If a specific quadrant is selected, show only that one
+    if (selected) {
+      const selectedTag = quadTags.find((t) => {
+        const names = ["\u91cd\u8981\u7d27\u6025", "\u91cd\u8981\u4e0d\u7d27\u6025", "\u4e0d\u91cd\u8981\u7d27\u6025", "\u4e0d\u91cd\u8981\u4e0d\u7d27\u6025"];
+        return names[t.sortOrder] === selected;
+      });
+      if (selectedTag) {
+        const tasks = allTasks.filter((t) => t.tags.includes(selectedTag.id));
+        const sorted = normalizeTasks(tasks, config);
+        const incomplete = sorted.filter((t) => !t.isCompleted);
+        const completed = sorted.filter((t) => t.isCompleted);
+        incomplete.forEach((task) => this.renderTaskRow(this.taskListEl, task, "all"));
+        if (completed.length) {
+          const group = this.taskListEl.createDiv({ cls: "todo-completed-group" });
+          const header = group.createDiv({ cls: "todo-completed-header" });
+          const arrow = header.createSpan({ cls: "todo-completed-arrow" + (this.plugin.settings.completedCollapsed ? " collapsed" : ""), text: "\u25bc" });
+          header.createSpan({ cls: "todo-completed-label", text: "\u5df2\u5b8c\u6210 " + completed.length });
+          const list = group.createDiv({ cls: "todo-completed-list" });
+          if (this.plugin.settings.completedCollapsed) list.style.display = "none";
+          completed.forEach((task) => this.renderTaskRow(list, task, "all"));
+          header.addEventListener("click", async () => {
+            this.plugin.settings.completedCollapsed = !this.plugin.settings.completedCollapsed;
+            await this.plugin.saveSettings();
+            list.style.display = this.plugin.settings.completedCollapsed ? "none" : "";
+            arrow.toggleClass("collapsed", this.plugin.settings.completedCollapsed);
+          });
+        }
+      }
+      return;
+    }
+
+    // No selection - show all quadrants
+    const quadrantDefs = [
+      { name: "\u91cd\u8981\u7d27\u6025", color: "#E74C3C", sortOrder: 0 },
+      { name: "\u91cd\u8981\u4e0d\u7d27\u6025", color: "#4A90D9", sortOrder: 1 },
+      { name: "\u4e0d\u91cd\u8981\u7d27\u6025", color: "#F5A623", sortOrder: 2 },
+      { name: "\u4e0d\u91cd\u8981\u4e0d\u7d27\u6025", color: "#95A5A6", sortOrder: 3 },
+    ];
+
+    for (const qd of quadrantDefs) {
+      const tag = quadTags.find((t) => t.sortOrder === qd.sortOrder);
+      if (!tag) continue;
+      const tasks = allTasks.filter((t) => t.tags.includes(tag.id));
+      const sorted = normalizeTasks(tasks, config);
+      const incomplete = sorted.filter((t) => !t.isCompleted);
+      const completed = sorted.filter((t) => t.isCompleted);
+
+      const groupEl = this.taskListEl.createDiv({ cls: "todo-myday-group" });
+      const headerEl = groupEl.createDiv({ cls: "todo-myday-group-header" });
+      if (qd.color) headerEl.style.borderLeft = "3px solid " + qd.color;
+      headerEl.createSpan({ cls: "todo-myday-group-label", text: qd.name });
+      headerEl.createSpan({ cls: "todo-myday-group-count", text: incomplete.length + "" });
+
+      const listEl = groupEl.createDiv({ cls: "todo-myday-group-list" });
+      incomplete.forEach((task) => this.renderTaskRow(listEl, task, "all"));
+      completed.forEach((task) => this.renderTaskRow(listEl, task, "all"));
+    }
+
+    // Ungrouped tasks
+    const ungrouped = allTasks.filter((t) => !quadTags.some((tag) => t.tags.includes(tag.id)));
+    if (ungrouped.length > 0) {
+      const sorted = normalizeTasks(ungrouped, config);
+      const groupEl = this.taskListEl.createDiv({ cls: "todo-myday-group" });
+      const headerEl = groupEl.createDiv({ cls: "todo-myday-group-header" });
+      headerEl.createSpan({ cls: "todo-myday-group-label", text: "\u672a\u5206\u7c7b" });
+      headerEl.createSpan({ cls: "todo-myday-group-count", text: sorted.length + "" });
+
+      const listEl = groupEl.createDiv({ cls: "todo-myday-group-list" });
+      sorted.forEach((task) => this.renderTaskRow(listEl, task, "all"));
+    }
+  }
+
+private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     // Auto-update myDayGroup based on time for tasks with dates
     for (const t of tasks) {
@@ -852,7 +1063,7 @@ export class TodoView extends ItemView {
   }
 
   
-  private renderEmptyState(view: "myday" | "all" | "inbox" | "list"): void {
+  private renderEmptyState(view: "myday" | "all" | "inbox" | "list" ): void {
     const empty = this.taskListEl.createDiv({ cls: "todo-empty-state todo-guide" });
 
     if (view === "myday") {
@@ -975,6 +1186,11 @@ export class TodoView extends ItemView {
       return;
     }
 
+    if (this.plugin.settings.quadrantModeEnabled) {
+      new Notice("\u56db\u8c61\u9650\u6a21\u5f0f\u4e0b\u8bf7\u901a\u8fc7\u4efb\u52a1\u8be6\u60c5\u9762\u677f\u521b\u5efa\u4efb\u52a1\uff0c\u5e76\u9009\u62e9\u56db\u8c61\u9650\u6807\u7b7e");
+      return;
+    }
+
     const { activeViewNav, selectedListId } = this.plugin.settings;
     let listId = selectedListId || undefined;
 
@@ -1002,6 +1218,12 @@ export class TodoView extends ItemView {
   private async createTaskFromQuickInput(): Promise<void> {
     const title = this.quickInputEl.value.trim();
     if (!title) return;
+
+    if (this.plugin.settings.quadrantModeEnabled) {
+      new Notice("\u56db\u8c61\u9650\u6a21\u5f0f\u4e0b\u8bf7\u901a\u8fc7\u4efb\u52a1\u8be6\u60c5\u9762\u677f\u521b\u5efa\u4efb\u52a1\uff0c\u5e76\u9009\u62e9\u56db\u8c61\u9650\u6807\u7b7e");
+      this.quickInputEl.value = "";
+      return;
+    }
 
     const { activeViewNav, selectedListId } = this.plugin.settings;
     let listId = selectedListId || undefined;
@@ -1056,7 +1278,7 @@ export class TodoView extends ItemView {
     if (layout) layout.removeClass("todo-layout-detail-open");
   }
 
-  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "inbox" | "list"): void {
+  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "inbox" | "list" ): void {
     const menu = new Menu();
 
     menu.addItem((item) =>

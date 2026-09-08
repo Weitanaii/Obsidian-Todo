@@ -12,6 +12,9 @@ export interface ObsidianTodoSettings {
   selectedListId: string | null;
   completedCollapsed: boolean;
   selectedTaskId: string | null;
+  planModeEnabled: boolean;
+  quadrantModeEnabled: boolean;
+  selectedQuadrant: string | null;
   sortConfig: SortConfig;
 }
 
@@ -27,6 +30,9 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
     primary: { field: "importance", direction: "desc" },
     secondary: { field: "createdAt", direction: "desc" },
   },
+  planModeEnabled: false,
+  quadrantModeEnabled: false,
+  selectedQuadrant: null,
 };
 
 const ICON_OPTIONS = [
@@ -94,6 +100,49 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
 
     // --- Tag Management ---
     containerEl.createEl("h2", { text: "标签管理" });
+
+    new Setting(containerEl)
+      .setName("计划模式")
+      .setDesc("开启后在列表区域显示固定分组“我的计划”（含人生计划、年度计划、月度计划）")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.planModeEnabled)
+          .onChange(async (value) => {
+            this.plugin.settings.planModeEnabled = value;
+            await this.plugin.saveSettings();
+            try {
+              const leaves = this.plugin.app.workspace.getLeavesOfType("obsidian-todo-view");
+              for (const leaf of leaves) {
+                const view = leaf.view as any;
+                if (typeof view?.applyPlanMode === "function") await view.applyPlanMode();
+              }
+            } catch (e) {
+              console.error("applyPlanMode failed", e);
+            }
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("四象限模式")
+      .setDesc("开启后自动创建4个四象限任务列表，创建任务时必须选择四象限标签")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.quadrantModeEnabled)
+          .onChange(async (value) => {
+            this.plugin.settings.quadrantModeEnabled = value;
+            await this.plugin.saveSettings();
+            try {
+              const leaves = this.plugin.app.workspace.getLeavesOfType("obsidian-todo-view");
+              for (const leaf of leaves) {
+                const view = leaf.view as any;
+                if (typeof view?.applyQuadrantMode === "function") await view.applyQuadrantMode();
+              }
+            } catch (e) {
+              console.error("applyQuadrantMode failed", e);
+            }
+          })
+      );
+
     containerEl.createEl("p", {
       text: "管理四象限标签和领域标签。预置标签不可删除，自定义标签可编辑和删除。",
       cls: "setting-item-description",

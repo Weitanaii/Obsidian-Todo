@@ -114,6 +114,7 @@ export class StorageService {
         logger.debug("Written:", path);
       } catch (e) {
         logger.error("Failed to write:", path, e);
+        throw e;
       }
     });
 

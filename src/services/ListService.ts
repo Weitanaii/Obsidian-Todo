@@ -123,11 +123,26 @@ export class ListService {
     }
     this.lists = this.lists.filter((l) => l.id !== id);
     await this.save();
+
+    // Readback verification: ensure file on disk matches memory
+    try {
+      this.storage.clearCache();
+      const store = await this.storage.read<ListStore>(STORE_FILENAME);
+      if (store && store.lists.some((l) => l.id === id)) {
+        logger.error("Readback verification failed: deleted list still in file, retrying write");
+        await this.save();
+      }
+    } catch (e) {
+      logger.error("Readback verification error:", e);
+    }
+
     logger.info("List deleted:", list.name);
     return true;
   }
 
   
+  
+
   private async save(): Promise<void> {
     const store: ListStore = { lists: this.lists };
     await this.storage.write(STORE_FILENAME, store);

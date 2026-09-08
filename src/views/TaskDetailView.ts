@@ -348,6 +348,9 @@ export class TaskDetailView {
   private async saveChanges(changes: Partial<Task>): Promise<void> {
     const taskId = this.taskId;
     if (!taskId) return;
+
+    // Quadrant mode: no listId auto-classification needed (aggregated view, tasks stay in original list)
+
     const p = this.plugin.taskService.update(taskId, changes).then((updated) => {
       if (updated && this.taskId === taskId) this.applyValues(updated);
       if (this.pendingSave === p) this.pendingSave = null;
