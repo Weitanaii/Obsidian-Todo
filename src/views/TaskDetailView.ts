@@ -17,16 +17,21 @@ export class TaskDetailView {
   private pendingSave: Promise<void> | null = null;
   private onTaskUpdated?: (taskId: string) => void;
   private onClose?: () => void;
+  private onNavigateToTask?: (taskId: string) => void;
+  private historyStack: { taskId: string; title: string }[] = [];
 
-  constructor(app: App, plugin: TodoPluginLike, root: HTMLElement, onTaskUpdated?: (taskId: string) => void, onClose?: () => void) {
+  constructor(app: App, plugin: TodoPluginLike, root: HTMLElement, onTaskUpdated?: (taskId: string) => void, onClose?: () => void, onNavigateToTask?: (taskId: string) => void) {
     this.app = app;
     this.plugin = plugin;
     this.root = root;
     this.onTaskUpdated = onTaskUpdated;
     this.onClose = onClose;
+    this.onNavigateToTask = onNavigateToTask;
     this.root.addClass("todo-detail-panel");
     this.renderEmpty();
   }
+
+  clearHistory(): void { this.historyStack = []; }
 
   isActive(): boolean { return this.taskId !== null; }
   getTaskId(): string | null { return this.taskId; }
@@ -61,10 +66,22 @@ export class TaskDetailView {
     this.root.empty();
     this.root.addClass("todo-detail-active");    // --- Header ---
     const header = this.root.createDiv({ cls: "todo-detail-header" });
-    const headerLeft = header.createDiv({ cls: "todo-detail-header-left" });
+    // Back button (only when navigation history exists)
+    if (this.historyStack.length > 0) {
+      const backBtn = header.createDiv({ cls: "todo-detail-back" });
+      const backIcon = backBtn.createSpan({ cls: "todo-detail-back-icon" });
+      setIcon(backIcon, "arrow-left");
+      const prev = this.historyStack[this.historyStack.length - 1];
+      backBtn.createSpan({ cls: "todo-detail-back-title", text: prev.title || "\u8fd4\u56de" });
+      backBtn.addEventListener("click", () => {
+        const entry = this.historyStack.pop();
+        if (entry) this.onNavigateToTask?.(entry.taskId);
+      });
+    }
     const closeBtn = header.createEl("button", { cls: "todo-detail-close" });
     setIcon(closeBtn, "x");
     closeBtn.addEventListener("click", () => {
+      this.historyStack = [];
       this.plugin.settings.selectedTaskId = null;
       void this.plugin.saveSettings();
       this.close();
@@ -271,9 +288,12 @@ export class TaskDetailView {
       const item = section.createDiv({ cls: "todo-relation-item" });
       const itemTitle = item.createSpan({ cls: "todo-relation-item-title", text: pt.title || "未命命" });
       itemTitle.addEventListener("click", () => {
-        this.plugin.settings.selectedTaskId = pt.id;
-        void this.plugin.saveSettings();
-        this.open(pt.id);
+        if (this.taskId) {
+          const cur = this.getTask();
+          this.historyStack.push({ taskId: this.taskId, title: cur?.title || "" });
+          if (this.historyStack.length > 5) this.historyStack.shift();
+        }
+        this.onNavigateToTask?.(pt.id);
       });
       const removeBtn = item.createSpan({ cls: "todo-relation-item-remove" });
       setIcon(removeBtn, "x");
@@ -314,9 +334,12 @@ export class TaskDetailView {
       });
       const itemTitle = item.createSpan({ cls: "todo-relation-item-title" + (child.isCompleted ? " completed" : ""), text: child.title || "未命命" });
       itemTitle.addEventListener("click", () => {
-        this.plugin.settings.selectedTaskId = child.id;
-        void this.plugin.saveSettings();
-        this.open(child.id);
+        if (this.taskId) {
+          const cur = this.getTask();
+          this.historyStack.push({ taskId: this.taskId, title: cur?.title || "" });
+          if (this.historyStack.length > 5) this.historyStack.shift();
+        }
+        this.onNavigateToTask?.(child.id);
       });
       const removeBtn = item.createSpan({ cls: "todo-relation-item-remove" });
       setIcon(removeBtn, "x");

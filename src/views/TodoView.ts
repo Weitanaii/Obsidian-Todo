@@ -93,7 +93,7 @@ class PromptModal extends Modal {
 import { App, ItemView, Menu, Modal, Notice, setIcon, WorkspaceLeaf } from "obsidian";
 import type ObsidianTodoPlugin from "../../main";
 import { Task, MyDayGroup, PlanKind } from "../models/Task";
-import { currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent } from "../utils/period";
+import { currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent, getParentPeriodKey } from "../utils/period";
 import { TaskDetailView } from "./TaskDetailView";
 import { sortTasks, getMyDayGroupFromTime } from "../utils/sort";
 import type { SortConfig, SortField, SortDirection } from "../utils/sort";
@@ -346,6 +346,8 @@ export class TodoView extends ItemView {
     }, () => {
       const layout = this.containerEl.querySelector(".todo-layout");
       if (layout) layout.removeClass("todo-layout-detail-open");
+    }, (targetId) => {
+      void this.navigateToTask(targetId);
     });
 
     this.plugin.settings.selectedTaskId = null;
@@ -1046,6 +1048,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     });
 
     row.addEventListener("click", async () => {
+      this.detailView.clearHistory();
       this.plugin.settings.selectedTaskId = task.id;
       await this.plugin.saveSettings();
       this.detailView.open(task.id);
@@ -1261,6 +1264,69 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     await this.renderPlanView(kind);
   }
 
+  /** Navigate to a task: switch plan view + highlight + scroll + open detail */
+  async navigateToTask(taskId: string): Promise<void> {
+    const task = this.plugin.taskService.getAll().find((t) => t.id === taskId);
+    if (!task) return;
+
+    // Switch navigation to the target plan/list view
+    if (task.planKind) {
+      await this.activatePlan(task.planKind);
+      // Expand the correct parent group + sub-group for the target task
+      this.expandPlanGroupForTask(task);
+    } else {
+      // Non-plan task: navigate to its list
+      const listId = task.listId;
+      if (listId) {
+        await this.activateList(listId);
+      }
+    }
+
+    // Highlight and select the target task
+    this.plugin.settings.selectedTaskId = taskId;
+    await this.plugin.saveSettings();
+    this.highlightSelectedTask(taskId);
+    this.scrollTaskIntoView(taskId);
+
+    // Open detail panel
+    this.detailView.open(taskId);
+    const layout = this.containerEl.querySelector(".todo-layout");
+    if (layout) layout.addClass("todo-layout-detail-open");
+  }
+
+  /** Expand parent group and sub-group to reveal a target task in plan view */
+  private expandPlanGroupForTask(task: Task): void {
+    if (!task.planPeriodKey) return;
+
+    // Expand the body that directly matches the task's period key
+    const directBody = this.taskListEl?.querySelector(`[data-period-key="${task.planPeriodKey}"]`) as HTMLElement | null;
+    if (directBody) {
+      directBody.style.display = "";
+      const arrow = directBody.parentElement?.querySelector(".todo-plan-group-arrow");
+      if (arrow) arrow.removeClass("collapsed");
+    }
+
+    // If the plan view has sub-periods, also expand the parent group containing this task
+    const subKind: PlanKind | null = this.activePlanKind === "year" ? "quarter" : this.activePlanKind === "month" ? "week" : null;
+    if (subKind && task.planPeriodKey) {
+      const parentKey = getParentPeriodKey(subKind, task.planPeriodKey);
+      if (parentKey) {
+        const parentBody = this.taskListEl?.querySelector(`[data-period-key="${parentKey}"]`) as HTMLElement | null;
+        if (parentBody) {
+          parentBody.style.display = "";
+          const parentArrow = parentBody.parentElement?.querySelector(".todo-plan-group-arrow");
+          if (parentArrow) parentArrow.removeClass("collapsed");
+        }
+      }
+    }
+  }
+
+  /** Scroll a task row into the visible area of the task list */
+  scrollTaskIntoView(taskId: string): void {
+    const el = this.taskListEl?.querySelector(`[data-task-id="${taskId}"]`) as HTMLElement | null;
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
   private async renderPlanView(kind: PlanKind): Promise<void> {
     this.taskListEl.empty();
     const ts = this.plugin.taskService;
@@ -1286,6 +1352,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const addBtn = headerEl.createSpan({ cls: "todo-plan-add-btn", text: "+" });
       addBtn.title = "\u65b0\u5efa\u4efb\u52a1";
       const bodyEl = groupEl.createDiv({ cls: "todo-plan-group-body" });
+      bodyEl.dataset.periodKey = pk;
       if (!isCurrent) bodyEl.style.display = "none";
       // Render parent tasks
       for (const task of parentTasks) {
@@ -1315,6 +1382,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           const subAddBtn = subHeaderEl.createSpan({ cls: "todo-plan-add-btn", text: "+" });
           subAddBtn.title = "\u65b0\u5efa\u4efb\u52a1";
           const subBodyEl = subGroupEl.createDiv({ cls: "todo-plan-group-body" });
+          subBodyEl.dataset.periodKey = sk;
           if (!isCurSub) subBodyEl.style.display = "none";
           for (const task of subTasks) {
             this.renderTaskRow(subBodyEl, task, "plan");

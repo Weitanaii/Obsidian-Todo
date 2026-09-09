@@ -500,7 +500,6 @@
 .todo-detail-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 8px 14px;
   flex-shrink: 0;
 }
@@ -514,6 +513,7 @@
 .todo-detail-header .todo-detail-close {
   all: unset;
   display: inline-flex;
+  margin-left: auto;
   align-items: center;
   justify-content: center;
   width: 28px;
@@ -525,6 +525,39 @@
 .todo-detail-header .todo-detail-close:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
+}
+
+.todo-detail-back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 18px;
+  cursor: pointer;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.todo-detail-back:hover .todo-detail-back-title {
+  color: var(--text-normal);
+}
+.todo-detail-back-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.todo-detail-back-icon svg {
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+}
+.todo-detail-back-title {
+  font-size: 13px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .todo-detail-title-row {
