@@ -247,12 +247,97 @@ export class TaskDetailView {
     this.relatedEl.empty();
     this.renderRelatedSection(this.relatedEl, task);
   }
+
+  private createParentRow(parent: HTMLElement, task: Task): void {
+    const ts = this.plugin.taskService;
+    const pt = ts.getParentOf(task.id);
+    this.createPropertyRow(parent, task, {
+      icon: "git-branch",
+      unsetText: "\u9009\u62e9\u7236\u4efb\u52a1",
+      isSet: !!pt,
+      displayText: pt ? pt.title || "\u672a\u547d\u540d" : "",
+      onClick: () => {
+        if (pt) {
+          this.plugin.settings.selectedTaskId = pt.id;
+          void this.plugin.saveSettings();
+          this.open(pt.id);
+        } else {
+          const exclude = this.getDescendantIds(task.id);
+          exclude.push(task.id);
+          new ParentPickerModal(this.app, ts, exclude, (parentId) => {
+            void this.saveChanges({ parentId });
+          }).open();
+        }
+      },
+      onClear: () => { void this.saveChanges({ parentId: undefined }); },
+    });
+  }
+
+  private createChildrenRows(parent: HTMLElement, task: Task): void {
+    const ts = this.plugin.taskService;
+    const children = ts.getChildrenOf(task.id);
+    for (const child of children) {
+      const row = parent.createDiv({ cls: "todo-prop-row" });
+      const cb = row.createDiv({ cls: "todo-prop-icon" });
+      cb.textContent = child.isCompleted ? "\u2713" : "";
+      cb.style.cursor = "pointer";
+      if (child.isCompleted) { cb.style.color = "var(--interactive-accent)"; }
+      cb.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        if (child.isCompleted) { await ts.uncomplete(child.id); } else { await ts.complete(child.id); }
+        this.onTaskUpdated?.(task.id);
+      });
+      const text = row.createDiv({ cls: "todo-prop-text" + (child.isCompleted ? "" : " is-set") });
+      text.textContent = child.title || "\u672a\u547d\u540d";
+      if (child.isCompleted) text.style.textDecoration = "line-through";
+      text.addEventListener("click", () => {
+        this.plugin.settings.selectedTaskId = child.id;
+        void this.plugin.saveSettings();
+        this.open(child.id);
+      });
+    }
+  }
+
+  private createAddChildRow(parent: HTMLElement, task: Task): void {
+    const row = parent.createDiv({ cls: "todo-prop-row" });
+    const icon = row.createDiv({ cls: "todo-prop-icon" });
+    setIcon(icon, "plus");
+    const text = row.createDiv({ cls: "todo-prop-text" });
+    text.textContent = "\u9009\u62e9\u5b50\u4efb\u52a1";
+    text.addEventListener("click", () => {
+      const exclude = this.getAncestorIds(task.id);
+      exclude.push(task.id);
+      new ParentPickerModal(this.app, this.plugin.taskService, exclude, (childId) => {
+        void this.plugin.taskService.update(childId, { parentId: task.id });
+        this.onTaskUpdated?.(task.id);
+      }).open();
+    });
+  }
+
+  private getAncestorIds(taskId: string): string[] {
+    const parent = this.plugin.taskService.getParentOf(taskId);
+    if (!parent) return [];
+    return [parent.id, ...this.getAncestorIds(parent.id)];
+  }
+
+    private getDescendantIds(taskId: string): string[] {
+    const children = this.plugin.taskService.getChildrenOf(taskId);
+    let ids: string[] = [];
+    for (const c of children) {
+      ids.push(c.id);
+      ids = ids.concat(this.getDescendantIds(c.id));
+    }
+    return ids;
+  }
   private renderPropertyRows(container: HTMLElement, task: Task): void {
     this.createMyDayRow(container, task);
     this.createStartDateRow(container, task);
     this.createDueDateRow(container, task);
     this.createRecurrenceRow(container, task);
     this.createTagRow(container, task);
+    this.createParentRow(container, task);
+    this.createChildrenRows(container, task);
+    this.createAddChildRow(container, task);
   }
 
   private renderRelatedSection(container: HTMLElement, task: Task): void {
@@ -293,7 +378,7 @@ export class TaskDetailView {
     const titleRow = container.createDiv({ cls: "todo-related-title-row" });
     const titleIcon = titleRow.createDiv({ cls: "todo-prop-icon" });
     setIcon(titleIcon, "link");
-    const labelText = totalCount > 0 ? "关联 (" + totalCount + ")" : "关联";
+    const labelText = totalCount > 0 ? "关联文件 (" + totalCount + ")" : "关联文件";
     titleRow.createSpan({ cls: "todo-related-label", text: labelText });
 
     if (totalCount > 0) {
@@ -662,3 +747,50 @@ class TagPickerModal extends Modal {
   onClose(): void { this.contentEl.empty(); }
 }
 
+
+class ParentPickerModal extends Modal {
+  private ts: any;
+  private excludeIds: string[];
+  private onSelect: (id: string) => void;
+
+  constructor(app: App, ts: any, excludeIds: string[], onSelect: (id: string) => void) {
+    super(app);
+    this.ts = ts;
+    this.excludeIds = excludeIds;
+    this.onSelect = onSelect;
+  }
+
+  onOpen(): void {
+    this.contentEl.addClass("todo-parent-picker");
+    this.contentEl.createDiv({ cls: "todo-parent-picker-title", text: "\u9009\u62e9\u7236\u4efb\u52a1" });
+    const searchInput = this.contentEl.createEl("input", { cls: "todo-parent-picker-search", attr: { type: "text", placeholder: "\u641c\u7d22\u4efb\u52a1..." } }) as HTMLInputElement;
+    const listEl = this.contentEl.createDiv({ cls: "todo-parent-picker-list" });
+    const renderList = (filter: string) => {
+      listEl.empty();
+      const all = this.ts.getAll().filter((t: any) => !this.excludeIds.includes(t.id));
+      const lower = filter.toLowerCase();
+      const matched = filter ? all.filter((t: any) => (t.title || "").toLowerCase().includes(lower)) : all;
+      const shown = matched.slice(0, 30);
+      if (shown.length === 0) {
+        listEl.createDiv({ cls: "todo-parent-picker-empty", text: "\u65e0\u5339\u914d\u4efb\u52a1" });
+        return;
+      }
+      for (const t of shown) {
+        const item = listEl.createDiv({ cls: "todo-parent-picker-item" });
+        item.createSpan({ cls: "todo-parent-picker-item-title", text: t.title || "\u672a\u547d\u540d" });
+        if (t.planKind) {
+          item.createSpan({ cls: "todo-parent-picker-item-badge", text: t.planKind });
+        }
+        item.addEventListener("click", () => {
+          this.onSelect(t.id);
+          this.close();
+        });
+      }
+    };
+    searchInput.addEventListener("input", () => renderList(searchInput.value));
+    renderList("");
+    window.setTimeout(() => searchInput.focus(), 30);
+  }
+
+  onClose(): void { this.contentEl.empty(); }
+}

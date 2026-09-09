@@ -1486,7 +1486,6 @@
 /* ===== Navigation Groups (T-601) ===== */
 
 .todo-nav-group {
-  margin-bottom: 4px;
 }
 
 .todo-nav-group-header {
@@ -1580,7 +1579,6 @@
 }
 .todo-plan-group,
 .todo-quadrant-group {
-  margin-bottom: 0;
 }
 
 
@@ -1591,4 +1589,261 @@
   border-radius: var(--radius-s);
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* ===== Plan View (T-609) ===== */
+.todo-plan-group {
+}
+.todo-plan-group > .todo-nav-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: var(--radius-s);
+  color: var(--text-normal);
+}
+.todo-plan-group > .todo-nav-group-header:hover {
+  background: var(--background-modifier-hover);
+}
+.todo-plan-group > .todo-nav-group-header:hover .todo-plan-add-btn {
+  display: inline-flex;
+}
+.todo-quadrant-group > .todo-nav-group-header {
+  padding: 6px 12px;
+}
+.todo-quadrant-group > .todo-nav-group-header:hover {
+  background: var(--background-modifier-hover);
+}
+.todo-plan-group-label {
+  flex: 1;
+}
+.todo-plan-group-count {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-weight: normal;
+}
+.todo-plan-group-arrow {
+  font-size: 10px;
+  transition: transform 0.15s;
+}
+.todo-plan-group-arrow.collapsed {
+  transform: rotate(-90deg);
+}
+.todo-plan-add-btn {
+  display: none;
+  font-size: 16px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: var(--radius-s);
+  line-height: 1;
+}
+.todo-plan-add-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+.todo-plan-group-body {
+  padding: 0;
+}
+.todo-plan-subgroup {
+  margin: 0;
+}
+.todo-plan-subgroup-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 32px;
+  cursor: pointer;
+  border-radius: var(--radius-s);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.todo-plan-subgroup-header:hover {
+  background: var(--background-modifier-hover);
+}
+.todo-plan-subgroup-header:hover .todo-plan-add-btn {
+  display: inline-flex;
+}
+.todo-plan-subgroup-label {
+  flex: 1;
+}
+.todo-plan-inline-input {
+  padding: 4px 12px 4px 40px;
+}
+.todo-plan-inline-input input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--background-modifier-border);
+  outline: none;
+  font-size: var(--font-ui-normal);
+  padding: 6px 0;
+  color: var(--text-normal);
+}
+.todo-plan-inline-input input::placeholder {
+  color: var(--text-faint);
+}
+.todo-plan-group .todo-task-item {
+  padding-left: 40px;
+}
+.todo-plan-subgroup .todo-task-item {
+  padding-left: 52px;
+}
+
+/* ===== Relation Section (T-609 parent/child) ===== */
+.todo-detail-relation {
+  padding: 0 14px 8px;
+}
+.todo-detail-relation .todo-detail-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.todo-relation-parent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.todo-relation-label {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+.todo-relation-link {
+  color: var(--text-accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.todo-relation-link:hover {
+  color: var(--text-accent-hover);
+}
+.todo-relation-remove {
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  border-radius: var(--radius-s);
+}
+.todo-relation-remove:hover {
+  color: var(--text-error);
+  background: var(--background-modifier-hover);
+}
+.todo-relation-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+.todo-relation-add-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.todo-relation-child-header {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+.todo-relation-child {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 13px;
+}
+.todo-relation-child-check {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--text-faint);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.todo-relation-child-check.checked {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+.todo-relation-child-title {
+  cursor: pointer;
+  color: var(--text-normal);
+}
+.todo-relation-child-title:hover {
+  text-decoration: underline;
+}
+.todo-relation-child-title.completed {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+/* ===== Parent Picker Modal ===== */
+.todo-parent-picker {
+  padding: 16px;
+}
+.todo-parent-picker-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.todo-parent-picker-search {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  font-size: 13px;
+  background: transparent;
+  color: var(--text-normal);
+  margin-bottom: 8px;
+}
+.todo-parent-picker-search:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+.todo-parent-picker-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+.todo-parent-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: var(--radius-s);
+  font-size: 13px;
+}
+.todo-parent-picker-item:hover {
+  background: var(--background-modifier-hover);
+}
+.todo-parent-picker-item-title {
+  flex: 1;
+}
+.todo-parent-picker-item-badge {
+  font-size: 10px;
+  color: var(--text-faint);
+  background: var(--background-modifier-border);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+.todo-parent-picker-empty {
+  text-align: center;
+  padding: 16px;
+  color: var(--text-faint);
+  font-size: 13px;
 }

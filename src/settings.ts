@@ -1,6 +1,7 @@
 import { App, Modal, PluginSettingTab, setIcon, Setting } from "obsidian";
 import type ObsidianTodoPlugin from "../main";
 import type { ViewNav } from "./views/TodoView";
+import type { PlanKind } from "./models/Task";
 import { logger, LogLevel } from "./utils/logger";
 import type { SortConfig } from "./utils/sort";
 
@@ -13,6 +14,7 @@ export interface ObsidianTodoSettings {
   completedCollapsed: boolean;
   selectedTaskId: string | null;
   selectedQuadrant: string | null;
+  activePlanKind: PlanKind | null;
   sortConfig: SortConfig;
 }
 
@@ -29,6 +31,7 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
     secondary: { field: "createdAt", direction: "desc" },
   },
   selectedQuadrant: null,
+  activePlanKind: null,
 };
 
 const ICON_OPTIONS = [

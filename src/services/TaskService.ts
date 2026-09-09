@@ -1,5 +1,5 @@
 import { Vault } from "obsidian";
-import { Task, createTask } from "../models/Task";
+import { Task, PlanKind, createTask } from "../models/Task";
 import { StorageService } from "./StorageService";
 import { logger } from "../utils/logger";
 
@@ -11,17 +11,13 @@ const DB_FILENAME = "database.json";
 
 export class TaskService {
   private storage: StorageService;
-  
   private tasks: Task[] = [];
-  
   private loaded = false;
 
-  
   constructor(vault: Vault, folder: string) {
     this.storage = new StorageService(vault, folder);
   }
 
-  
   async init(): Promise<void> {
     await this.storage.init();
     const db = await this.storage.read<TaskDatabase>(DB_FILENAME);
@@ -29,43 +25,59 @@ export class TaskService {
       this.tasks = db.tasks;
       logger.info("Loaded", this.tasks.length, "tasks");
     } else {
-      
       this.tasks = [];
       logger.info("No existing tasks, starting fresh");
     }
     this.loaded = true;
   }
 
-  
   getAll(): Task[] {
     this.ensureLoaded();
     return [...this.tasks];
   }
 
-  
   getById(id: string): Task | undefined {
     this.ensureLoaded();
     return this.tasks.find((t) => t.id === id);
   }
 
-  
   getByListId(listId: string): Task[] {
     this.ensureLoaded();
     return this.tasks.filter((t) => t.listId === listId);
-  }
+  }
 
   getMyDay(): Task[] {
     this.ensureLoaded();
     return this.tasks.filter((t) => t.isMyDay);
   }
 
-  
   getInbox(defaultListId: string): Task[] {
     this.ensureLoaded();
     return this.tasks.filter((t) => t.listId === defaultListId);
-  }
+  }
 
-  
+  getByPlanKindAndPeriod(kind: PlanKind, periodKey: string): Task[] {
+    this.ensureLoaded();
+    return this.tasks.filter((t) => t.planKind === kind && t.planPeriodKey === periodKey);
+  }
+
+  getChildrenOf(parentId: string): Task[] {
+    this.ensureLoaded();
+    return this.tasks.filter((t) => t.parentId === parentId);
+  }
+
+  countChildren(parentId: string): number {
+    this.ensureLoaded();
+    return this.tasks.filter((t) => t.parentId === parentId).length;
+  }
+
+  getParentOf(taskId: string): Task | undefined {
+    this.ensureLoaded();
+    const task = this.tasks.find((t) => t.id === taskId);
+    if (!task || !task.parentId) return undefined;
+    return this.tasks.find((t) => t.id === task.parentId);
+  }
+
   async create(fields: Partial<Task>): Promise<Task> {
     this.ensureLoaded();
     const task = createTask(fields);
@@ -75,7 +87,6 @@ export class TaskService {
     return task;
   }
 
-  
   async update(id: string, changes: Partial<Task>): Promise<Task | null> {
     this.ensureLoaded();
     const index = this.tasks.findIndex((t) => t.id === id);
@@ -83,7 +94,6 @@ export class TaskService {
       logger.warn("Task not found:", id);
       return null;
     }
-    
     this.tasks[index] = {
       ...this.tasks[index],
       ...changes,
@@ -94,7 +104,6 @@ export class TaskService {
     return this.tasks[index];
   }
 
-  
   async complete(id: string): Promise<Task | null> {
     return this.update(id, {
       isCompleted: true,
@@ -102,7 +111,6 @@ export class TaskService {
     });
   }
 
-  
   async uncomplete(id: string): Promise<Task | null> {
     return this.update(id, {
       isCompleted: false,
@@ -110,7 +118,6 @@ export class TaskService {
     });
   }
 
-  
   async delete(id: string): Promise<boolean> {
     this.ensureLoaded();
     const index = this.tasks.findIndex((t) => t.id === id);
@@ -118,21 +125,22 @@ export class TaskService {
       logger.warn("Task not found for delete:", id);
       return false;
     }
-    
     const removed = this.tasks.splice(index, 1)[0];
+    const children = this.tasks.filter((t) => t.parentId === id);
+    for (const child of children) {
+      await this.delete(child.id);
+    }
     await this.save();
     logger.info("Task deleted:", removed.title);
     return true;
-  }
+  }
 
-  
   private async save(): Promise<void> {
     const db: TaskDatabase = { tasks: this.tasks };
     await this.storage.backup(DB_FILENAME);
     await this.storage.write(DB_FILENAME, db);
   }
 
-  
   private ensureLoaded(): void {
     if (!this.loaded) {
       throw new Error("TaskService not initialized. Call init() first.");

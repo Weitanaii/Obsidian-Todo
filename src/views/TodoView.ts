@@ -92,12 +92,13 @@ class PromptModal extends Modal {
 }
 import { App, ItemView, Menu, Modal, Notice, setIcon, WorkspaceLeaf } from "obsidian";
 import type ObsidianTodoPlugin from "../../main";
-import { Task, MyDayGroup } from "../models/Task";
+import { Task, MyDayGroup, PlanKind } from "../models/Task";
+import { currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent } from "../utils/period";
 import { TaskDetailView } from "./TaskDetailView";
 import { sortTasks, getMyDayGroupFromTime } from "../utils/sort";
 import type { SortConfig, SortField, SortDirection } from "../utils/sort";
 
-export type ViewNav = "myday" | "all" | "inbox";
+export type ViewNav = "myday" | "all" | "inbox" | "plan";
 
 export const VIEW_TYPE_TODO = "obsidian-todo-view";
 
@@ -129,6 +130,10 @@ export interface TodoPluginLike {
     complete(id: string): Promise<Task | null>;
     uncomplete(id: string): Promise<Task | null>;
     delete(id: string): Promise<boolean>;
+    getByPlanKindAndPeriod(kind: PlanKind, periodKey: string): Task[];
+    getChildrenOf(parentId: string): Task[];
+    countChildren(parentId: string): number;
+    getParentOf(taskId: string): Task | undefined;
   };
   listService: {
     getActive(): { id: string; name: string; isDefault: boolean; groupId: string | null }[];
@@ -159,6 +164,7 @@ export interface TodoPluginLike {
     selectedTaskId: string | null;
     sortConfig: SortConfig;
     selectedQuadrant: string | null;
+    activePlanKind: PlanKind | null;
   };
   saveSettings(): Promise<void>;
     app?: App;
@@ -182,6 +188,7 @@ export class TodoView extends ItemView {
   private quadrantGroupCollapsed = true;
   private planGroupEl!: HTMLDivElement;
   private quadrantGroupEl!: HTMLDivElement;
+  private activePlanKind: PlanKind | null = null;
 
   constructor(leaf: WorkspaceLeaf, plugin: TodoPluginLike) {
     super(leaf);
@@ -240,15 +247,16 @@ export class TodoView extends ItemView {
     const planList = this.planGroupEl.createDiv({ cls: "todo-nav-group-list" });
     if (this.planGroupCollapsed) planList.style.display = "none";
     const planItems = [
-      { name: "\u4eba\u751f\u8ba1\u5212", color: "#9B59B6" },
-      { name: "\u5e74\u5ea6\u8ba1\u5212", color: "#4A90D9" },
-      { name: "\u6708\u5ea6\u8ba1\u5212", color: "#2ECC71" },
+      { name: "\u4eba\u751f\u8ba1\u5212", kind: "year" as PlanKind },
+      { name: "\u5e74\u5ea6\u8ba1\u5212", kind: "year" as PlanKind },
+      { name: "\u6708\u5ea6\u8ba1\u5212", kind: "month" as PlanKind },
     ];
     for (const pi of planItems) {
       const item = planList.createDiv({ cls: "todo-nav-item todo-plan-item" });
-      if (pi.color) item.style.borderLeft = "3px solid " + pi.color;
       item.createSpan({ cls: "todo-plan-name", text: pi.name });
-      item.addEventListener("click", () => new Notice("\u8ba1\u5212\u5217\u8868\u5360\u4f4d\uff08T-609 \u63a5\u5165\u4e2d\uff09"));
+      item.addEventListener("click", async () => {
+        await this.activatePlan(pi.kind);
+      });
     }
     planHeader.addEventListener("click", () => {
       this.planGroupCollapsed = !this.planGroupCollapsed;
@@ -271,7 +279,6 @@ export class TodoView extends ItemView {
     ];
     for (const qd of quadrantDefs) {
       const qItem = qList.createDiv({ cls: "todo-nav-item todo-quadrant-item" + (this.plugin.settings.selectedQuadrant === qd.key ? " active" : "") });
-      if (qd.color) qItem.style.borderLeft = "3px solid " + qd.color;
       qItem.createSpan({ cls: "todo-quadrant-name", text: qd.key });
       qItem.addEventListener("click", async () => {
         this.plugin.settings.selectedQuadrant = qd.key;
@@ -355,6 +362,19 @@ export class TodoView extends ItemView {
     this.closeDetail();
     this.plugin.settings.activeViewNav = nav;
     this.plugin.settings.selectedListId = null;
+    if (nav === "plan" && this.activePlanKind) {
+      this.sortBtnEl.style.display = "none";
+      this.quickContainerEl.style.display = "none";
+      await this.plugin.saveSettings();
+      await this.renderLists();
+      Object.entries(this.navEls).forEach(([, el]) => el.removeClass("active"));
+      this.taskListEl.empty();
+      await this.renderPlanView(this.activePlanKind);
+      return;
+    }
+    this.activePlanKind = null;
+    this.plugin.settings.activePlanKind = null;
+    this.sortBtnEl.style.display = "";
     await this.plugin.saveSettings();
 
     if (this.planContainerEl) {
@@ -735,6 +755,14 @@ export class TodoView extends ItemView {
   }
 
   private async renderTasks(view: ViewNav | "list"): Promise<void> {
+    if (view === "plan" && this.activePlanKind) {
+      this.sortBtnEl.style.display = "none";
+      this.quickContainerEl.style.display = "none";
+      await this.renderPlanView(this.activePlanKind);
+      return;
+    }
+    this.sortBtnEl.style.display = "";
+    this.quickContainerEl.style.display = this.plugin.settings.activeViewNav === "inbox" ? "none" : "";
     this.taskListEl.empty();
 
     
@@ -922,7 +950,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     });
   }
 
-  private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "all" | "inbox" | "list"): void {
+  private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "all" | "inbox" | "list" | "plan"): void {
     const row = container.createDiv({
       cls: `todo-task-item${task.isCompleted ? " completed" : ""}${task.isImportant ? " important-row" : ""}${this.plugin.settings.selectedTaskId === task.id ? " todo-task-selected" : ""}`,
     });
@@ -1033,7 +1061,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   }
 
   
-  private renderEmptyState(view: "myday" | "all" | "inbox" | "list" ): void {
+  private renderEmptyState(view: "myday" | "all" | "inbox" | "list" | "plan" ): void {
     const empty = this.taskListEl.createDiv({ cls: "todo-empty-state todo-guide" });
 
     if (view === "myday") {
@@ -1128,6 +1156,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
   private updateQuickPlaceholder(): void {
     const { activeViewNav, selectedListId } = this.plugin.settings;
+    if (activeViewNav === "plan") { this.quickContainerEl.style.display = "none"; return; }
     this.quickContainerEl.style.display = activeViewNav === "inbox" ? "none" : "";
     if (activeViewNav === "myday") {
       this.quickInputEl.placeholder = "添加任务到我的一天...";
@@ -1212,6 +1241,129 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
 
 
+  private async activatePlan(kind: PlanKind): Promise<void> {
+    this.closeDetail();
+    this.plugin.settings.activeViewNav = "plan";
+    this.plugin.settings.selectedListId = null;
+    this.plugin.settings.selectedQuadrant = null;
+    this.plugin.settings.activePlanKind = kind;
+    this.activePlanKind = kind;
+    await this.plugin.saveSettings();
+    Object.entries(this.navEls).forEach(([, el]) => el.removeClass("active"));
+    this.listItemsEl?.querySelectorAll<HTMLDivElement>(".todo-nav-item").forEach((el) => el.removeClass("active"));
+    const planListEl = this.planGroupEl?.querySelector(".todo-nav-group-list") as HTMLElement;
+    if (planListEl) planListEl.querySelectorAll(".todo-plan-item").forEach((el: Element, i: number) => {
+      el.toggleClass("active", (kind === "year" && i <= 1) || (kind === "month" && i === 2));
+    });
+    this.sortBtnEl.style.display = "none";
+    this.quickContainerEl.style.display = "none";
+    this.taskListEl.empty();
+    await this.renderPlanView(kind);
+  }
+
+  private async renderPlanView(kind: PlanKind): Promise<void> {
+    this.taskListEl.empty();
+    const ts = this.plugin.taskService;
+    // Lazy-generate current period
+    const curKey = currentPeriodKey(kind);
+    let curTasks = ts.getByPlanKindAndPeriod(kind, curKey);
+    if (curTasks.length === 0) {
+      await ts.create({ title: periodLabel(kind, curKey), planKind: kind, planPeriodKey: curKey });
+      curTasks = ts.getByPlanKindAndPeriod(kind, curKey);
+    }
+    // Collect all period keys
+    const allTasks = ts.getAll();
+    const planTasks = allTasks.filter((t) => t.planKind === kind && t.planPeriodKey);
+    const keySet = new Set<string>();
+    planTasks.forEach((t) => keySet.add(t.planPeriodKey!));
+    if (!keySet.has(curKey)) keySet.add(curKey);
+    const sortedKeys = periodKeySort(kind, Array.from(keySet));
+    // Sub-period config
+    const subKind: PlanKind | null = kind === "year" ? "quarter" : kind === "month" ? "week" : null;
+    const curKeyForSub = currentPeriodKey(subKind || "week");
+    for (const pk of sortedKeys) {
+      const parentTasks = ts.getByPlanKindAndPeriod(kind, pk);
+      const isCurrent = pk === curKey;
+      const groupEl = this.taskListEl.createDiv({ cls: "todo-plan-group" });
+      const headerEl = groupEl.createDiv({ cls: "todo-plan-group-header" });
+      const arrow = headerEl.createSpan({ cls: "todo-plan-group-arrow" + (isCurrent ? "" : " collapsed"), text: "\u25bc" });
+      headerEl.createSpan({ cls: "todo-plan-group-label", text: periodLabel(kind, pk) });
+      headerEl.createSpan({ cls: "todo-plan-group-count", text: String(parentTasks.length) });
+      const addBtn = headerEl.createSpan({ cls: "todo-plan-add-btn", text: "+" });
+      addBtn.title = "\u65b0\u5efa\u4efb\u52a1";
+      const bodyEl = groupEl.createDiv({ cls: "todo-plan-group-body" });
+      if (!isCurrent) bodyEl.style.display = "none";
+      // Render parent tasks
+      for (const task of parentTasks) {
+        this.renderTaskRow(bodyEl, task, "plan");
+      }
+      // Add inline input
+      this.setupPlanAddButton(addBtn, bodyEl, kind, pk);
+      // Toggle collapse
+      headerEl.addEventListener("click", (ev) => {
+        if ((ev.target as HTMLElement).closest(".todo-plan-add-btn")) return;
+        const collapsed = bodyEl.style.display === "none";
+        bodyEl.style.display = collapsed ? "" : "none";
+        arrow.toggleClass("collapsed", !collapsed);
+      });
+      // Sub-groups (quarter/week)
+      if (subKind) {
+        const subKeys = getSubPeriodKeysForParent(kind, pk);
+        const sortedSubKeys = periodKeySort(subKind, subKeys);
+        for (const sk of sortedSubKeys) {
+          const subTasks = ts.getByPlanKindAndPeriod(subKind, sk);
+          const isCurSub = sk === curKeyForSub;
+          const subGroupEl = bodyEl.createDiv({ cls: "todo-plan-subgroup" });
+          const subHeaderEl = subGroupEl.createDiv({ cls: "todo-plan-subgroup-header" });
+          const subArrow = subHeaderEl.createSpan({ cls: "todo-plan-group-arrow" + (isCurSub ? "" : " collapsed"), text: "\u25bc" });
+          subHeaderEl.createSpan({ cls: "todo-plan-subgroup-label", text: subGroupLabel(subKind, sk) });
+          subHeaderEl.createSpan({ cls: "todo-plan-group-count", text: String(subTasks.length) });
+          const subAddBtn = subHeaderEl.createSpan({ cls: "todo-plan-add-btn", text: "+" });
+          subAddBtn.title = "\u65b0\u5efa\u4efb\u52a1";
+          const subBodyEl = subGroupEl.createDiv({ cls: "todo-plan-group-body" });
+          if (!isCurSub) subBodyEl.style.display = "none";
+          for (const task of subTasks) {
+            this.renderTaskRow(subBodyEl, task, "plan");
+          }
+          this.setupPlanAddButton(subAddBtn, subBodyEl, subKind, sk);
+          subHeaderEl.addEventListener("click", (ev) => {
+            if ((ev.target as HTMLElement).closest(".todo-plan-add-btn")) return;
+            const collapsed = subBodyEl.style.display === "none";
+            subBodyEl.style.display = collapsed ? "" : "none";
+            subArrow.toggleClass("collapsed", !collapsed);
+          });
+        }
+      }
+    }
+  }
+
+  private setupPlanAddButton(btn: HTMLElement, bodyEl: HTMLElement, kind: PlanKind, periodKey: string): void {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      if (bodyEl.querySelector(".todo-plan-inline-input")) return;
+      const row = bodyEl.createDiv({ cls: "todo-plan-inline-input" });
+      const input = row.createEl("input", { attr: { placeholder: "\u8f93\u5165\u4efb\u52a1\u6807\u9898..." } });
+      window.setTimeout(() => input.focus(), 30);
+      let saved = false;
+      const save = async () => {
+        if (saved) return;
+        saved = true;
+        const title = input.value.trim();
+        if (title) {
+          await this.plugin.taskService.create({ title, planKind: kind, planPeriodKey: periodKey });
+          await this.renderPlanView(this.activePlanKind!);
+        } else {
+          row.remove();
+        }
+      };
+      input.addEventListener("keydown", async (ev) => {
+        if (ev.key === "Enter") { ev.preventDefault(); await save(); }
+        if (ev.key === "Escape") { ev.preventDefault(); saved = true; row.remove(); }
+      });
+      input.addEventListener("blur", () => { void save(); });
+    });
+  }
+
   private closeDetailIfTarget(taskId: string): void {
     if (this.detailView?.isActive() && this.detailView.getTaskId() === taskId) {
       this.closeDetail();
@@ -1239,7 +1391,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     if (layout) layout.removeClass("todo-layout-detail-open");
   }
 
-  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "inbox" | "list" ): void {
+  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "inbox" | "list" | "plan" ): void {
     const menu = new Menu();
 
     menu.addItem((item) =>
@@ -1335,6 +1487,11 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         .setTitle("删除任务")
         .setIcon("trash")
         .onClick(async () => {
+          const childCount = this.plugin.taskService.countChildren(task.id);
+          if (childCount > 0) {
+            const confirmed = await new ConfirmModal(this.app, "\u4efb\u52a1\u300c" + task.title + "\u300d\u6709 " + childCount + " \u4e2a\u5b50\u4efb\u52a1\uff0c\u5220\u9664\u540e\u5b50\u4efb\u52a1\u4e5f\u5c06\u88ab\u5220\u9664\u3002\u786e\u5b9a\u7ee7\u7eed\uff1f").openAndConfirm();
+            if (!confirmed) return;
+          }
           await this.plugin.taskService.delete(task.id);
           this.closeDetailIfTarget(task.id);
           await this.renderLists();
