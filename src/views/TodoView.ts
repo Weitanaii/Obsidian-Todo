@@ -1264,13 +1264,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   private async renderPlanView(kind: PlanKind): Promise<void> {
     this.taskListEl.empty();
     const ts = this.plugin.taskService;
-    // Lazy-generate current period
     const curKey = currentPeriodKey(kind);
-    let curTasks = ts.getByPlanKindAndPeriod(kind, curKey);
-    if (curTasks.length === 0) {
-      await ts.create({ title: periodLabel(kind, curKey), planKind: kind, planPeriodKey: curKey });
-      curTasks = ts.getByPlanKindAndPeriod(kind, curKey);
-    }
     // Collect all period keys
     const allTasks = ts.getAll();
     const planTasks = allTasks.filter((t) => t.planKind === kind && t.planPeriodKey);
@@ -1340,8 +1334,21 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   private setupPlanAddButton(btn: HTMLElement, bodyEl: HTMLElement, kind: PlanKind, periodKey: string): void {
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
+      if (bodyEl.style.display === "none") {
+        bodyEl.style.display = "";
+        const arrow = bodyEl.parentElement?.querySelector(".todo-plan-group-arrow");
+        if (arrow) arrow.removeClass("collapsed");
+      }
       if (bodyEl.querySelector(".todo-plan-inline-input")) return;
-      const row = bodyEl.createDiv({ cls: "todo-plan-inline-input" });
+      const row = document.createElement("div");
+      row.className = "todo-plan-inline-input";
+      const tasks = bodyEl.querySelectorAll(".todo-plan-group-body > .todo-task-item");
+      const lastTask = tasks.length > 0 ? tasks[tasks.length - 1] : null;
+      if (lastTask) {
+        lastTask.after(row);
+      } else {
+        bodyEl.prepend(row);
+      }
       const input = row.createEl("input", { attr: { placeholder: "\u8f93\u5165\u4efb\u52a1\u6807\u9898..." } });
       window.setTimeout(() => input.focus(), 30);
       let saved = false;

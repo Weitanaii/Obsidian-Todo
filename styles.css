@@ -1646,6 +1646,24 @@
 .todo-plan-group-body {
   padding: 0;
 }
+.todo-plan-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: var(--radius-s);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+.todo-plan-group-header:hover {
+  background: var(--background-modifier-hover);
+}
+.todo-plan-group-header:hover .todo-plan-add-btn {
+  display: inline-flex;
+}
+
 .todo-plan-subgroup {
   margin: 0;
 }
