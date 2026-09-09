@@ -29,6 +29,7 @@ export function currentPeriodKey(kind: PlanKind): string {
   const now = new Date();
   const y = now.getFullYear();
   switch (kind) {
+    case "life": return "";
     case "year": return String(y);
     case "quarter": return y + "-Q" + (Math.floor(now.getMonth() / 3) + 1);
     case "month": return y + "-" + String(now.getMonth() + 1).padStart(2, "0");
@@ -38,6 +39,7 @@ export function currentPeriodKey(kind: PlanKind): string {
 
 export function periodLabel(kind: PlanKind, key: string): string {
   switch (kind) {
+    case "life": return "\u4eba\u751f\u76ee\u6807";
     case "year": return key + "\u5e74\u8ba1\u5212";
     case "quarter": {
       const parts = key.split("-Q");
@@ -120,4 +122,40 @@ export function getSubPeriodKeysForParent(kind: PlanKind, parentKey: string): st
     return Array.from(weekSet).sort();
   }
   return [];
+}
+
+export function getPeriodKeyForDate(date: Date, kind: PlanKind): string {
+  const y = date.getFullYear();
+  switch (kind) {
+    case "year": return String(y);
+    case "quarter": return y + "-Q" + (Math.floor(date.getMonth() / 3) + 1);
+    case "month": return y + "-" + String(date.getMonth() + 1).padStart(2, "0");
+    case "week": return getISOWeekYear(date) + "-W" + String(getISOWeekNumber(date)).padStart(2, "0");
+    default: return "";
+  }
+}
+
+export function getParentPeriodKey(childKind: PlanKind, childKey: string): string {
+  switch (childKind) {
+    case "week": {
+      const parts = childKey.split("-W");
+      const wy = parseInt(parts[0], 10);
+      const wn = parseInt(parts[1], 10);
+      const jan4 = new Date(wy, 0, 4);
+      const dow = jan4.getDay() || 7;
+      const weekStart = new Date(wy, 0, 4 - dow + 1 + (wn - 1) * 7);
+      return weekStart.getFullYear() + "-" + String(weekStart.getMonth() + 1).padStart(2, "0");
+    }
+    case "month": {
+      const mp = childKey.split("-");
+      const m = parseInt(mp[1], 10);
+      const q = Math.floor((m - 1) / 3) + 1;
+      return mp[0] + "-Q" + q;
+    }
+    case "quarter": {
+      return childKey.split("-Q")[0];
+    }
+    case "year": return "";
+    default: return "";
+  }
 }

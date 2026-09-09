@@ -1,8 +1,9 @@
 import { App, Modal, Notice, setIcon, TFile, TFolder } from "obsidian";
 import type { TodoPluginLike } from "./TodoView";
-import type { Task } from "../models/Task";
+import type { Task, PlanKind } from "../models/Task";
 import type { DomainTag } from "../models/Tag";
 import { ResourceSuggestModal } from "../ui/ResourceSuggestModal";
+import { getPeriodKeyForDate, getParentPeriodKey } from "../utils/period";
 
 export class TaskDetailView {
   private app: App;
@@ -248,72 +249,83 @@ export class TaskDetailView {
     this.renderRelatedSection(this.relatedEl, task);
   }
 
-  private createParentRow(parent: HTMLElement, task: Task): void {
+
+  private createParentSection(parent: HTMLElement, task: Task): void {
     const ts = this.plugin.taskService;
     const pt = ts.getParentOf(task.id);
-    this.createPropertyRow(parent, task, {
-      icon: "git-branch",
-      unsetText: "\u9009\u62e9\u7236\u4efb\u52a1",
-      isSet: !!pt,
-      displayText: pt ? pt.title || "\u672a\u547d\u540d" : "",
-      onClick: () => {
-        if (pt) {
-          this.plugin.settings.selectedTaskId = pt.id;
-          void this.plugin.saveSettings();
-          this.open(pt.id);
-        } else {
-          const exclude = this.getDescendantIds(task.id);
-          exclude.push(task.id);
-          new ParentPickerModal(this.app, ts, exclude, (parentId) => {
-            void this.saveChanges({ parentId });
-          }).open();
-        }
-      },
-      onClear: () => { void this.saveChanges({ parentId: undefined }); },
+    const section = parent.createDiv({ cls: "todo-relation-section" });
+    const titleRow = section.createDiv({ cls: "todo-relation-section-title" });
+    const parentIcon = titleRow.createSpan({ cls: "todo-relation-icon" });
+    setIcon(parentIcon, "arrow-up-from-dot");
+    titleRow.createSpan({ cls: "todo-relation-label", text: "父任务" });
+    const addBtn = titleRow.createSpan({ cls: "todo-relation-add-btn" });
+    setIcon(addBtn, "plus");
+    addBtn.addEventListener("click", () => {
+      const exclude = this.getDescendantIds(task.id);
+      exclude.push(task.id);
+      new ParentPickerModal(this.app, ts, exclude, (parentId) => {
+        void this.saveChanges({ parentId });
+      }, "parent", task).open();
     });
+    if (pt) {
+      const item = section.createDiv({ cls: "todo-relation-item" });
+      const itemTitle = item.createSpan({ cls: "todo-relation-item-title", text: pt.title || "未命命" });
+      itemTitle.addEventListener("click", () => {
+        this.plugin.settings.selectedTaskId = pt.id;
+        void this.plugin.saveSettings();
+        this.open(pt.id);
+      });
+      const removeBtn = item.createSpan({ cls: "todo-relation-item-remove" });
+      setIcon(removeBtn, "x");
+      removeBtn.addEventListener("click", () => {
+        void this.saveChanges({ parentId: undefined });
+      });
+    }
   }
 
-  private createChildrenRows(parent: HTMLElement, task: Task): void {
+  private createChildrenSection(parent: HTMLElement, task: Task): void {
     const ts = this.plugin.taskService;
     const children = ts.getChildrenOf(task.id);
+    const section = parent.createDiv({ cls: "todo-relation-section" });
+    const titleRow = section.createDiv({ cls: "todo-relation-section-title" });
+    const childIcon = titleRow.createSpan({ cls: "todo-relation-icon" });
+    setIcon(childIcon, "list-checks");
+    titleRow.createSpan({ cls: "todo-relation-label", text: "子任务 (" + children.length + ")" });
+    const addBtn = titleRow.createSpan({ cls: "todo-relation-add-btn" });
+    setIcon(addBtn, "plus");
+    addBtn.addEventListener("click", () => {
+      const exclude = this.getAncestorIds(task.id);
+      exclude.push(task.id);
+      new ParentPickerModal(this.app, ts, exclude, (childId) => {
+        void ts.update(childId, { parentId: task.id });
+        this.onTaskUpdated?.(task.id);
+      }, "child", task).open();
+    });
     for (const child of children) {
-      const row = parent.createDiv({ cls: "todo-prop-row" });
-      const cb = row.createDiv({ cls: "todo-prop-icon" });
-      cb.textContent = child.isCompleted ? "\u2713" : "";
+      const item = section.createDiv({ cls: "todo-relation-item" });
+      const cb = item.createSpan({ cls: "todo-relation-item-cb" });
+      cb.textContent = child.isCompleted ? "✓" : "";
       cb.style.cursor = "pointer";
-      if (child.isCompleted) { cb.style.color = "var(--interactive-accent)"; }
+      if (child.isCompleted) cb.style.color = "var(--interactive-accent)";
       cb.addEventListener("click", async (ev) => {
         ev.stopPropagation();
         if (child.isCompleted) { await ts.uncomplete(child.id); } else { await ts.complete(child.id); }
         this.onTaskUpdated?.(task.id);
       });
-      const text = row.createDiv({ cls: "todo-prop-text" + (child.isCompleted ? "" : " is-set") });
-      text.textContent = child.title || "\u672a\u547d\u540d";
-      if (child.isCompleted) text.style.textDecoration = "line-through";
-      text.addEventListener("click", () => {
+      const itemTitle = item.createSpan({ cls: "todo-relation-item-title" + (child.isCompleted ? " completed" : ""), text: child.title || "未命命" });
+      itemTitle.addEventListener("click", () => {
         this.plugin.settings.selectedTaskId = child.id;
         void this.plugin.saveSettings();
         this.open(child.id);
       });
+      const removeBtn = item.createSpan({ cls: "todo-relation-item-remove" });
+      setIcon(removeBtn, "x");
+      removeBtn.addEventListener("click", async () => {
+        await ts.update(child.id, { parentId: undefined });
+        this.onTaskUpdated?.(task.id);
+      });
     }
   }
-
-  private createAddChildRow(parent: HTMLElement, task: Task): void {
-    const row = parent.createDiv({ cls: "todo-prop-row" });
-    const icon = row.createDiv({ cls: "todo-prop-icon" });
-    setIcon(icon, "plus");
-    const text = row.createDiv({ cls: "todo-prop-text" });
-    text.textContent = "\u9009\u62e9\u5b50\u4efb\u52a1";
-    text.addEventListener("click", () => {
-      const exclude = this.getAncestorIds(task.id);
-      exclude.push(task.id);
-      new ParentPickerModal(this.app, this.plugin.taskService, exclude, (childId) => {
-        void this.plugin.taskService.update(childId, { parentId: task.id });
-        this.onTaskUpdated?.(task.id);
-      }).open();
-    });
-  }
-
   private getAncestorIds(taskId: string): string[] {
     const parent = this.plugin.taskService.getParentOf(taskId);
     if (!parent) return [];
@@ -335,9 +347,8 @@ export class TaskDetailView {
     this.createDueDateRow(container, task);
     this.createRecurrenceRow(container, task);
     this.createTagRow(container, task);
-    this.createParentRow(container, task);
-    this.createChildrenRows(container, task);
-    this.createAddChildRow(container, task);
+    this.createParentSection(container, task);
+    this.createChildrenSection(container, task);
   }
 
   private renderRelatedSection(container: HTMLElement, task: Task): void {
@@ -752,24 +763,60 @@ class ParentPickerModal extends Modal {
   private ts: any;
   private excludeIds: string[];
   private onSelect: (id: string) => void;
+  private mode: "parent" | "child";
+  private task: Task;
 
-  constructor(app: App, ts: any, excludeIds: string[], onSelect: (id: string) => void) {
+  constructor(app: App, ts: any, excludeIds: string[], onSelect: (id: string) => void, mode: "parent" | "child", task: Task) {
     super(app);
     this.ts = ts;
     this.excludeIds = excludeIds;
     this.onSelect = onSelect;
+    this.mode = mode;
+    this.task = task;
   }
 
   onOpen(): void {
     this.contentEl.addClass("todo-parent-picker");
-    this.contentEl.createDiv({ cls: "todo-parent-picker-title", text: "\u9009\u62e9\u7236\u4efb\u52a1" });
+    const title = this.mode === "parent" ? "\u9009\u62e9\u7236\u4efb\u52a1" : "\u9009\u62e9\u5b50\u4efb\u52a1";
+    this.contentEl.createDiv({ cls: "todo-parent-picker-title", text: title });
     const searchInput = this.contentEl.createEl("input", { cls: "todo-parent-picker-search", attr: { type: "text", placeholder: "\u641c\u7d22\u4efb\u52a1..." } }) as HTMLInputElement;
     const listEl = this.contentEl.createDiv({ cls: "todo-parent-picker-list" });
+    const LEVEL: Record<string, number> = { life: 0, year: 1, quarter: 2, month: 3, week: 4 };
+    const CHILD_KIND: Record<string, string> = { life: "year", year: "quarter", quarter: "month", month: "week" };
+    const PARENT_KIND: Record<string, string> = { year: "life", quarter: "year", month: "quarter", week: "month" };
+    const curLevel = this.task.planKind ? (LEVEL[this.task.planKind] ?? 5) : 5;
+    const targetKind = this.mode === "parent" ? PARENT_KIND[this.task.planKind || ""] : CHILD_KIND[this.task.planKind || ""];
     const renderList = (filter: string) => {
       listEl.empty();
-      const all = this.ts.getAll().filter((t: any) => !this.excludeIds.includes(t.id));
+      if (!targetKind) { listEl.createDiv({ cls: "todo-parent-picker-empty", text: "\u65e0\u53ef\u9009\u4efb\u52a1" }); return; }
+      const all = this.ts.getAll().filter((t: any) => {
+        if (this.excludeIds.includes(t.id)) return false;
+        if (t.planKind !== targetKind) return false;
+        // Period key matching
+        if (this.mode === "parent" && this.task.planKind) {
+          const expectedKey = getParentPeriodKey(this.task.planKind, this.task.planPeriodKey || "");
+          return t.planPeriodKey === expectedKey;
+        }
+        if (this.mode === "child" && this.task.planKind) {
+          const candidateParentKey = getParentPeriodKey(targetKind as PlanKind, t.planPeriodKey || "");
+          return candidateParentKey === this.task.planPeriodKey;
+        }
+        return true;
+      });
+      // Special: daily task selecting parent -> filter by date-based week
+      let filtered = all;
+      if (this.mode === "parent" && !this.task.planKind) {
+        const dateStr = this.task.dueDate || this.task.startDate;
+        if (dateStr) {
+          const d = new Date(dateStr);
+          if (!isNaN(d.getTime())) {
+            const wk = getPeriodKeyForDate(d, "week");
+            filtered = filtered.filter((t: any) => t.planPeriodKey === wk);
+          }
+        }
+      }
       const lower = filter.toLowerCase();
-      const matched = filter ? all.filter((t: any) => (t.title || "").toLowerCase().includes(lower)) : all;
+      const matched = filter ? filtered.filter((t: any) => (t.title || "").toLowerCase().includes(lower)) : filtered;
       const shown = matched.slice(0, 30);
       if (shown.length === 0) {
         listEl.createDiv({ cls: "todo-parent-picker-empty", text: "\u65e0\u5339\u914d\u4efb\u52a1" });
@@ -777,16 +824,15 @@ class ParentPickerModal extends Modal {
       }
       for (const t of shown) {
         const item = listEl.createDiv({ cls: "todo-parent-picker-item" });
-        item.createSpan({ cls: "todo-parent-picker-item-title", text: t.title || "\u672a\u547d\u540d" });
-        if (t.planKind) {
-          item.createSpan({ cls: "todo-parent-picker-item-badge", text: t.planKind });
+        item.createSpan({ cls: "todo-parent-picker-item-title", text: t.title || "\u672a\u547d\u547d" });
+        if (t.planPeriodKey) {
+          item.createSpan({ cls: "todo-parent-picker-item-badge", text: t.planPeriodKey });
         }
         item.addEventListener("click", () => {
           this.onSelect(t.id);
           this.close();
         });
-      }
-    };
+      }};
     searchInput.addEventListener("input", () => renderList(searchInput.value));
     renderList("");
     window.setTimeout(() => searchInput.focus(), 30);

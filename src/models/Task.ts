@@ -2,7 +2,7 @@ export type Priority = "low" | "medium" | "high";
 
 export type MyDayGroup = "allday" | "morning" | "noon" | "afternoon" | "evening";
 
-export type PlanKind = "year" | "quarter" | "month" | "week";
+export type PlanKind = "life" | "year" | "quarter" | "month" | "week";
 
 export interface SubTask {
   id: string;

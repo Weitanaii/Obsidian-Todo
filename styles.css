@@ -1730,50 +1730,107 @@
   padding: 4px 0;
   font-size: 13px;
 }
+.todo-relation-section {
+  margin-bottom: 4px;
+}
+.todo-relation-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px;
+  gap: 10px;
+}
+.todo-relation-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
 .todo-relation-label {
-  color: var(--text-faint);
-  font-size: 12px;
-}
-.todo-relation-link {
-  color: var(--text-accent);
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.todo-relation-link:hover {
-  color: var(--text-accent-hover);
-}
-.todo-relation-remove {
-  color: var(--text-faint);
-  cursor: pointer;
   font-size: 14px;
-  padding: 0 4px;
-  border-radius: var(--radius-s);
-}
-.todo-relation-remove:hover {
-  color: var(--text-error);
-  background: var(--background-modifier-hover);
+  color: var(--text-muted);
 }
 .todo-relation-add-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border-radius: var(--radius-s);
-  color: var(--text-muted);
   cursor: pointer;
-  font-size: 12px;
+  color: var(--text-muted);
+  font-size: 16px;
+  margin-left: auto;
+  padding: 2px 4px;
+  border-radius: var(--radius-s);
+  line-height: 1;
 }
 .todo-relation-add-btn:hover {
-  background: var(--background-modifier-hover);
   color: var(--text-normal);
+  background: var(--background-modifier-hover);
 }
-.todo-relation-child-header {
-  font-size: 12px;
+.todo-relation-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px 8px 20px;
+  border-radius: var(--radius-s);
+}
+.todo-relation-item:hover {
+  background: var(--background-modifier-hover);
+}
+.todo-relation-item-cb {
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+.todo-relation-item-title {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-normal);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.todo-relation-item-title:hover {
+  color: var(--text-accent);
+}
+.todo-relation-item-title.completed {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+.todo-relation-item-remove {
+  display: none;
+  cursor: pointer;
   color: var(--text-faint);
-  margin-top: 8px;
-  margin-bottom: 4px;
+  padding: 2px;
+  border-radius: var(--radius-s);
 }
+.todo-relation-item:hover .todo-relation-item-remove {
+  display: inline-flex;
+}
+.todo-relation-item-remove:hover {
+  color: var(--text-error);
+  background: var(--background-modifier-hover);
+}
+.todo-detail-relation {
+  padding: 0 14px 8px;
+}
+.todo-detail-relation .todo-detail-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.todo-relation-parent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
 .todo-relation-child {
   display: flex;
   align-items: center;
