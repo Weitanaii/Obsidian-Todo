@@ -93,7 +93,7 @@ class PromptModal extends Modal {
 import { App, ItemView, Menu, Modal, Notice, setIcon, WorkspaceLeaf } from "obsidian";
 import type ObsidianTodoPlugin from "../../main";
 import { Task, MyDayGroup, PlanKind } from "../models/Task";
-import { currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent, getParentPeriodKey } from "../utils/period";
+import { currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent, getParentPeriodKey, ageFromDueDate, currentAge } from "../utils/period";
 import { TaskDetailView } from "./TaskDetailView";
 import { sortTasks, getMyDayGroupFromTime } from "../utils/sort";
 import type { SortConfig, SortField, SortDirection } from "../utils/sort";
@@ -165,6 +165,7 @@ export interface TodoPluginLike {
     sortConfig: SortConfig;
     selectedQuadrant: string | null;
     activePlanKind: PlanKind | null;
+    birthday: string;
   };
   saveSettings(): Promise<void>;
     app?: App;
@@ -247,7 +248,7 @@ export class TodoView extends ItemView {
     const planList = this.planGroupEl.createDiv({ cls: "todo-nav-group-list" });
     if (this.planGroupCollapsed) planList.style.display = "none";
     const planItems = [
-      { name: "\u4eba\u751f\u8ba1\u5212", kind: "year" as PlanKind },
+      { name: "\u4eba\u751f\u8ba1\u5212", kind: "life" as PlanKind },
       { name: "\u5e74\u5ea6\u8ba1\u5212", kind: "year" as PlanKind },
       { name: "\u6708\u5ea6\u8ba1\u5212", kind: "month" as PlanKind },
     ];
@@ -1256,12 +1257,16 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     this.listItemsEl?.querySelectorAll<HTMLDivElement>(".todo-nav-item").forEach((el) => el.removeClass("active"));
     const planListEl = this.planGroupEl?.querySelector(".todo-nav-group-list") as HTMLElement;
     if (planListEl) planListEl.querySelectorAll(".todo-plan-item").forEach((el: Element, i: number) => {
-      el.toggleClass("active", (kind === "year" && i <= 1) || (kind === "month" && i === 2));
+      el.toggleClass("active", (kind === "life" && i === 0) || (kind === "year" && i === 1) || (kind === "month" && i === 2));
     });
     this.sortBtnEl.style.display = "none";
     this.quickContainerEl.style.display = "none";
     this.taskListEl.empty();
-    await this.renderPlanView(kind);
+    if (kind === "life") {
+      await this.renderLifePlanView();
+    } else {
+      await this.renderPlanView(kind);
+    }
   }
 
   /** Navigate to a task: switch plan view + highlight + scroll + open detail */
@@ -1297,6 +1302,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   /** Expand parent group and sub-group to reveal a target task in plan view */
   private expandPlanGroupForTask(task: Task): void {
     if (!task.planPeriodKey) return;
+    if (task.planKind === "life") return; // life view has no collapsible groups
 
     // Expand the body that directly matches the task's period key
     const directBody = this.taskListEl?.querySelector(`[data-period-key="${task.planPeriodKey}"]`) as HTMLElement | null;
@@ -1399,6 +1405,133 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     }
   }
 
+
+  private async renderLifePlanView(): Promise<void> {
+    this.taskListEl.empty();
+    const birthday = this.plugin.settings.birthday;
+    if (!birthday) {
+      const hint = this.taskListEl.createDiv({ cls: "todo-life-empty" });
+      hint.createSpan({ text: "\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u586b\u5199\u751f\u65e5\uff0c\u624d\u80fd\u4f7f\u7528\u4eba\u751f\u8ba1\u5212\u89c6\u56fe\u3002" });
+      return;
+    }
+    const ts = this.plugin.taskService;
+    const allTasks = ts.getAll();
+    const lifeTasks = allTasks.filter((t) => t.planKind === "life");
+    const withAge: { task: Task; age: number }[] = [];
+    const noAge: Task[] = [];
+    for (const t of lifeTasks) {
+      if (t.planPeriodKey) {
+        withAge.push({ task: t, age: parseInt(t.planPeriodKey, 10) });
+      } else if (t.dueDate) {
+        const age = ageFromDueDate(birthday, t.dueDate);
+        withAge.push({ task: t, age });
+      } else {
+        noAge.push(t);
+      }
+    }
+    // Sort by age ascending
+    withAge.sort((a, b) => a.age - b.age);
+    // Merge into age groups
+    const ageGroups = new Map<number, Task[]>();
+    for (const { task, age } of withAge) {
+      if (!ageGroups.has(age)) ageGroups.set(age, []);
+      ageGroups.get(age)!.push(task);
+    }
+    const curAge = currentAge(birthday);
+    const birthdayYear = new Date(birthday).getFullYear();
+    const container = this.taskListEl.createDiv({ cls: "todo-life-timeline" });
+    for (const [age, tasks] of ageGroups) {
+      const isCurrent = age === curAge;
+      const year = birthdayYear + age;
+      const node = container.createDiv({ cls: "todo-life-node" + (isCurrent ? " is-current" : "") });
+      node.setAttribute("data-age-key", String(age));
+      const ageCol = node.createDiv({ cls: "todo-life-age-col" });
+      ageCol.createDiv({ cls: "todo-life-age-num", text: String(age) });
+      ageCol.createDiv({ cls: "todo-life-age-label", text: "\u5c81" });
+      ageCol.createDiv({ cls: "todo-life-age-year", text: String(year) + "\u5e74" });
+      const lineCol = node.createDiv({ cls: "todo-life-line-col" });
+      lineCol.createDiv({ cls: "todo-life-dot" + (isCurrent ? " todo-life-dot-current" : "") });
+      const contentCol = node.createDiv({ cls: "todo-life-content-col" });
+      for (const t of tasks) {
+        const card = contentCol.createDiv({ cls: "todo-life-card", attr: { "data-task-id": t.id } });
+        card.createSpan({ cls: "todo-life-card-title", text: t.title });
+        if (t.dueDate) {
+          card.createSpan({ cls: "todo-life-card-date", text: t.dueDate });
+        }
+        card.addEventListener("click", async () => {
+          this.detailView.clearHistory();
+          this.plugin.settings.selectedTaskId = t.id;
+          await this.plugin.saveSettings();
+          this.detailView.open(t.id);
+          this.highlightSelectedTask(t.id);
+          const layout = this.containerEl.querySelector(".todo-layout");
+          if (layout) layout.addClass("todo-layout-detail-open");
+        });
+      }
+    }
+    // Divider + no-age group
+    if (noAge.length > 0) {
+      container.createDiv({ cls: "todo-life-divider" });
+      const naNode = container.createDiv({ cls: "todo-life-node" });
+      const naAgeCol = naNode.createDiv({ cls: "todo-life-age-col" });
+      naAgeCol.createDiv({ cls: "todo-life-age-na", text: "\u672a\u8bbe\u5b9a\u5e74\u9f84" });
+      const naLineCol = naNode.createDiv({ cls: "todo-life-line-col" });
+      naLineCol.createDiv({ cls: "todo-life-dot" });
+      const naContent = naNode.createDiv({ cls: "todo-life-content-col" });
+      for (const t of noAge) {
+        const card = naContent.createDiv({ cls: "todo-life-card", attr: { "data-task-id": t.id } });
+        card.createSpan({ cls: "todo-life-card-title", text: t.title });
+        card.addEventListener("click", async () => {
+          this.detailView.clearHistory();
+          this.plugin.settings.selectedTaskId = t.id;
+          await this.plugin.saveSettings();
+          this.detailView.open(t.id);
+          this.highlightSelectedTask(t.id);
+          const layout = this.containerEl.querySelector(".todo-layout");
+          if (layout) layout.addClass("todo-layout-detail-open");
+        });
+      }
+    }
+    // Auto-scroll to current age
+    if (ageGroups.has(curAge)) {
+      const curNode = container.querySelector(".todo-life-node.is-current");
+      if (curNode) {
+        curNode.scrollIntoView({ block: "center" });
+      }
+    }
+    // Add button at bottom
+    const addRow = container.createDiv({ cls: "todo-life-add-row" });
+    const addBtnEl = addRow.createEl("button", { cls: "todo-life-add-btn" });
+    addBtnEl.createSpan({ text: "+" });
+    addBtnEl.createSpan({ text: " \u6dfb\u52a0\u4eba\u751f\u76ee\u6807" });
+    addBtnEl.addEventListener("click", () => {
+      addBtnEl.style.display = "none";
+      const input = addRow.createEl("input", { cls: "todo-life-add-input" }) as HTMLInputElement;
+      input.placeholder = "\u8f93\u5165\u4eba\u751f\u76ee\u6807\u6807\u9898\u2026";
+      input.focus();
+      let saved = false;
+      const save = async () => {
+        if (saved) return;
+        saved = true;
+        const title = input.value.trim();
+        if (title) {
+          await this.plugin.taskService.create({ title, planKind: "life" });
+          await this.renderLifePlanView();
+        } else {
+          input.remove();
+          addBtnEl.style.display = "";
+        }
+      };
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") { ev.preventDefault(); save(); }
+        if (ev.key === "Escape") { input.remove(); addBtnEl.style.display = ""; }
+      });
+      input.addEventListener("blur", save);
+    });
+
+  }
+
+
   private setupPlanAddButton(btn: HTMLElement, bodyEl: HTMLElement, kind: PlanKind, periodKey: string): void {
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -1446,7 +1579,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   }
 
   private highlightSelectedTask(taskId: string): void {
-    this.taskListEl?.querySelectorAll(".todo-task-item").forEach((el) => {
+    this.taskListEl?.querySelectorAll(".todo-task-item, .todo-life-card").forEach((el) => {
       el.toggleClass("todo-task-selected", (el as HTMLElement).dataset.taskId === taskId);
     });
   }

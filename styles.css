@@ -1955,3 +1955,180 @@
   color: var(--text-faint);
   font-size: 13px;
 }
+
+/* ===== Life Plan Timeline (T-613) ===== */
+
+.todo-life-timeline {
+  padding: 16px 12px;
+}
+.todo-life-node {
+  display: flex;
+  align-items: stretch;
+  min-height: 48px;
+}
+.todo-life-age-col {
+  width: 60px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding-top: 4px;
+  padding-right: 12px;
+  text-align: right;
+  user-select: none;
+}
+.todo-life-age-num {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-normal);
+}
+.todo-life-age-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+.todo-life-age-year {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+.todo-life-age-na {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding-top: 4px;
+  white-space: nowrap;
+}
+.todo-life-line-col {
+  width: 24px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+.todo-life-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--text-muted);
+  background: var(--background-primary);
+  flex-shrink: 0;
+  margin-top: 6px;
+  z-index: 1;
+}
+.todo-life-dot-current {
+  background: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 3px var(--background-primary), 0 0 0 5px var(--interactive-accent-hover);
+}
+.todo-life-line-col::after {
+  content: "";
+  position: absolute;
+  top: 18px;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  background: var(--background-modifier-border);
+  transform: translateX(-50%);
+}
+.todo-life-node:last-child .todo-life-line-col::after {
+  display: none;
+}
+.todo-life-content-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 16px;
+  padding-left: 8px;
+}
+.todo-life-card {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.1s;
+}
+.todo-life-card:hover {
+  background: var(--background-modifier-hover);
+}
+.todo-life-card-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.todo-life-card-date {
+  font-size: 11px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.todo-life-node.is-current .todo-life-age-num {
+  color: var(--interactive-accent);
+}
+.todo-life-divider {
+  border: none;
+  border-top: 1px dashed var(--text-faint);
+  margin: 8px 0 8px 72px;
+}
+.todo-life-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+  font-size: 14px;
+  text-align: center;
+}
+@media (max-width: 500px) {
+  .todo-life-age-col {
+    width: 44px;
+    padding-right: 8px;
+  }
+  .todo-life-age-num {
+    font-size: 20px;
+  }
+}
+.todo-life-add-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 0 8px 96px;
+}
+.todo-life-add-btn {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+.todo-life-add-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.todo-life-add-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 13px;
+  padding: 4px 0;
+  color: var(--text-normal);
+}
+.todo-life-card.todo-task-selected {
+  background: var(--background-modifier-active-hover);
+  border-color: var(--interactive-accent);
+}

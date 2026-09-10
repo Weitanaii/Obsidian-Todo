@@ -16,6 +16,7 @@ export interface ObsidianTodoSettings {
   selectedQuadrant: string | null;
   activePlanKind: PlanKind | null;
   sortConfig: SortConfig;
+  birthday: string;
 }
 
 export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
@@ -32,6 +33,7 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
   },
   selectedQuadrant: null,
   activePlanKind: null,
+  birthday: "",
 };
 
 const ICON_OPTIONS = [
@@ -80,6 +82,19 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
           })
       );
 
+
+    // --- Birthday ---
+    const birthdaySetting = new Setting(containerEl)
+      .setName("生日")
+      .setDesc("用于人生计划视图计算年龄（格式：YYYY-MM-DD）");
+    const birthdayInput = birthdaySetting.controlEl.createEl("input", {
+      attr: { type: "date" },
+    }) as HTMLInputElement;
+    birthdayInput.value = this.plugin.settings.birthday || "";
+    birthdayInput.addEventListener("change", async () => {
+      this.plugin.settings.birthday = birthdayInput.value;
+      await this.plugin.saveSettings();
+    });
     // --- Tag Management ---
     containerEl.createEl("h2", { text: "标签管理" });
 

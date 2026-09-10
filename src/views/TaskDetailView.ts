@@ -3,7 +3,7 @@ import type { TodoPluginLike } from "./TodoView";
 import type { Task, PlanKind } from "../models/Task";
 import type { DomainTag } from "../models/Tag";
 import { ResourceSuggestModal } from "../ui/ResourceSuggestModal";
-import { getPeriodKeyForDate, getParentPeriodKey } from "../utils/period";
+import { getPeriodKeyForDate, getParentPeriodKey, ageFromDueDate } from "../utils/period";
 
 export class TaskDetailView {
   private app: App;
@@ -467,6 +467,17 @@ export class TaskDetailView {
   private async saveChanges(changes: Partial<Task>): Promise<void> {
     const taskId = this.taskId;
     if (!taskId) return;
+
+    // Auto-derive planPeriodKey for life tasks when dueDate changes
+    if (changes.dueDate !== undefined) {
+      const task = this.getTask();
+      const birthday = this.plugin.settings.birthday;
+      if (task && task.planKind === "life" && birthday && changes.dueDate) {
+        changes.planPeriodKey = String(ageFromDueDate(birthday, changes.dueDate));
+      } else if (task && task.planKind === "life" && !changes.dueDate) {
+        changes.planPeriodKey = undefined;
+      }
+    }
 
     // Quadrant mode: no listId auto-classification needed (aggregated view, tasks stay in original list)
 

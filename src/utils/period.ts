@@ -159,3 +159,18 @@ export function getParentPeriodKey(childKind: PlanKind, childKey: string): strin
     default: return "";
   }
 }
+
+export function ageFromDueDate(birthday: string, dueDate: string): number {
+  const bd = new Date(birthday);
+  const dd = new Date(dueDate);
+  let age = dd.getFullYear() - bd.getFullYear();
+  const m = dd.getMonth() - bd.getMonth();
+  if (m < 0 || (m === 0 && dd.getDate() < bd.getDate())) {
+    age--;
+  }
+  return age;
+}
+
+export function currentAge(birthday: string): number {
+  return ageFromDueDate(birthday, new Date().toISOString().slice(0, 10));
+}
