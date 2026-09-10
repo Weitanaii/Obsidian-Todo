@@ -3,7 +3,7 @@ import type { TodoPluginLike } from "./TodoView";
 import type { Task, PlanKind } from "../models/Task";
 import type { DomainTag } from "../models/Tag";
 import { ResourceSuggestModal } from "../ui/ResourceSuggestModal";
-import { getPeriodKeyForDate, getParentPeriodKey, ageFromDueDate } from "../utils/period";
+import { getPeriodKeyForDate, getParentPeriodKey, ageFromDueDate, currentAge } from "../utils/period";
 
 export class TaskDetailView {
   private app: App;
@@ -158,7 +158,7 @@ export class TaskDetailView {
     }
   }
 
-  private createTagRow(parent: HTMLElement, task: Task): void {
+  private createTagRow(parent: HTMLElement, task: Task, excludeQuadrant = false): void {
     const allTags = this.plugin.tagService.getAll();
     const selectedIds = task.tags || [];
     const selectedTags = selectedIds.map((id) => allTags.find((t) => t.id === id)).filter(Boolean) as DomainTag[];
@@ -197,7 +197,7 @@ export class TaskDetailView {
         const allT = this.plugin.tagService.getAll();
         const autoImp = nextIds.some((id) => { const t = allT.find((x) => x.id === id); return t && t.sortOrder < 2; });
         void this.saveChanges({ tags: nextIds, isImportant: autoImp });
-      }).open();
+      }, excludeQuadrant).open();
     });
   }
 
@@ -222,6 +222,28 @@ export class TaskDetailView {
       isSet: hasDue,
       displayText: display,
       onClick: () => { new DatePickerModal(this.app, task.dueDate, "end", (date) => { void this.saveChanges({ dueDate: date }); }).open(); },
+      onClear: () => { void this.saveChanges({ dueDate: null }); },
+    });
+  }
+
+  private createAgeRow(parent: HTMLElement, task: Task): void {
+    const birthday = this.plugin.settings.birthday;
+    const hasDue = !!task.dueDate;
+    let display = "\u8bbe\u5b9a\u76ee\u6807\u5e74\u9f84";
+    if (hasDue && birthday) {
+      const age = ageFromDueDate(birthday, task.dueDate!);
+      display = "\u76ee\u6807\u5e74\u9f84\uff1a" + age + " \u5c81";
+    }
+    this.createPropertyRow(parent, task, {
+      icon: "calendar",
+      unsetText: "\u8bbe\u5b9a\u76ee\u6807\u5e74\u9f84",
+      isSet: hasDue,
+      displayText: display,
+      onClick: () => {
+        new AgePickerModal(this.app, birthday, task.dueDate, (isoDate) => {
+          void this.saveChanges({ dueDate: isoDate });
+        }).open();
+      },
       onClear: () => { void this.saveChanges({ dueDate: null }); },
     });
   }
@@ -365,13 +387,19 @@ export class TaskDetailView {
     return ids;
   }
   private renderPropertyRows(container: HTMLElement, task: Task): void {
-    this.createMyDayRow(container, task);
-    this.createStartDateRow(container, task);
-    this.createDueDateRow(container, task);
-    this.createRecurrenceRow(container, task);
-    this.createTagRow(container, task);
-    this.createParentSection(container, task);
-    this.createChildrenSection(container, task);
+    if (task.planKind === 'life') {
+      this.createAgeRow(container, task);
+      this.createTagRow(container, task, true);
+      this.createChildrenSection(container, task);
+    } else {
+      this.createMyDayRow(container, task);
+      this.createStartDateRow(container, task);
+      this.createDueDateRow(container, task);
+      this.createRecurrenceRow(container, task);
+      this.createTagRow(container, task);
+      this.createParentSection(container, task);
+      this.createChildrenSection(container, task);
+    }
   }
 
   private renderRelatedSection(container: HTMLElement, task: Task): void {
@@ -526,13 +554,48 @@ export class TaskDetailView {
   }
 
   private async deleteTask(task: Task): Promise<void> {
+    const confirmed = await new ConfirmModal(this.app, "\u786e\u8ba4\u5220\u9664\u4efb\u52a1\u300c" + task.title + "\u300d\uff1f").openAndConfirm();
+    if (!confirmed) return;
     await this.plugin.taskService.delete(task.id);
-    new Notice("任务已删除");
+    new Notice("\u4efb\u52a1\u5df2\u5220\u9664");
     this.plugin.settings.selectedTaskId = null;
     await this.plugin.saveSettings();
     this.close();
     this.onClose?.();
     this.onTaskUpdated?.(task.id);
+  }}
+
+class ConfirmModal extends Modal {
+  private message: string;
+  private resolve!: (value: boolean) => void;
+
+  constructor(app: App, message: string) {
+    super(app);
+    this.message = message;
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.createEl("p", { text: this.message });
+    const actions = contentEl.createDiv({ cls: "todo-prompt-actions" });
+    const cancelBtn = actions.createEl("button", { text: "\u53d6\u6d88" });
+    const confirmBtn = actions.createEl("button", { text: "\u5220\u9664", cls: "mod-warning" });
+    cancelBtn.addEventListener("click", () => this.finish(false));
+    confirmBtn.addEventListener("click", () => this.finish(true));
+  }
+
+  onClose(): void { this.contentEl.empty(); }
+
+  async openAndConfirm(): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      this.resolve = resolve;
+      this.open();
+    });
+  }
+
+  private finish(value: boolean): void {
+    this.resolve(value);
+    this.close();
   }
 }
 
@@ -670,6 +733,92 @@ class DatePickerModal extends Modal {
   }
 }
 
+
+class AgePickerModal extends Modal {
+  private birthday: string;
+  private currentAge: number;
+  private selectedAge: number;
+  private onSelect: (isoDate: string | null) => void;
+
+  constructor(app: App, birthday: string, currentDueDate: string | null, onSelect: (isoDate: string | null) => void) {
+    super(app);
+    this.birthday = birthday;
+    this.currentAge = currentAge(birthday);
+    this.selectedAge = currentDueDate ? ageFromDueDate(birthday, currentDueDate) : this.currentAge;
+    this.onSelect = onSelect;
+  }
+
+  onOpen(): void {
+    this.contentEl.addClass("todo-age-picker");
+    this.renderContent();
+  }
+
+  onClose(): void { this.contentEl.empty(); }
+
+  private renderContent(): void {
+    this.contentEl.empty();
+
+    // Current age info
+    const infoEl = this.contentEl.createDiv({ cls: "todo-age-info" });
+    infoEl.createSpan({ text: "\u5f53\u524d\u5e74\u9f84\uff1a" + this.currentAge + " \u5c81" });
+
+    // Age selector row
+    const selectorRow = this.contentEl.createDiv({ cls: "todo-age-selector" });
+    const minusBtn = selectorRow.createEl("button", { cls: "todo-age-btn", text: "\u2212" });
+    minusBtn.addEventListener("click", () => {
+      if (this.selectedAge > this.currentAge) {
+        this.selectedAge--;
+        this.renderContent();
+      }
+    });
+
+    const ageInput = selectorRow.createEl("input", {
+      cls: "todo-age-input",
+      attr: { type: "number", min: String(this.currentAge), max: String(this.currentAge + 50) }
+    }) as HTMLInputElement;
+    ageInput.value = String(this.selectedAge);
+    ageInput.addEventListener("change", () => {
+      const val = parseInt(ageInput.value, 10);
+      if (!isNaN(val) && val >= this.currentAge && val <= this.currentAge + 50) {
+        this.selectedAge = val;
+        this.renderContent();
+      }
+    });
+
+    const plusBtn = selectorRow.createEl("button", { cls: "todo-age-btn", text: "+" });
+    plusBtn.addEventListener("click", () => {
+      if (this.selectedAge < this.currentAge + 50) {
+        this.selectedAge++;
+        this.renderContent();
+      }
+    });
+
+    // Quick age buttons
+    const quickRow = this.contentEl.createDiv({ cls: "todo-age-quick" });
+    const milestones = [18, 20, 25, 30, 35, 40, 50, 60];
+    milestones.forEach((age) => {
+      if (age >= this.currentAge && age <= this.currentAge + 50) {
+        const btn = quickRow.createEl("button", { cls: "todo-age-quick-btn" + (age === this.selectedAge ? " is-selected" : ""), text: String(age) });
+        btn.addEventListener("click", () => {
+          this.selectedAge = age;
+          this.renderContent();
+        });
+      }
+    });
+
+    // Action buttons
+    const actions = this.contentEl.createDiv({ cls: "todo-age-actions" });
+    actions.createEl("button", { text: "\u53d6\u6d88" }).addEventListener("click", () => this.close());
+    actions.createEl("button", { text: "\u4fdd\u5b58", cls: "mod-cta" }).addEventListener("click", () => {
+      const bd = new Date(this.birthday);
+      const dueDate = new Date(bd.getFullYear() + this.selectedAge, bd.getMonth(), bd.getDate());
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const isoStr = dueDate.getFullYear() + "-" + pad(dueDate.getMonth() + 1) + "-" + pad(dueDate.getDate()) + "T06:00:00";
+      this.onSelect(isoStr);
+      this.close();
+    });
+  }
+}
 class RecurrencePickerModal extends Modal {
   private currentRecurrence: string | null;
   private onSelect: (recurrence: string | null) => void;
@@ -730,12 +879,14 @@ class TagPickerModal extends Modal {
   private plugin: TodoPluginLike;
   private selectedIds: string[];
   private onConfirm: (ids: string[]) => void;
+  private excludeQuadrant: boolean;
 
-  constructor(app: App, plugin: TodoPluginLike, selectedIds: string[], onConfirm: (ids: string[]) => void) {
+  constructor(app: App, plugin: TodoPluginLike, selectedIds: string[], onConfirm: (ids: string[]) => void, excludeQuadrant = false) {
     super(app);
     this.plugin = plugin;
     this.selectedIds = [...selectedIds];
     this.onConfirm = onConfirm;
+    this.excludeQuadrant = excludeQuadrant;
   }
 
   onOpen(): void {
@@ -748,7 +899,7 @@ class TagPickerModal extends Modal {
     }) as HTMLInputElement;
 
     const gridEl = this.contentEl.createDiv({ cls: "todo-tag-picker-grid" });
-    const allTags = this.plugin.tagService.getAll();
+    const allTags = this.plugin.tagService.getAll().filter((t) => !this.excludeQuadrant || t.sortOrder >= 4);
 
     const renderGrid = (filter: string) => {
       gridEl.empty();

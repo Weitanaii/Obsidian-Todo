@@ -17,6 +17,8 @@ export interface ObsidianTodoSettings {
   activePlanKind: PlanKind | null;
   sortConfig: SortConfig;
   birthday: string;
+  planGroupCollapsed: boolean;
+  quadrantGroupCollapsed: boolean;
 }
 
 export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
@@ -34,6 +36,8 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
   selectedQuadrant: null,
   activePlanKind: null,
   birthday: "",
+  planGroupCollapsed: true,
+  quadrantGroupCollapsed: true,
 };
 
 const ICON_OPTIONS = [

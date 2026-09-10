@@ -2132,3 +2132,144 @@
   background: var(--background-modifier-active-hover);
   border-color: var(--interactive-accent);
 }
+
+/* Age Picker Modal */
+.todo-age-picker {
+  padding: 16px;
+  min-width: 280px;
+}
+
+.todo-age-info {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.todo-age-selector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.todo-age-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+
+.todo-age-btn:hover {
+  background: var(--background-modifier-hover);
+}
+
+.todo-age-input {
+  width: 60px;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 600;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.todo-age-input::-webkit-inner-spin-button,
+.todo-age-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.todo-age-input {
+  -moz-appearance: textfield;
+}
+
+.todo-age-quick {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.todo-age-quick-btn {
+  padding: 6px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.todo-age-quick-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.todo-age-quick-btn.is-selected {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+.todo-age-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Life card tags */
+.todo-life-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.todo-life-card-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.todo-life-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.todo-life-card-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  border-radius: 10px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.todo-life-card-tag-icon {
+  display: inline-flex;
+  width: 12px;
+  height: 12px;
+}
+
+.todo-life-card-tag-icon svg {
+  width: 12px;
+  height: 12px;
+}

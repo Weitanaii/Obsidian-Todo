@@ -166,6 +166,8 @@ export interface TodoPluginLike {
     selectedQuadrant: string | null;
     activePlanKind: PlanKind | null;
     birthday: string;
+    planGroupCollapsed: boolean;
+    quadrantGroupCollapsed: boolean;
   };
   saveSettings(): Promise<void>;
     app?: App;
@@ -185,8 +187,6 @@ export class TodoView extends ItemView {
   private detailEl!: HTMLDivElement;
   private detailView!: TaskDetailView;
   private planContainerEl!: HTMLDivElement;
-  private planGroupCollapsed = true;
-  private quadrantGroupCollapsed = true;
   private planGroupEl!: HTMLDivElement;
   private quadrantGroupEl!: HTMLDivElement;
   private activePlanKind: PlanKind | null = null;
@@ -246,7 +246,7 @@ export class TodoView extends ItemView {
     setIcon(planIcon, "calendar-days");
     planHeader.createSpan({ cls: "todo-nav-group-name", text: "\u6211\u7684\u8ba1\u5212" });
     const planList = this.planGroupEl.createDiv({ cls: "todo-nav-group-list" });
-    if (this.planGroupCollapsed) planList.style.display = "none";
+    if (this.plugin.settings.planGroupCollapsed) planList.style.display = "none";
     const planItems = [
       { name: "\u4eba\u751f\u8ba1\u5212", kind: "life" as PlanKind },
       { name: "\u5e74\u5ea6\u8ba1\u5212", kind: "year" as PlanKind },
@@ -260,8 +260,9 @@ export class TodoView extends ItemView {
       });
     }
     planHeader.addEventListener("click", () => {
-      this.planGroupCollapsed = !this.planGroupCollapsed;
-      planList.style.display = this.planGroupCollapsed ? "none" : "";
+      this.plugin.settings.planGroupCollapsed = !this.plugin.settings.planGroupCollapsed;
+      planList.style.display = this.plugin.settings.planGroupCollapsed ? "none" : "";
+      void this.plugin.saveSettings();
     });
 
     // Quadrant mode nav group
@@ -271,7 +272,7 @@ export class TodoView extends ItemView {
     setIcon(qIcon, "layout-grid");
     qHeader.createSpan({ cls: "todo-nav-group-name", text: "\u56db\u8c61\u9650" });
     const qList = this.quadrantGroupEl.createDiv({ cls: "todo-nav-group-list" });
-    if (this.quadrantGroupCollapsed) qList.style.display = "none";
+    if (this.plugin.settings.quadrantGroupCollapsed) qList.style.display = "none";
     const quadrantDefs = [
       { key: "\u91cd\u8981\u7d27\u6025", color: "#E74C3C" },
       { key: "\u91cd\u8981\u4e0d\u7d27\u6025", color: "#4A90D9" },
@@ -292,8 +293,9 @@ export class TodoView extends ItemView {
       });
     }
     qHeader.addEventListener("click", () => {
-      this.quadrantGroupCollapsed = !this.quadrantGroupCollapsed;
-      qList.style.display = this.quadrantGroupCollapsed ? "none" : "";
+      this.plugin.settings.quadrantGroupCollapsed = !this.plugin.settings.quadrantGroupCollapsed;
+      qList.style.display = this.plugin.settings.quadrantGroupCollapsed ? "none" : "";
+      void this.plugin.saveSettings();
     });
 
     Object.entries(this.navEls).forEach(([key, el]) => {
@@ -372,7 +374,11 @@ export class TodoView extends ItemView {
       await this.renderLists();
       Object.entries(this.navEls).forEach(([, el]) => el.removeClass("active"));
       this.taskListEl.empty();
-      await this.renderPlanView(this.activePlanKind);
+      if (this.activePlanKind === 'life') {
+        await this.renderLifePlanView();
+      } else {
+        await this.renderPlanView(this.activePlanKind);
+      }
       return;
     }
     this.activePlanKind = null;
@@ -761,7 +767,11 @@ export class TodoView extends ItemView {
     if (view === "plan" && this.activePlanKind) {
       this.sortBtnEl.style.display = "none";
       this.quickContainerEl.style.display = "none";
-      await this.renderPlanView(this.activePlanKind);
+      if (this.activePlanKind === 'life') {
+        await this.renderLifePlanView();
+      } else {
+        await this.renderPlanView(this.activePlanKind);
+      }
       return;
     }
     this.sortBtnEl.style.display = "";
@@ -775,7 +785,7 @@ export class TodoView extends ItemView {
     if (view === "myday" && !this.plugin.settings.selectedListId) {
       tasks = this.plugin.taskService.getMyDay();
     } else if (view === "all") {
-      tasks = this.plugin.taskService.getAll();
+      tasks = this.plugin.taskService.getAll().filter((t) => !t.planKind);
     } else if (view === "inbox") {
       const defaultList = this.plugin.listService.getDefault();
       tasks = defaultList ? this.plugin.taskService.getInbox(defaultList.id) : [];
@@ -1004,7 +1014,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     if (metaParts.length > 0) {
       metaLeft.createSpan({ text: metaParts[0] });
     }
-    if (startStr || dueStr) {
+    if (task.planKind !== "life" && (startStr || dueStr)) {
       metaLeft.createSpan({ cls: "todo-task-meta-dot", text: "\u00b7" });
       metaLeft.createSpan({ text: (startStr || ".") + " - " + (dueStr || ".") });
     }
@@ -1417,6 +1427,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const ts = this.plugin.taskService;
     const allTasks = ts.getAll();
     const lifeTasks = allTasks.filter((t) => t.planKind === "life");
+    const allTags = this.plugin.tagService.getAll();
     const withAge: { task: Task; age: number }[] = [];
     const noAge: Task[] = [];
     for (const t of lifeTasks) {
@@ -1455,8 +1466,15 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       for (const t of tasks) {
         const card = contentCol.createDiv({ cls: "todo-life-card", attr: { "data-task-id": t.id } });
         card.createSpan({ cls: "todo-life-card-title", text: t.title });
-        if (t.dueDate) {
-          card.createSpan({ cls: "todo-life-card-date", text: t.dueDate });
+        const cardTags0 = (t.tags || []).map((id) => allTags.find((tg) => tg.id === id)).filter((tg): tg is NonNullable<typeof tg> => !!tg);
+        if (cardTags0.length > 0) {
+          const tagRow = card.createDiv({ cls: "todo-life-card-tags" });
+          cardTags0.forEach((tag) => {
+            const chip = tagRow.createSpan({ cls: "todo-life-card-tag" });
+            const chipIcon = chip.createSpan({ cls: "todo-life-card-tag-icon" });
+            setIcon(chipIcon, tag.icon);
+            chip.createSpan({ text: tag.name });
+          });
         }
         card.addEventListener("click", async () => {
           this.detailView.clearHistory();
@@ -1481,6 +1499,16 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       for (const t of noAge) {
         const card = naContent.createDiv({ cls: "todo-life-card", attr: { "data-task-id": t.id } });
         card.createSpan({ cls: "todo-life-card-title", text: t.title });
+        const cardTags1 = (t.tags || []).map((id) => allTags.find((tg) => tg.id === id)).filter((tg): tg is NonNullable<typeof tg> => !!tg);
+        if (cardTags1.length > 0) {
+          const tagRow = card.createDiv({ cls: "todo-life-card-tags" });
+          cardTags1.forEach((tag) => {
+            const chip = tagRow.createSpan({ cls: "todo-life-card-tag" });
+            const chipIcon = chip.createSpan({ cls: "todo-life-card-tag-icon" });
+            setIcon(chipIcon, tag.icon);
+            chip.createSpan({ text: tag.name });
+          });
+        }
         card.addEventListener("click", async () => {
           this.detailView.clearHistory();
           this.plugin.settings.selectedTaskId = t.id;
