@@ -216,6 +216,7 @@ export class TodoView extends ItemView {
     scrollContainer: HTMLElement | null;
     scrollRAF: number | null;
     origScrollTop: number;
+    columnsEl: HTMLElement | null;
     source: "timeline" | "allday";
   } | null = null;
   private _onDragMove: ((ev: MouseEvent) => void) | null = null;
@@ -1935,6 +1936,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         scrollRAF: null,
         source: "timeline" as const,
         origScrollTop: scrollContainer?.scrollTop || 0,
+        columnsEl: columnsEl || null,
       };
       card.addClass("dragging");
     });
@@ -2004,7 +2006,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           scrollContainer: sc,
           scrollRAF: null,
           source: "allday",
-        origScrollTop: sc?.scrollTop || 0,
+          origScrollTop: sc?.scrollTop || 0,
+          columnsEl: null,
         };
         card.addClass("dragging");
       });
@@ -2070,6 +2073,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         listId: defaultList.id,
         startDate: this.minuteToIso(dateStr, startMin),
         dueDate: this.minuteToIso(dateStr, endMin),
+        isMyDay: true,
       });
       this.renderScheduleView();
     });
@@ -2127,30 +2131,23 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         card.addEventListener("mousedown", (ev) => {
           if (ev.button !== 0) return;
           const sc = grid;
-          const scRect = sc.getBoundingClientRect();
-          const ghost = sc.createDiv({ cls: "todo-drag-ghost" });
+          const columnsEl = sc.querySelector(".todo-week-columns") as HTMLElement;
+          const ghostParent = columnsEl || sc;
+          const ghost = ghostParent.createDiv({ cls: "todo-drag-ghost" });
           const blockColor = this.getTaskBlockColor(t);
           ghost.style.backgroundColor = blockColor;
-          // Calculate column width and position
-          const columnsEl = sc.querySelector(".todo-week-columns") as HTMLElement;
-          const columnsRect = columnsEl ? columnsEl.getBoundingClientRect() : null;
           const colCount = 7;
+          const columnsRect = columnsEl ? columnsEl.getBoundingClientRect() : null;
+          const colWidth = columnsRect ? columnsRect.width / colCount : 0;
           const dateStrs: string[] = [];
           for (let ci = 0; ci < 7; ci++) {
             const cd = new Date(weekStart); cd.setDate(weekStart.getDate() + ci);
             dateStrs.push(cd.getFullYear() + "-" + String(cd.getMonth() + 1).padStart(2, "0") + "-" + String(cd.getDate()).padStart(2, "0"));
           }
           const currentColIdx = i;
-          let ghostBaseLeft = 0;
-          if (columnsRect) {
-            const colWidth = columnsRect.width / colCount;
-            ghostBaseLeft = (columnsRect.left - scRect.left) + currentColIdx * colWidth;
-            ghost.style.left = ghostBaseLeft + "px";
-            ghost.style.width = colWidth + "px";
-          } else {
-            ghost.style.left = "0";
-            ghost.style.width = "100%";
-          }
+          const ghostBaseLeft = currentColIdx * colWidth;
+          ghost.style.left = ghostBaseLeft + "px";
+          ghost.style.width = colWidth + "px";
           ghost.style.top = "0px";
           ghost.style.height = "60px";
           this.dragState = {
@@ -2172,8 +2169,9 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
             ghostBaseLeft,
             scrollContainer: sc,
             scrollRAF: null,
-            source: "allday",
-        origScrollTop: sc?.scrollTop || 0,
+            source: "allday" as const,
+            origScrollTop: sc?.scrollTop || 0,
+            columnsEl: columnsEl || null,
           };
           card.addClass("dragging");
         });
@@ -2251,6 +2249,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           listId: defaultList.id,
           startDate: this.minuteToIso(ds, startMin),
           dueDate: this.minuteToIso(ds, endMin),
+          isMyDay: true,
         });
         this.renderScheduleView();
       });
@@ -2311,14 +2310,11 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const newEnd = Math.max(ds.origStartMin + 15, Math.min(1440, ds.origEndMin + deltaMin));
       ds.ghost.style.height = Math.max(15, ((newEnd - ds.origStartMin) / 60) * ds.hourHeight) + "px";
     }
-    // Allday drag: position ghost at mouse Y in scroll container
-    if (ds.source === "allday" && ds.scrollContainer) {
-      const scRect = ds.scrollContainer.getBoundingClientRect();
-      const mouseYInGrid = ev.clientY - scRect.top + ds.scrollContainer.scrollTop;
-      const theadEl = ds.scrollContainer.querySelector(".todo-week-thead") as HTMLElement | null;
-      const theadH = theadEl ? theadEl.offsetHeight : 0;
-      const snappedMin = this.snapMinute(mouseYInGrid - theadH, ds.hourHeight);
-      ds.ghost.style.top = Math.max(0, theadH + (snappedMin / 60) * ds.hourHeight) + "px";
+    // Allday drag: position ghost relative to columns container
+    if (ds.source === "allday" && ds.columnsEl) {
+      const colRect = ds.columnsEl.getBoundingClientRect();
+      const snappedMin = this.snapMinute(ev.clientY - colRect.top, ds.hourHeight);
+      ds.ghost.style.top = Math.max(0, (snappedMin / 60) * ds.hourHeight) + "px";
       ds.ghost.style.height = ds.hourHeight + "px";
     }
     // Cross-day horizontal ghost movement in week view
@@ -2378,13 +2374,10 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     }
     let newStart: number, newEnd: number;
     let finalDateStr = ds.dateStr;
-    if (ds.source === "allday" && ds.scrollContainer) {
-      // Allday drag: calculate time from ghost position in grid
-      const scRect = ds.scrollContainer.getBoundingClientRect();
-      const mouseYInGrid = ev.clientY - scRect.top + ds.scrollContainer.scrollTop;
-      const theadEl = ds.scrollContainer.querySelector(".todo-week-thead") as HTMLElement | null;
-      const theadH = theadEl ? theadEl.offsetHeight : 0;
-      newStart = this.snapMinute(mouseYInGrid - theadH, ds.hourHeight);
+    if (ds.source === "allday" && ds.columnsEl) {
+      // Allday drag: calculate time from mouse position relative to columns container
+      const colRect = ds.columnsEl.getBoundingClientRect();
+      newStart = this.snapMinute(ev.clientY - colRect.top, ds.hourHeight);
       newStart = Math.max(0, Math.min(1425, newStart));
       newEnd = Math.min(1440, newStart + 60);
       // Determine target date (cross-day support for week view)
@@ -2418,9 +2411,10 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       }
     }
     // Skip update if allday task dropped outside grid
-    if (ds.source === "allday" && ds.scrollContainer) {
-      const scRect = ds.scrollContainer.getBoundingClientRect();
-      if (ev.clientY < scRect.top || ev.clientY > scRect.bottom) {
+    // Skip update if allday task dropped outside columns container
+    if (ds.source === "allday" && ds.columnsEl) {
+      const colRect = ds.columnsEl.getBoundingClientRect();
+      if (ev.clientY < colRect.top || ev.clientY > colRect.bottom) {
         this.renderScheduleView();
         return;
       }
