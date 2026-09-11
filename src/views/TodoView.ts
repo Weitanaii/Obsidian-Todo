@@ -93,12 +93,12 @@ class PromptModal extends Modal {
 import { App, ItemView, Menu, Modal, Notice, setIcon, WorkspaceLeaf } from "obsidian";
 import type ObsidianTodoPlugin from "../../main";
 import { Task, MyDayGroup, PlanKind } from "../models/Task";
-import { currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent, getParentPeriodKey, ageFromDueDate, currentAge } from "../utils/period";
+import { currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent, getParentPeriodKey, ageFromDueDate, currentAge, getISOWeekNumber } from "../utils/period";
 import { TaskDetailView } from "./TaskDetailView";
 import { sortTasks, getMyDayGroupFromTime } from "../utils/sort";
 import type { SortConfig, SortField, SortDirection } from "../utils/sort";
 
-export type ViewNav = "myday" | "all" | "inbox" | "plan";
+export type ViewNav = "myday" | "all" | "inbox" | "plan" | "schedule";
 
 export const VIEW_TYPE_TODO = "obsidian-todo-view";
 
@@ -168,6 +168,7 @@ export interface TodoPluginLike {
     birthday: string;
     planGroupCollapsed: boolean;
     quadrantGroupCollapsed: boolean;
+    activeScheduleMode: "day" | "week" | "month";
   };
   saveSettings(): Promise<void>;
     app?: App;
@@ -190,6 +191,36 @@ export class TodoView extends ItemView {
   private planGroupEl!: HTMLDivElement;
   private quadrantGroupEl!: HTMLDivElement;
   private activePlanKind: PlanKind | null = null;
+  private scheduleMode: "day" | "week" | "month" = "month";
+  private scheduleYear!: number;
+  private scheduleMonth!: number;
+  private scheduleDate!: number;
+  private timeLineTimer: number | null = null;
+  private dragState: {
+    type: "move" | "resize";
+    taskId: string;
+    startY: number;
+    startX: number;
+    origStartMin: number;
+    origEndMin: number;
+    dateStr: string;
+    hourHeight: number;
+    ghost: HTMLElement;
+    card: HTMLElement;
+    moved: boolean;
+    colCount: number;
+    columnsRect: DOMRect | null;
+    dateStrs: string[];
+    currentColIdx: number;
+    ghostBaseLeft: number;
+    scrollContainer: HTMLElement | null;
+    scrollRAF: number | null;
+    origScrollTop: number;
+    source: "timeline" | "allday";
+  } | null = null;
+  private _onDragMove: ((ev: MouseEvent) => void) | null = null;
+  private _onDragEnd: ((ev: MouseEvent) => void) | null = null;
+  private _lastDragMoved = false;
 
   constructor(leaf: WorkspaceLeaf, plugin: TodoPluginLike) {
     super(leaf);
@@ -238,6 +269,9 @@ export class TodoView extends ItemView {
     this.navEls["inbox"] = upperItems.createDiv({ cls: "todo-nav-item" });
     setIcon(this.navEls["inbox"].createSpan({ cls: "todo-nav-icon" }), "inbox");
     this.navEls["inbox"].createSpan({ text: "任务" });
+    this.navEls["schedule"] = upperItems.createDiv({ cls: "todo-nav-item" });
+    setIcon(this.navEls["schedule"].createSpan({ cls: "todo-nav-icon" }), "calendar");
+    this.navEls["schedule"].createSpan({ text: "我的日程" });
 
     // Plan mode nav group
     this.planGroupEl = upperItems.createDiv({ cls: "todo-nav-group todo-plan-group" });
@@ -344,8 +378,12 @@ export class TodoView extends ItemView {
     this.detailEl = layout.createDiv({ cls: "todo-detail" });
     this.detailView = new TaskDetailView(this.app, this.plugin, this.detailEl, (taskId) => {
       this.refreshDetailIfActive(taskId);
-      const view = this.plugin.settings.selectedListId ? "list" : this.plugin.settings.activeViewNav;
-      void this.renderTasks(view);
+      if (this.plugin.settings.activeViewNav === "schedule") {
+        this.renderScheduleView();
+      } else {
+        const view = this.plugin.settings.selectedListId ? "list" : this.plugin.settings.activeViewNav;
+        void this.renderTasks(view);
+      }
     }, () => {
       const layout = this.containerEl.querySelector(".todo-layout");
       if (layout) layout.removeClass("todo-layout-detail-open");
@@ -357,9 +395,18 @@ export class TodoView extends ItemView {
 
     await this.activateNav(this.plugin.settings.activeViewNav);
     await this.renderLists();
+
+    // T-703: Global drag handlers
+    this._onDragMove = (ev: MouseEvent) => this.handleDragMove(ev);
+    this._onDragEnd = (ev: MouseEvent) => this.handleDragEnd(ev);
+    document.addEventListener("mousemove", this._onDragMove);
+    document.addEventListener("mouseup", this._onDragEnd);
   }
 
   async onClose(): Promise<void> {
+    if (this.timeLineTimer) { clearInterval(this.timeLineTimer); this.timeLineTimer = null; }
+    if (this._onDragMove) document.removeEventListener("mousemove", this._onDragMove);
+    if (this._onDragEnd) document.removeEventListener("mouseup", this._onDragEnd);
     this.containerEl.empty();
   }
 
@@ -367,6 +414,23 @@ export class TodoView extends ItemView {
     this.closeDetail();
     this.plugin.settings.activeViewNav = nav;
     this.plugin.settings.selectedListId = null;
+    if (nav === "schedule") {
+      this.sortBtnEl.style.display = "none";
+      this.quickContainerEl.style.display = "none";
+      this.scheduleMode = this.plugin.settings.activeScheduleMode || "month";
+      const now = new Date();
+      this.scheduleYear = now.getFullYear();
+      this.scheduleMonth = now.getMonth();
+      this.scheduleDate = now.getDate();
+      await this.plugin.saveSettings();
+      await this.renderLists();
+      Object.entries(this.navEls).forEach(([, el]) => el.removeClass("active"));
+      this.navEls["schedule"].addClass("active");
+      this.taskListEl.addClass("todo-schedule-active");
+      this.taskListEl.empty();
+      this.renderScheduleView();
+      return;
+    }
     if (nav === "plan" && this.activePlanKind) {
       this.sortBtnEl.style.display = "none";
       this.quickContainerEl.style.display = "none";
@@ -384,6 +448,8 @@ export class TodoView extends ItemView {
     this.activePlanKind = null;
     this.plugin.settings.activePlanKind = null;
     this.sortBtnEl.style.display = "";
+    this.quickContainerEl.style.display = "";
+    this.taskListEl.removeClass("todo-schedule-active");
     await this.plugin.saveSettings();
 
     if (this.planContainerEl) {
@@ -963,7 +1029,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     });
   }
 
-  private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "all" | "inbox" | "list" | "plan"): void {
+  private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "all" | "inbox" | "list" | "plan" | "schedule"): void {
     const row = container.createDiv({
       cls: `todo-task-item${task.isCompleted ? " completed" : ""}${task.isImportant ? " important-row" : ""}${this.plugin.settings.selectedTaskId === task.id ? " todo-task-selected" : ""}`,
     });
@@ -1075,7 +1141,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   }
 
   
-  private renderEmptyState(view: "myday" | "all" | "inbox" | "list" | "plan" ): void {
+  private renderEmptyState(view: "myday" | "all" | "inbox" | "list" | "plan" | "schedule" ): void {
     const empty = this.taskListEl.createDiv({ cls: "todo-empty-state todo-guide" });
 
     if (view === "myday") {
@@ -1560,6 +1626,813 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   }
 
 
+
+  private getScheduleTitle(): string {
+    const dowNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+    switch (this.scheduleMode) {
+      case "month":
+        return this.scheduleYear + "年" + (this.scheduleMonth + 1) + "月";
+      case "day": {
+        const d = new Date(this.scheduleYear, this.scheduleMonth, this.scheduleDate);
+        return (this.scheduleMonth + 1) + "月" + this.scheduleDate + "日 " + dowNames[d.getDay()];
+      }
+      case "week": {
+        const d = new Date(this.scheduleYear, this.scheduleMonth, this.scheduleDate);
+        const wn = getISOWeekNumber(d);
+        return this.scheduleYear + "年 第" + wn + "周";
+      }
+    }
+  }
+
+  private normalizeScheduleDate(): void {
+    const d = new Date(this.scheduleYear, this.scheduleMonth, this.scheduleDate);
+    this.scheduleYear = d.getFullYear();
+    this.scheduleMonth = d.getMonth();
+    this.scheduleDate = d.getDate();
+  }
+
+  private layoutOverlapTasks(tasks: Task[]): { task: Task; col: number; totalCols: number }[] {
+    if (!tasks.length) return [];
+    const HOUR_HEIGHT = 60;
+    const items = tasks
+      .filter(t => t.startDate && t.dueDate)
+      .map(t => ({
+        task: t,
+        start: new Date(t.startDate!).getTime(),
+        end: new Date(t.dueDate!).getTime(),
+      }))
+      .sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
+
+    const columns: number[] = [];
+    const placements: { task: Task; start: number; end: number; col: number }[] = [];
+
+    for (const item of items) {
+      let col = columns.findIndex(endTime => endTime <= item.start);
+      if (col === -1) { col = columns.length; columns.push(0); }
+      columns[col] = item.end;
+      placements.push({ task: item.task, start: item.start, end: item.end, col });
+    }
+
+    type PlacementItem = { task: Task; start: number; end: number; col: number };
+    const groups: PlacementItem[][] = [];
+    let curGroup: PlacementItem[] = [];
+    let groupMaxEnd = 0;
+    for (const p of placements) {
+      if (curGroup.length === 0 || p.start < groupMaxEnd) {
+        curGroup.push(p);
+        groupMaxEnd = Math.max(groupMaxEnd, p.end);
+      } else {
+        groups.push(curGroup);
+        curGroup = [p];
+        groupMaxEnd = p.end;
+      }
+    }
+    if (curGroup.length) groups.push(curGroup);
+
+    const result: { task: Task; col: number; totalCols: number }[] = [];
+    for (const group of groups) {
+      const totalCols = Math.max(...group.map(p => p.col)) + 1;
+      for (const p of group) {
+        result.push({ task: p.task, col: p.col, totalCols });
+      }
+    }
+    return result;
+  }
+
+  private lightenColor(hex: string, factor: number): string {
+    if (!hex || hex.length < 7) return hex;
+    const r = parseInt(hex.substring(1, 3), 16);
+    const g = parseInt(hex.substring(3, 5), 16);
+    const b = parseInt(hex.substring(5, 7), 16);
+    const lr = Math.round(r + (255 - r) * factor);
+    const lg = Math.round(g + (255 - g) * factor);
+    const lb = Math.round(b + (255 - b) * factor);
+    return "#" + [lr, lg, lb].map(v => v.toString(16).padStart(2, "0")).join("");
+  }
+
+  private getTaskBlockColor(task: Task): string {
+    const allTags = this.plugin.tagService.getAll();
+    const colorTag = task.tags
+      .map(id => allTags.find(t => t.id === id && t.sortOrder >= 4))
+      .find(Boolean);
+    const raw = colorTag?.color || "#4A90D9";
+    return this.lightenColor(raw, 0.45);
+  }
+
+  private renderScheduleView(): void {
+    if (this.timeLineTimer) { clearInterval(this.timeLineTimer); this.timeLineTimer = null; }
+    const container = this.taskListEl;
+    container.empty();
+    const wrap = container.createDiv({ cls: "todo-schedule-container" });
+
+    const header = wrap.createDiv({ cls: "todo-schedule-header" });
+    const nav = header.createDiv({ cls: "todo-schedule-nav" });
+    const prevBtn = nav.createEl("button", { cls: "todo-schedule-prev", text: "◀" });
+    const titleEl = nav.createSpan({ cls: "todo-schedule-title", text: this.getScheduleTitle() });
+    const nextBtn = nav.createEl("button", { cls: "todo-schedule-next", text: "▶" });
+    const todayBtn = nav.createEl("button", { cls: "todo-schedule-today-btn", text: "今天" });
+
+    const updateView = () => {
+      titleEl.textContent = this.getScheduleTitle();
+      this.renderScheduleContent(contentEl);
+    };
+
+    prevBtn.addEventListener("click", () => {
+      if (this.scheduleMode === "month") { this.scheduleMonth--; if (this.scheduleMonth < 0) { this.scheduleMonth = 11; this.scheduleYear--; } }
+      else if (this.scheduleMode === "day") { this.scheduleDate--; this.normalizeScheduleDate(); }
+      else { this.scheduleDate -= 7; this.normalizeScheduleDate(); }
+      updateView();
+    });
+    nextBtn.addEventListener("click", () => {
+      if (this.scheduleMode === "month") { this.scheduleMonth++; if (this.scheduleMonth > 11) { this.scheduleMonth = 0; this.scheduleYear++; } }
+      else if (this.scheduleMode === "day") { this.scheduleDate++; this.normalizeScheduleDate(); }
+      else { this.scheduleDate += 7; this.normalizeScheduleDate(); }
+      updateView();
+    });
+    todayBtn.addEventListener("click", () => {
+      const now = new Date();
+      this.scheduleYear = now.getFullYear();
+      this.scheduleMonth = now.getMonth();
+      this.scheduleDate = now.getDate();
+      updateView();
+    });
+
+    const switchEl = header.createDiv({ cls: "todo-schedule-mode-switch" });
+    const modes = ["day", "week", "month"] as const;
+    const modeLabels: Record<string, string> = { day: "日", week: "周", month: "月" };
+    for (const m of modes) {
+      const btn = switchEl.createSpan({
+        cls: "todo-schedule-mode-btn" + (m === this.scheduleMode ? " active" : ""),
+        text: modeLabels[m],
+      });
+      btn.addEventListener("click", async () => {
+        this.scheduleMode = m;
+        this.plugin.settings.activeScheduleMode = m;
+        await this.plugin.saveSettings();
+        switchEl.querySelectorAll(".todo-schedule-mode-btn").forEach((el) => el.removeClass("active"));
+        btn.addClass("active");
+        titleEl.textContent = this.getScheduleTitle();
+        this.renderScheduleContent(contentEl);
+      });
+    }
+
+    const contentEl = wrap.createDiv({ cls: "todo-schedule-content" });
+    this.renderScheduleContent(contentEl);
+  }
+
+  private renderScheduleContent(container: HTMLDivElement): void {
+    if (this.timeLineTimer) { clearInterval(this.timeLineTimer); this.timeLineTimer = null; }
+    container.empty();
+    switch (this.scheduleMode) {
+      case "month":
+        this.renderMonthView(container);
+        break;
+      case "day":
+        this.renderDayView(container);
+        break;
+      case "week":
+        this.renderWeekView(container);
+        break;
+    }
+  }
+
+  private renderMonthView(container: HTMLDivElement): void {
+    const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+    const weekdaysEl = container.createDiv({ cls: "todo-schedule-weekdays" });
+    for (const wd of weekdays) { weekdaysEl.createSpan({ text: wd }); }
+    const grid = container.createDiv({ cls: "todo-schedule-grid" });
+    const firstDay = new Date(this.scheduleYear, this.scheduleMonth, 1);
+    const startDow = firstDay.getDay();
+    const daysInMonth = new Date(this.scheduleYear, this.scheduleMonth + 1, 0).getDate();
+    const totalCells = Math.ceil((startDow + daysInMonth) / 7) * 7;
+    grid.style.setProperty("--schedule-rows", String(totalCells / 7));
+    const prevMonthDays = new Date(this.scheduleYear, this.scheduleMonth, 0).getDate();
+    const today = new Date();
+    const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
+    for (let i = 0; i < totalCells; i++) {
+      let dayNum: number;
+      let dateStr: string;
+      let isOther = false;
+      if (i < startDow) {
+        dayNum = prevMonthDays - startDow + i + 1;
+        const pm = this.scheduleMonth === 0 ? 11 : this.scheduleMonth - 1;
+        const py = this.scheduleMonth === 0 ? this.scheduleYear - 1 : this.scheduleYear;
+        dateStr = py + "-" + String(pm + 1).padStart(2, "0") + "-" + String(dayNum).padStart(2, "0");
+        isOther = true;
+      } else if (i >= startDow + daysInMonth) {
+        dayNum = i - startDow - daysInMonth + 1;
+        const nm = this.scheduleMonth === 11 ? 0 : this.scheduleMonth + 1;
+        const ny = this.scheduleMonth === 11 ? this.scheduleYear + 1 : this.scheduleYear;
+        dateStr = ny + "-" + String(nm + 1).padStart(2, "0") + "-" + String(dayNum).padStart(2, "0");
+        isOther = true;
+      } else {
+        dayNum = i - startDow + 1;
+        dateStr = this.scheduleYear + "-" + String(this.scheduleMonth + 1).padStart(2, "0") + "-" + String(dayNum).padStart(2, "0");
+      }
+      const cell = grid.createDiv({ cls: "todo-schedule-cell" });
+      if (isOther) cell.addClass("todo-schedule-other-month");
+      if (dateStr === todayStr) cell.addClass("todo-schedule-today");
+      const dow = i % 7;
+      if (dow === 0 || dow === 6) cell.addClass("todo-schedule-weekend");
+      cell.createDiv({ cls: "todo-schedule-cell-date", text: String(dayNum) });
+      cell.createDiv({ cls: "todo-schedule-cell-tasks" });
+    }
+  }
+
+  private renderScheduleTaskCard(container: HTMLElement, task: Task): void {
+    const sd = new Date(task.startDate!);
+    const ed = new Date(task.dueDate!);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const timeStr = pad(sd.getHours()) + ":" + pad(sd.getMinutes()) + " - " + pad(ed.getHours()) + ":" + pad(ed.getMinutes());
+    const blockColor = this.getTaskBlockColor(task);
+
+    const card = container.createDiv({ cls: "todo-time-event-block" });
+    card.dataset.taskId = task.id;
+    card.style.backgroundColor = blockColor;
+    const textColor = this.getContrastColor(blockColor);
+    card.style.color = textColor;
+    card.createDiv({ cls: "todo-event-time", text: timeStr });
+    card.createDiv({ cls: "todo-event-title", text: task.title });
+    card.createDiv({ cls: "todo-resize-handle" });
+
+    card.addEventListener("mousedown", (ev) => {
+      if (ev.button !== 0) return;
+      const rect = card.getBoundingClientRect();
+      const isResize = (ev.clientY - rect.top) > rect.height - 8;
+      const startMin = sd.getHours() * 60 + sd.getMinutes();
+      const endMin = ed.getHours() * 60 + ed.getMinutes();
+      const dateStr = task.dueDate!.substring(0, 10);
+      const hourHeight = 60;
+
+      // Cross-day detection for week view
+      const columnsEl = container.closest(".todo-week-columns") as HTMLElement | null;
+      const colCount = columnsEl ? columnsEl.children.length : 1;
+      const columnsRect = columnsEl ? columnsEl.getBoundingClientRect() : null;
+      const dateStrs: string[] = [];
+      let currentColIdx = 0;
+      if (columnsEl) {
+        for (let ci = 0; ci < columnsEl.children.length; ci++) {
+          const cEl = columnsEl.children[ci] as HTMLElement;
+          const firstCard = cEl.querySelector("[data-date-str]") as HTMLElement | null;
+          if (firstCard) dateStrs.push(firstCard.dataset.dateStr!);
+          else {
+            // Derive date from weekStart offset
+            const refDate = new Date(this.scheduleYear, this.scheduleMonth, this.scheduleDate);
+            const dow = refDate.getDay() || 7;
+            const ws = new Date(refDate); ws.setDate(refDate.getDate() - dow + 1);
+            const cd = new Date(ws); cd.setDate(ws.getDate() + ci);
+            dateStrs.push(cd.getFullYear() + "-" + String(cd.getMonth() + 1).padStart(2, "0") + "-" + String(cd.getDate()).padStart(2, "0"));
+          }
+          if (cEl.contains(card)) currentColIdx = ci;
+        }
+      }
+
+      // Create ghost in columns container for week view (cross-day drag)
+      const ghostParent = columnsEl || container;
+      const ghost = ghostParent.createDiv({ cls: "todo-drag-ghost" });
+      ghost.style.backgroundColor = blockColor;
+      let ghostBaseLeft = 0;
+      if (columnsEl && columnsRect) {
+        // Week view: position ghost relative to columns container
+        const colWidth = columnsRect.width / colCount;
+        const colRect = container.getBoundingClientRect();
+        const cardLeftInCol = card.getBoundingClientRect().left - colRect.left;
+        ghostBaseLeft = currentColIdx * colWidth + cardLeftInCol;
+        ghost.style.left = ghostBaseLeft + "px";
+        ghost.style.width = card.getBoundingClientRect().width + "px";
+        ghost.style.top = card.style.top;
+        ghost.style.height = card.style.height;
+      } else {
+        // Day view: keep original positioning
+        ghost.style.left = card.style.left;
+        ghost.style.width = card.style.width;
+        ghost.style.top = card.style.top;
+        ghost.style.height = card.style.height;
+      }
+
+      // Find scroll container for auto-scroll
+      const scrollContainer = columnsEl
+        ? container.closest(".todo-schedule-week-grid") as HTMLElement | null
+        : container.closest(".todo-time-grid") as HTMLElement | null;
+      this.dragState = {
+        type: isResize ? "resize" : "move",
+        taskId: task.id,
+        startY: ev.clientY,
+        startX: ev.clientX,
+        origStartMin: startMin,
+        origEndMin: endMin,
+        dateStr,
+        hourHeight,
+        ghost,
+        card,
+        moved: false,
+        colCount,
+        columnsRect,
+        dateStrs,
+        currentColIdx,
+        ghostBaseLeft,
+        scrollContainer,
+        scrollRAF: null,
+        source: "timeline" as const,
+        origScrollTop: scrollContainer?.scrollTop || 0,
+      };
+      card.addClass("dragging");
+    });
+  }
+
+  private getContrastColor(hex: string): string {
+    if (!hex || hex.length < 7) return "#ffffff";
+    const r = parseInt(hex.substring(1, 3), 16);
+    const g = parseInt(hex.substring(3, 5), 16);
+    const b = parseInt(hex.substring(5, 7), 16);
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return lum > 0.5 ? "#1a1a1a" : "#ffffff";
+  }
+
+  private renderDayView(container: HTMLDivElement): void {
+    const HOUR_HEIGHT = 60;
+    const dateStr = this.scheduleYear + "-" + String(this.scheduleMonth + 1).padStart(2, "0") + "-" + String(this.scheduleDate).padStart(2, "0");
+    const allTasks = this.plugin.taskService.getAll();
+    const dayTasks = allTasks.filter(t => !t.isCompleted && t.dueDate && t.dueDate.startsWith(dateStr) && t.startDate);
+
+    const view = container.createDiv({ cls: "todo-schedule-day-view" });
+
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const today = new Date();
+    const todayStr = today.getFullYear() + "-" + pad(today.getMonth() + 1) + "-" + pad(today.getDate());
+    const alldayTasks = allTasks.filter(t => !t.isCompleted && (
+      (t.dueDate && t.dueDate.startsWith(dateStr) && (!t.startDate || (new Date(t.startDate).getHours() === 0 && new Date(t.startDate).getMinutes() === 0 && new Date(t.dueDate).getHours() === 0 && new Date(t.dueDate).getMinutes() === 0)))
+      || (t.isMyDay && !t.startDate && !t.dueDate && dateStr === todayStr)
+    ));
+    let gridEl: HTMLDivElement;
+    const allday = view.createDiv({ cls: "todo-day-allday" });
+    allday.createSpan({ cls: "todo-day-allday-label", text: "全天" });
+    for (const t of alldayTasks) {
+      const card = allday.createDiv({ cls: "todo-day-allday-card" });
+      card.style.backgroundColor = this.getTaskBlockColor(t);
+      card.style.color = this.getContrastColor(this.getTaskBlockColor(t));
+      card.createSpan({ text: t.title });
+      card.addEventListener("mousedown", (ev) => {
+        if (ev.button !== 0) return;
+        const sc = gridEl;
+        const scRect = sc.getBoundingClientRect();
+        const ghost = sc.createDiv({ cls: "todo-drag-ghost" });
+        const blockColor = this.getTaskBlockColor(t);
+        ghost.style.backgroundColor = blockColor;
+        ghost.style.left = "48px";
+        ghost.style.right = "4px";
+        ghost.style.width = "auto";
+        ghost.style.top = "0px";
+        ghost.style.height = "60px";
+        this.dragState = {
+          type: "move",
+          taskId: t.id,
+          startY: ev.clientY,
+          startX: ev.clientX,
+          origStartMin: 0,
+          origEndMin: 60,
+          dateStr,
+          hourHeight: 60,
+          ghost,
+          card,
+          moved: false,
+          colCount: 1,
+          columnsRect: null,
+          dateStrs: [dateStr],
+          currentColIdx: 0,
+          ghostBaseLeft: 0,
+          scrollContainer: sc,
+          scrollRAF: null,
+          source: "allday",
+        origScrollTop: sc?.scrollTop || 0,
+        };
+        card.addClass("dragging");
+      });
+      card.addEventListener("click", () => {
+        if (this.dragState || this._lastDragMoved) return;
+        this.detailView.clearHistory();
+        this.plugin.settings.selectedTaskId = t.id;
+        void this.plugin.saveSettings();
+        this.detailView.open(t.id);
+        const layout = this.containerEl.querySelector(".todo-layout");
+        if (layout) layout.addClass("todo-layout-detail-open");
+      });
+    }
+
+    gridEl = view.createDiv({ cls: "todo-time-grid" });
+
+    const slots = gridEl.createDiv({ cls: "todo-time-slots" });
+    for (let h = 0; h < 24; h++) {
+      slots.createDiv({ cls: "todo-time-slot" });
+    }
+
+    const labels = gridEl.createDiv({ cls: "todo-time-labels" });
+    for (let h = 0; h <= 24; h++) {
+      labels.createDiv({ cls: "todo-time-label", text: String(h).padStart(2, "0") + ":00" });
+    }
+
+    const eventsContainer = gridEl.createDiv({ cls: "todo-time-events" });
+    const placements = this.layoutOverlapTasks(dayTasks);
+    for (const p of placements) {
+      const sd = new Date(p.task.startDate!);
+      const ed = new Date(p.task.dueDate!);
+      const startMin = sd.getHours() * 60 + sd.getMinutes();
+      const endMin = ed.getHours() * 60 + ed.getMinutes();
+      if (endMin <= startMin) continue;
+
+      this.renderScheduleTaskCard(eventsContainer, p.task);
+      const card = eventsContainer.lastElementChild as HTMLElement;
+      const top = (startMin / 60) * HOUR_HEIGHT;
+      const height = Math.max(((endMin - startMin) / 60) * HOUR_HEIGHT, 20);
+      card.style.top = top + "px";
+      card.style.height = height + "px";
+      const widthPct = 100 / p.totalCols;
+      const leftPct = widthPct * p.col;
+      const gap = p.col * 3;
+      card.style.width = "calc(" + widthPct + "% - 3px)";
+      card.style.left = "calc(" + leftPct + "% + " + gap + "px)";
+    }
+
+    // T-703: Click-to-create on empty time slot
+    eventsContainer.addEventListener("click", async (ev) => {
+      if (this.dragState || this._lastDragMoved) return;
+      if (ev.target !== eventsContainer) return;
+      const rect = eventsContainer.getBoundingClientRect();
+      const y = ev.clientY - rect.top + gridEl.scrollTop;
+      const startMin = this.snapMinute(y, HOUR_HEIGHT);
+      const endMin = Math.min(1440, startMin + 60);
+      const title = await new PromptModal(this.app, "\u8f93\u5165\u4efb\u52a1\u6807\u9898").openAndGetValue();
+      if (!title) return;
+      const defaultList = this.plugin.listService.getDefault();
+      if (!defaultList) return;
+      await this.plugin.taskService.create({
+        title,
+        listId: defaultList.id,
+        startDate: this.minuteToIso(dateStr, startMin),
+        dueDate: this.minuteToIso(dateStr, endMin),
+      });
+      this.renderScheduleView();
+    });
+
+    this.renderTimeLine(gridEl);
+
+    gridEl.scrollTop = Math.max(0, ((new Date().getHours() - 1) * HOUR_HEIGHT));
+  }
+
+  private renderWeekView(container: HTMLDivElement): void {
+    const HOUR_HEIGHT = 60;
+    const refDate = new Date(this.scheduleYear, this.scheduleMonth, this.scheduleDate);
+    const dow = refDate.getDay() || 7;
+    const weekStart = new Date(refDate);
+    weekStart.setDate(refDate.getDate() - dow + 1);
+    const dowNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+    const today = new Date();
+
+    const view = container.createDiv({ cls: "todo-schedule-week-view" });
+    const grid = view.createDiv({ cls: "todo-schedule-week-grid" });
+
+    // Unified header: sticky thead with header + all-day rows
+    const thead = grid.createDiv({ cls: "todo-week-thead" });
+
+    // Header row
+    const headerRow = thead.createDiv({ cls: "todo-week-header" });
+    headerRow.createDiv({ cls: "todo-week-corner" });
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart);
+      d.setDate(d.getDate() + i);
+      const isToday = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+      const col = headerRow.createDiv({ cls: "todo-week-day-header" + (isToday ? " todo-week-today-col" : "") });
+      col.createDiv({ cls: "todo-week-dow", text: dowNames[i] });
+      const dateNum = col.createDiv({ cls: "todo-week-date-num", text: String(d.getDate()) });
+      if (isToday) { dateNum.addClass("todo-schedule-today"); }
+    }
+
+    // All-day row
+    const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
+    const datedAllday = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.dueDate && (!t.startDate || (new Date(t.startDate).getHours() === 0 && new Date(t.startDate).getMinutes() === 0 && new Date(t.dueDate).getHours() === 0 && new Date(t.dueDate).getMinutes() === 0)));
+    const undatedMyDay = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.isMyDay && !t.startDate && !t.dueDate);
+    const alldayRow = thead.createDiv({ cls: "todo-week-allday" });
+    alldayRow.createDiv({ cls: "todo-week-allday-label", text: "全天" });
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart);
+      d.setDate(d.getDate() + i);
+      const ds = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      const cell = alldayRow.createDiv({ cls: "todo-week-allday-cell" + (ds === todayStr ? " todo-week-today-col" : "") });
+      const cellTasks = [...datedAllday.filter(t => t.dueDate!.startsWith(ds)), ...(ds === todayStr ? undatedMyDay : [])];
+      for (const t of cellTasks) {
+        const card = cell.createDiv({ cls: "todo-day-allday-card" });
+        card.style.backgroundColor = this.getTaskBlockColor(t);
+        card.style.color = this.getContrastColor(this.getTaskBlockColor(t));
+        card.createSpan({ text: t.title });
+        card.addEventListener("mousedown", (ev) => {
+          if (ev.button !== 0) return;
+          const sc = grid;
+          const scRect = sc.getBoundingClientRect();
+          const ghost = sc.createDiv({ cls: "todo-drag-ghost" });
+          const blockColor = this.getTaskBlockColor(t);
+          ghost.style.backgroundColor = blockColor;
+          // Calculate column width and position
+          const columnsEl = sc.querySelector(".todo-week-columns") as HTMLElement;
+          const columnsRect = columnsEl ? columnsEl.getBoundingClientRect() : null;
+          const colCount = 7;
+          const dateStrs: string[] = [];
+          for (let ci = 0; ci < 7; ci++) {
+            const cd = new Date(weekStart); cd.setDate(weekStart.getDate() + ci);
+            dateStrs.push(cd.getFullYear() + "-" + String(cd.getMonth() + 1).padStart(2, "0") + "-" + String(cd.getDate()).padStart(2, "0"));
+          }
+          const currentColIdx = i;
+          let ghostBaseLeft = 0;
+          if (columnsRect) {
+            const colWidth = columnsRect.width / colCount;
+            ghostBaseLeft = (columnsRect.left - scRect.left) + currentColIdx * colWidth;
+            ghost.style.left = ghostBaseLeft + "px";
+            ghost.style.width = colWidth + "px";
+          } else {
+            ghost.style.left = "0";
+            ghost.style.width = "100%";
+          }
+          ghost.style.top = "0px";
+          ghost.style.height = "60px";
+          this.dragState = {
+            type: "move",
+            taskId: t.id,
+            startY: ev.clientY,
+            startX: ev.clientX,
+            origStartMin: 0,
+            origEndMin: 60,
+            dateStr: ds,
+            hourHeight: 60,
+            ghost,
+            card,
+            moved: false,
+            colCount,
+            columnsRect,
+            dateStrs,
+            currentColIdx,
+            ghostBaseLeft,
+            scrollContainer: sc,
+            scrollRAF: null,
+            source: "allday",
+        origScrollTop: sc?.scrollTop || 0,
+          };
+          card.addClass("dragging");
+        });
+        card.addEventListener("click", () => {
+          if (this.dragState || this._lastDragMoved) return;
+          this.detailView.clearHistory();
+          this.plugin.settings.selectedTaskId = t.id;
+          void this.plugin.saveSettings();
+          this.detailView.open(t.id);
+          const layout = this.containerEl.querySelector(".todo-layout");
+          if (layout) layout.addClass("todo-layout-detail-open");
+        });
+      }
+    }
+
+    // Scrollable body with time grid and task columns
+    const tbody = grid.createDiv({ cls: "todo-week-tbody" });
+    const todayCol = today.getDay() === 0 ? 6 : today.getDay() - 1; // Mon=0..Sun=6
+
+    // Time slot rows (24 hours, each is a grid row)
+    for (let h = 0; h < 24; h++) {
+      const row = tbody.createDiv({ cls: "todo-week-grid-row" });
+      row.createDiv({ cls: "todo-week-time-cell" });
+      for (let d = 0; d < 7; d++) { row.createDiv({ cls: "todo-week-day-cell" + (d === todayCol ? " todo-week-today-col" : "") }); }
+    }
+
+    // Time labels
+    const labels = tbody.createDiv({ cls: "todo-time-labels" });
+    for (let h = 0; h <= 24; h++) { labels.createDiv({ cls: "todo-time-label", text: String(h).padStart(2, "0") + ":00" }); }
+
+    // Task columns (positioned over time slots)
+    const columns = tbody.createDiv({ cls: "todo-week-columns" });
+    const allTasks = this.plugin.taskService.getAll();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart);
+      d.setDate(d.getDate() + i);
+      const ds = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      const col = columns.createDiv({ cls: "todo-week-column" });
+      const dayTasks = allTasks.filter(t => !t.isCompleted && t.startDate && t.dueDate && t.dueDate.startsWith(ds));
+      const placements = this.layoutOverlapTasks(dayTasks);
+      for (const p of placements) {
+        const sd = new Date(p.task.startDate!);
+        const ed = new Date(p.task.dueDate!);
+        const startMin = sd.getHours() * 60 + sd.getMinutes();
+        const endMin = ed.getHours() * 60 + ed.getMinutes();
+        if (endMin <= startMin) continue;
+        this.renderScheduleTaskCard(col, p.task);
+        const card = col.lastElementChild as HTMLElement;
+        card.dataset.dateStr = ds;
+        const top = (startMin / 60) * HOUR_HEIGHT;
+        const height = Math.max(((endMin - startMin) / 60) * HOUR_HEIGHT, 18);
+        card.style.top = top + "px";
+        card.style.height = height + "px";
+        const widthPct = 100 / p.totalCols;
+        const leftPct = widthPct * p.col;
+        const gap = p.col * 3;
+        card.style.width = "calc(" + widthPct + "% - 3px)";
+        card.style.left = "calc(" + leftPct + "% + " + gap + "px)";
+      }
+
+      // T-703: Click-to-create on empty week column
+      col.addEventListener("click", async (ev) => {
+        if (this.dragState || this._lastDragMoved) return;
+        if (ev.target !== col) return;
+        const rect = col.getBoundingClientRect();
+        const y = ev.clientY - rect.top;
+        const startMin = this.snapMinute(y, HOUR_HEIGHT);
+        const endMin = Math.min(1440, startMin + 60);
+        const title = await new PromptModal(this.app, "\u8f93\u5165\u4efb\u52a1\u6807\u9898").openAndGetValue();
+        if (!title) return;
+        const defaultList = this.plugin.listService.getDefault();
+        if (!defaultList) return;
+        await this.plugin.taskService.create({
+          title,
+          listId: defaultList.id,
+          startDate: this.minuteToIso(ds, startMin),
+          dueDate: this.minuteToIso(ds, endMin),
+        });
+        this.renderScheduleView();
+      });
+    }
+
+    // Timeline in thead (stays visible when scrolling)
+    this.renderTimeLine(thead);
+
+    tbody.scrollTop = Math.max(0, ((today.getHours() - 1) * HOUR_HEIGHT));
+  }
+
+  private renderTimeLine(container: HTMLElement): void {
+    const HOUR_HEIGHT = 60;
+    const line = container.createDiv({ cls: "todo-time-line" });
+    line.createDiv({ cls: "todo-time-line-dot" });
+    const update = () => {
+      const now = new Date();
+      const min = now.getHours() * 60 + now.getMinutes();
+      line.style.top = ((min / 60) * HOUR_HEIGHT) + "px";
+    };
+    update();
+    this.timeLineTimer = window.setInterval(update, 60000);
+  }
+
+  // T-703: Utility — pixel to snapped minute (15min grid)
+  private snapMinute(px: number, hourHeight: number): number {
+    const raw = (px / hourHeight) * 60;
+    return Math.round(raw / 15) * 15;
+  }
+
+  // T-703: Utility — dateStr + minuteOfDay → ISO string
+  private minuteToIso(dateStr: string, minute: number): string {
+    const h = Math.floor(minute / 60);
+    const m = minute % 60;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return dateStr + "T" + pad(h) + ":" + pad(m) + ":00";
+  }
+
+  // T-703: Handle drag move
+  // T-703: Handle drag move
+  private handleDragMove(ev: MouseEvent): void {
+    const ds = this.dragState;
+    if (!ds) return;
+    const rawDeltaY = ev.clientY - ds.startY;
+    const deltaX = ev.clientX - ds.startX;
+    if (!ds.moved && Math.abs(rawDeltaY) < 3 && Math.abs(deltaX) < 3) return;
+    ds.moved = true;
+    const scrollChange = ds.scrollContainer ? (ds.scrollContainer.scrollTop - ds.origScrollTop) : 0;
+    const deltaY = rawDeltaY + scrollChange;
+    const deltaMin = Math.round((deltaY / ds.hourHeight) * 60 / 15) * 15;
+    if (ds.type === "move") {
+      const newStart = Math.max(0, Math.min(1425, ds.origStartMin + deltaMin));
+      const duration = ds.origEndMin - ds.origStartMin;
+      const newEnd = Math.min(1440, newStart + duration);
+      ds.ghost.style.top = ((newStart / 60) * ds.hourHeight) + "px";
+      ds.ghost.style.height = Math.max(15, ((newEnd - newStart) / 60) * ds.hourHeight) + "px";
+    } else {
+      const newEnd = Math.max(ds.origStartMin + 15, Math.min(1440, ds.origEndMin + deltaMin));
+      ds.ghost.style.height = Math.max(15, ((newEnd - ds.origStartMin) / 60) * ds.hourHeight) + "px";
+    }
+    // Allday drag: position ghost at mouse Y in scroll container
+    if (ds.source === "allday" && ds.scrollContainer) {
+      const scRect = ds.scrollContainer.getBoundingClientRect();
+      const mouseYInGrid = ev.clientY - scRect.top + ds.scrollContainer.scrollTop;
+      const theadEl = ds.scrollContainer.querySelector(".todo-week-thead") as HTMLElement | null;
+      const theadH = theadEl ? theadEl.offsetHeight : 0;
+      const snappedMin = this.snapMinute(mouseYInGrid - theadH, ds.hourHeight);
+      ds.ghost.style.top = Math.max(0, theadH + (snappedMin / 60) * ds.hourHeight) + "px";
+      ds.ghost.style.height = ds.hourHeight + "px";
+    }
+    // Cross-day horizontal ghost movement in week view
+    if (ds.colCount > 1 && ds.columnsRect) {
+      const colWidth = ds.columnsRect.width / ds.colCount;
+      const targetCol = Math.max(0, Math.min(ds.colCount - 1, Math.floor((ev.clientX - ds.columnsRect.left) / colWidth)));
+      ds.ghost.style.left = (ds.ghostBaseLeft + (targetCol - ds.currentColIdx) * colWidth) + "px";
+    }
+    // Auto-scroll when near edges of scroll container
+    if (ds.scrollContainer) {
+      const scRect = ds.scrollContainer.getBoundingClientRect();
+      const threshold = 50;
+      const maxSpeed = 15;
+      const nearTop = ev.clientY - scRect.top;
+      const nearBottom = scRect.bottom - ev.clientY;
+      let scrollDelta = 0;
+      if (nearTop >= 0 && nearTop < threshold) {
+        scrollDelta = -Math.round(maxSpeed * (1 - nearTop / threshold));
+      } else if (nearBottom >= 0 && nearBottom < threshold) {
+        scrollDelta = Math.round(maxSpeed * (1 - nearBottom / threshold));
+      }
+      if (scrollDelta !== 0) {
+        if (!ds.scrollRAF) {
+          const tick = () => {
+            if (!this.dragState || !this.dragState.scrollContainer) return;
+            this.dragState.scrollContainer.scrollTop += scrollDelta;
+            ds.scrollRAF = requestAnimationFrame(tick);
+          };
+          ds.scrollRAF = requestAnimationFrame(tick);
+        }
+      } else if (ds.scrollRAF) {
+        cancelAnimationFrame(ds.scrollRAF);
+        ds.scrollRAF = null;
+      }
+    }
+  }
+
+  // T-703: Handle drag end
+  private async handleDragEnd(ev: MouseEvent): Promise<void> {
+    const ds = this.dragState;
+    if (!ds) return;
+    this.dragState = null;
+    if (ds.scrollRAF) { cancelAnimationFrame(ds.scrollRAF); ds.scrollRAF = null; }
+    ds.card.removeClass("dragging");
+    ds.ghost.remove();
+    this._lastDragMoved = true;
+    setTimeout(() => { this._lastDragMoved = false; }, 0);
+    if (!ds.moved) {
+      // Treat as click: open detail panel
+      this.detailView.clearHistory();
+      this.plugin.settings.selectedTaskId = ds.taskId;
+      void this.plugin.saveSettings();
+      this.detailView.open(ds.taskId);
+      const layout = this.containerEl.querySelector(".todo-layout");
+      if (layout) layout.addClass("todo-layout-detail-open");
+      return;
+    }
+    let newStart: number, newEnd: number;
+    let finalDateStr = ds.dateStr;
+    if (ds.source === "allday" && ds.scrollContainer) {
+      // Allday drag: calculate time from ghost position in grid
+      const scRect = ds.scrollContainer.getBoundingClientRect();
+      const mouseYInGrid = ev.clientY - scRect.top + ds.scrollContainer.scrollTop;
+      const theadEl = ds.scrollContainer.querySelector(".todo-week-thead") as HTMLElement | null;
+      const theadH = theadEl ? theadEl.offsetHeight : 0;
+      newStart = this.snapMinute(mouseYInGrid - theadH, ds.hourHeight);
+      newStart = Math.max(0, Math.min(1425, newStart));
+      newEnd = Math.min(1440, newStart + 60);
+      // Determine target date (cross-day support for week view)
+      if (ds.colCount > 1 && ds.columnsRect) {
+        const colWidth = ds.columnsRect.width / ds.colCount;
+        const targetCol = Math.max(0, Math.min(ds.colCount - 1, Math.floor((ev.clientX - ds.columnsRect.left) / colWidth)));
+        if (targetCol >= 0 && targetCol < ds.dateStrs.length) {
+          finalDateStr = ds.dateStrs[targetCol];
+        }
+      }
+    } else {
+      // Timeline drag: calculate time from delta
+      const scrollChange = ds.scrollContainer ? (ds.scrollContainer.scrollTop - ds.origScrollTop) : 0;
+      const deltaY = ev.clientY - ds.startY + scrollChange;
+      const deltaMin = Math.round((deltaY / ds.hourHeight) * 60 / 15) * 15;
+      if (ds.type === "move") {
+        newStart = Math.max(0, Math.min(1425, ds.origStartMin + deltaMin));
+        const duration = ds.origEndMin - ds.origStartMin;
+        newEnd = Math.min(1440, newStart + duration);
+      } else {
+        newStart = ds.origStartMin;
+        newEnd = Math.max(ds.origStartMin + 15, Math.min(1440, ds.origEndMin + deltaMin));
+      }
+      // Determine target date (cross-day support)
+      if (ds.colCount > 1 && ds.columnsRect) {
+        const colWidth = ds.columnsRect.width / ds.colCount;
+        const targetCol = Math.max(0, Math.min(ds.colCount - 1, Math.floor((ev.clientX - ds.columnsRect.left) / colWidth)));
+        if (targetCol >= 0 && targetCol < ds.dateStrs.length) {
+          finalDateStr = ds.dateStrs[targetCol];
+        }
+      }
+    }
+    // Skip update if allday task dropped outside grid
+    if (ds.source === "allday" && ds.scrollContainer) {
+      const scRect = ds.scrollContainer.getBoundingClientRect();
+      if (ev.clientY < scRect.top || ev.clientY > scRect.bottom) {
+        this.renderScheduleView();
+        return;
+      }
+    }
+    await this.plugin.taskService.update(ds.taskId, {
+      startDate: this.minuteToIso(finalDateStr, newStart),
+      dueDate: this.minuteToIso(finalDateStr, newEnd),
+    });
+    this.renderScheduleView();
+  }
+
+
   private setupPlanAddButton(btn: HTMLElement, bodyEl: HTMLElement, kind: PlanKind, periodKey: string): void {
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -1627,7 +2500,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     if (layout) layout.removeClass("todo-layout-detail-open");
   }
 
-  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "inbox" | "list" | "plan" ): void {
+  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "inbox" | "list" | "plan" | "schedule" ): void {
     const menu = new Menu();
 
     menu.addItem((item) =>

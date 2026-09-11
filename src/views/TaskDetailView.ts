@@ -507,6 +507,22 @@ export class TaskDetailView {
       }
     }
 
+    // Date ordering: ensure dueDate >= startDate
+    {
+      const task = this.getTask();
+      const effStart = changes.startDate !== undefined ? changes.startDate : (task?.startDate ?? null);
+      const effEnd = changes.dueDate !== undefined ? changes.dueDate : (task?.dueDate ?? null);
+      if (effStart && effEnd) {
+        const startMs = new Date(effStart).getTime();
+        const endMs = new Date(effEnd).getTime();
+        if (!isNaN(startMs) && !isNaN(endMs) && endMs < startMs) {
+          changes.startDate = effEnd;
+          changes.dueDate = effStart;
+          new Notice("截止时间不能早于开始时间，已自动调换");
+        }
+      }
+    }
+
     // Quadrant mode: no listId auto-classification needed (aggregated view, tasks stay in original list)
 
     const p = this.plugin.taskService.update(taskId, changes).then((updated) => {
@@ -621,7 +637,7 @@ class DatePickerModal extends Modal {
     const d = currentIsoDate ? new Date(currentIsoDate) : new Date();
     this.currentDate = Number.isNaN(d.getTime()) ? new Date() : d;
     this.selectedHour = this.currentDate.getHours();
-    this.selectedMinute = this.currentDate.getMinutes();
+    this.selectedMinute = Math.round(this.currentDate.getMinutes() / 15) * 15 % 60;
   }
 
   onOpen(): void {

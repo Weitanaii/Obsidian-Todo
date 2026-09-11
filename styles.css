@@ -11,6 +11,7 @@
   font-family: var(--font-interface);
   height: 100%;
   width: 100%;
+  overflow: hidden;
 }
 
 .todo-layout .todo-nav {
@@ -25,6 +26,7 @@
   min-width: 0;
   width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 
 
@@ -2272,4 +2274,399 @@
 .todo-life-card-tag-icon svg {
   width: 12px;
   height: 12px;
+}
+
+/* ===== T-701: Schedule View ===== */
+.todo-schedule-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  padding: 12px 12px 10px 12px;
+  box-sizing: border-box;
+}
+.todo-schedule-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.todo-schedule-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.todo-schedule-title {
+  font-size: 16px;
+  font-weight: 600;
+  min-width: 100px;
+  text-align: center;
+}
+.todo-schedule-prev,
+.todo-schedule-next {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+}
+.todo-schedule-prev:hover,
+.todo-schedule-next:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.todo-schedule-today-btn {
+  font-size: 12px;
+  padding: 2px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  background: none;
+  color: var(--text-muted);
+}
+.todo-schedule-today-btn:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.todo-schedule-mode-switch {
+  display: flex;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+}
+.todo-schedule-mode-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  border-right: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  background: none;
+}
+.todo-schedule-mode-btn:last-child {
+  border-right: none;
+}
+.todo-schedule-mode-btn:hover {
+  background: var(--background-modifier-hover);
+}
+.todo-schedule-mode-btn.active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+.todo-schedule-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.todo-schedule-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+.todo-schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: repeat(var(--schedule-rows, 6), 1fr);
+  height: 100%;
+}
+.todo-schedule-cell {
+  padding: 4px;
+  overflow: hidden;
+  border-right: 1px solid var(--background-modifier-border);
+  border-bottom: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+}
+.todo-schedule-cell:nth-child(7n) {
+  border-right: none;
+}
+.todo-schedule-cell-date {
+  font-size: 12px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+.todo-schedule-today .todo-schedule-cell-date {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+.todo-schedule-other-month .todo-schedule-cell-date {
+  color: var(--text-faint);
+}
+.todo-schedule-weekend {
+  background: var(--background-secondary);
+}
+.todo-schedule-cell-tasks {
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.todo-task-list.todo-schedule-active {
+  padding: 0;
+  overflow: hidden;
+  height: 100%;
+}
+
+/* ===== T-702: Time Grid ===== */
+.todo-schedule-day-view {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.todo-day-allday {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 4px 4px 4px 52px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  gap: 4px;
+  min-height: 28px;
+}
+.todo-day-allday-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.todo-day-allday-card {
+  padding: 2px 8px;
+  border-radius: var(--radius-s);
+  font-size: 12px;
+  cursor: pointer;
+  color: #fff;
+}
+.todo-day-allday-card:hover { filter: brightness(1.1); cursor: grab; }
+
+.todo-time-grid {
+  position: relative;
+  flex: 1;
+  overflow-y: auto;
+}
+.todo-time-slots { position: relative; }
+.todo-time-slot {
+  height: 60px;
+  border-bottom: 1px dashed var(--background-modifier-border);
+}
+.todo-time-labels {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 48px;
+  z-index: 1;
+  pointer-events: none;
+}
+.todo-time-label {
+  height: 60px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  transform: translateY(-7px);
+}
+.todo-time-events {
+  position: absolute;
+  left: 48px;
+  right: 4px;
+  top: 0;
+  bottom: 0;
+}
+.todo-time-event-block {
+  position: absolute;
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 12px;
+  cursor: pointer;
+  overflow: hidden;
+  z-index: 2;
+  background: #4A90D9;
+  color: #fff;
+  min-height: 18px;
+  box-sizing: border-box;
+  border-left: 3px solid rgba(0,0,0,0.15);
+}
+.todo-time-event-block:hover { filter: brightness(1.08); cursor: grab; }
+.todo-time-event-block.dragging { opacity: 0.3; pointer-events: none; }
+.todo-resize-handle {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 8px;
+  cursor: ns-resize;
+}
+.todo-drag-ghost {
+  position: absolute;
+  border-radius: 3px;
+  opacity: 0.5;
+  z-index: 10;
+  pointer-events: none;
+  border: 2px dashed var(--interactive-accent);
+}
+.todo-week-column { cursor: default; }
+.todo-week-column .todo-time-event-block:hover { cursor: grab; }
+.todo-event-time {
+  font-size: 10px;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+.todo-event-title {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.todo-time-line {
+  position: absolute;
+  left: 48px;
+  right: 0;
+  height: 1px;
+  background: #E74C3C;
+  z-index: 5;
+  pointer-events: none;
+}
+.todo-time-line-dot {
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #E74C3C;
+}
+.todo-schedule-week-view {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.todo-schedule-week-grid { position: relative;
+  display: grid;
+  grid-template-columns: 48px repeat(7, 1fr);
+  flex: 1;
+  overflow-y: auto;
+}
+.todo-week-thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--background-primary);
+  grid-column: 1 / -1;
+}
+.todo-week-header {
+  display: grid;
+  grid-template-columns: 48px repeat(7, 1fr);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.todo-week-corner {
+  border-right: 1px solid var(--background-modifier-border);
+}
+.todo-week-day-header {
+  text-align: center;
+  padding: 4px 0;
+  border-right: 1px solid var(--background-modifier-border);
+}
+.todo-week-day-header:last-child { border-right: none; }
+.todo-week-today-col {
+  background-color: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+}
+.todo-week-dow { font-size: 11px; color: var(--text-muted); }
+.todo-week-date-num {
+  font-size: 14px;
+  font-weight: 600;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+.todo-week-allday {
+  display: grid;
+  grid-template-columns: 48px repeat(7, 1fr);
+  min-height: 28px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.todo-week-allday-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  text-align: center;
+  border-right: 1px solid var(--background-modifier-border);
+  padding: 4px;
+}
+.todo-week-allday-cell {
+  padding: 2px;
+  border-right: 1px solid var(--background-modifier-border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.todo-week-allday-cell:last-child { border-right: none; }
+.todo-week-tbody {
+  position: relative;
+  grid-column: 1 / -1;
+}
+.todo-week-grid-row {
+  display: grid;
+  grid-template-columns: 48px repeat(7, 1fr);
+  height: 60px;
+}
+.todo-week-time-cell {
+  border-right: 1px solid var(--background-modifier-border);
+  border-bottom: 1px dashed var(--background-modifier-border);
+}
+.todo-week-day-cell {
+  border-right: 1px solid var(--background-modifier-border);
+  border-bottom: 1px dashed var(--background-modifier-border);
+}
+.todo-week-grid-row .todo-week-day-cell:last-child { border-right: none; }
+.todo-week-tbody .todo-time-labels {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 48px;
+  z-index: 2;
+  pointer-events: none;
+}
+.todo-week-columns {
+  position: absolute;
+  left: 48px;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  z-index: 3;
+  pointer-events: none;
+}
+.todo-week-column {
+  position: relative;
+  pointer-events: auto;
+}
+.todo-week-tbody .todo-time-line {
+  position: absolute;
+  left: 48px;
+  right: 0;
+  height: 1px;
+  background: #E74C3C;
+  z-index: 5;
+  pointer-events: none;
+}
+.todo-week-tbody .todo-time-line-dot {
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #E74C3C;
 }

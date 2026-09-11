@@ -19,6 +19,7 @@ export interface ObsidianTodoSettings {
   birthday: string;
   planGroupCollapsed: boolean;
   quadrantGroupCollapsed: boolean;
+  activeScheduleMode: "day" | "week" | "month";
 }
 
 export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
@@ -38,6 +39,7 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
   birthday: "",
   planGroupCollapsed: true,
   quadrantGroupCollapsed: true,
+  activeScheduleMode: "month",
 };
 
 const ICON_OPTIONS = [
