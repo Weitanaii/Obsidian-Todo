@@ -42,9 +42,7 @@ export class ListService {
   
   getActive(): TodoList[] {
     this.ensureLoaded();
-    return this.lists
-      .filter((l) => !l.isArchived)
-      .sort((a, b) => a.sortOrder - b.sortOrder);
+    return this.lists.sort((a, b) => a.sortOrder - b.sortOrder);
   }
 
   
@@ -139,7 +137,6 @@ export class ListService {
       const defaultList = createList({
         name: this.defaultListName,
         isDefault: true,
-        icon: "inbox",
       });
       this.lists.push(defaultList);
       await this.save();
