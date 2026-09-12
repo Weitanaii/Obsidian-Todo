@@ -222,6 +222,7 @@ export class TodoView extends ItemView {
   private _onDragMove: ((ev: MouseEvent) => void) | null = null;
   private _onDragEnd: ((ev: MouseEvent) => void) | null = null;
   private _lastDragMoved = false;
+  private scheduleScrollTarget: "now" | { taskId: string } | "preserve" = "now";
 
   constructor(leaf: WorkspaceLeaf, plugin: TodoPluginLike) {
     super(leaf);
@@ -380,6 +381,7 @@ export class TodoView extends ItemView {
     this.detailView = new TaskDetailView(this.app, this.plugin, this.detailEl, (taskId) => {
       this.refreshDetailIfActive(taskId);
       if (this.plugin.settings.activeViewNav === "schedule") {
+        this.scheduleScrollTarget = { taskId };
         this.renderScheduleView();
       } else {
         const view = this.plugin.settings.selectedListId ? "list" : this.plugin.settings.activeViewNav;
@@ -429,6 +431,7 @@ export class TodoView extends ItemView {
       this.navEls["schedule"].addClass("active");
       this.taskListEl.addClass("todo-schedule-active");
       this.taskListEl.empty();
+      this.scheduleScrollTarget = "now";
       this.renderScheduleView();
       return;
     }
@@ -1773,6 +1776,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         switchEl.querySelectorAll(".todo-schedule-mode-btn").forEach((el) => el.removeClass("active"));
         btn.addClass("active");
         titleEl.textContent = this.getScheduleTitle();
+        this.scheduleScrollTarget = "now";
         this.renderScheduleContent(contentEl);
       });
     }
@@ -2075,12 +2079,20 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         dueDate: this.minuteToIso(dateStr, endMin),
         isMyDay: true,
       });
+      this.scheduleScrollTarget = "preserve";
       this.renderScheduleView();
     });
 
     this.renderTimeLine(gridEl);
 
-    gridEl.scrollTop = Math.max(0, ((new Date().getHours() - 1) * HOUR_HEIGHT));
+    // Scroll strategy based on scheduleScrollTarget
+    if (this.scheduleScrollTarget === "now") {
+      gridEl.scrollTop = Math.max(0, ((new Date().getHours() - 1) * HOUR_HEIGHT));
+    } else if (this.scheduleScrollTarget !== "preserve") {
+      const taskEl = gridEl.querySelector(`[data-task-id="${this.scheduleScrollTarget.taskId}"]`) as HTMLElement;
+      if (taskEl) taskEl.scrollIntoView({ block: "center" });
+    }
+    this.scheduleScrollTarget = "preserve";
   }
 
   private renderWeekView(container: HTMLDivElement): void {
@@ -2251,14 +2263,22 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           dueDate: this.minuteToIso(ds, endMin),
           isMyDay: true,
         });
+        this.scheduleScrollTarget = "preserve";
         this.renderScheduleView();
       });
     }
 
     // Timeline in thead (stays visible when scrolling)
-    this.renderTimeLine(thead);
+    this.renderTimeLine(tbody);
 
-    tbody.scrollTop = Math.max(0, ((today.getHours() - 1) * HOUR_HEIGHT));
+    // Scroll strategy based on scheduleScrollTarget
+    if (this.scheduleScrollTarget === "now") {
+      grid.scrollTop = Math.max(0, ((today.getHours() - 1) * HOUR_HEIGHT));
+    } else if (this.scheduleScrollTarget !== "preserve") {
+      const taskEl = grid.querySelector(`[data-task-id="${this.scheduleScrollTarget.taskId}"]`) as HTMLElement;
+      if (taskEl) taskEl.scrollIntoView({ block: "center" });
+    }
+    this.scheduleScrollTarget = "preserve";
   }
 
   private renderTimeLine(container: HTMLElement): void {
@@ -2415,6 +2435,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     if (ds.source === "allday" && ds.columnsEl) {
       const colRect = ds.columnsEl.getBoundingClientRect();
       if (ev.clientY < colRect.top || ev.clientY > colRect.bottom) {
+        this.scheduleScrollTarget = "preserve";
         this.renderScheduleView();
         return;
       }
@@ -2423,6 +2444,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       startDate: this.minuteToIso(finalDateStr, newStart),
       dueDate: this.minuteToIso(finalDateStr, newEnd),
     });
+      this.scheduleScrollTarget = { taskId: ds.taskId };
     this.renderScheduleView();
   }
 
