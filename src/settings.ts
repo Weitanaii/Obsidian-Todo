@@ -174,6 +174,7 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
               const count = await this.plugin.taskService.clearAll();
               new Notice(`已清空 ${count} 个任务`);
               this.display();
+              try { await this.plugin.refreshView(); } catch(e) { logger.error("refreshView failed:", e); }
             }
           })
       );
@@ -192,6 +193,7 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
               const count = await this.plugin.taskService.emptyTrash();
               new Notice(`已清空 ${count} 个任务`);
               this.display();
+              try { await this.plugin.refreshView(); } catch(e) { logger.error("refreshView failed:", e); }
             }
           })
       );
@@ -207,9 +209,7 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
           .onClick(async () => {
             const confirmed = confirm("即将重置所有数据（任务、列表、标签、分组），此操作不可撤销。\\n\\n已自动备份到 todo/backups/，确认重置吗？");
             if (confirmed) {
-              await this.plugin.taskService.clearAll();
-              new Notice("所有数据已重置");
-              this.display();
+              await this.plugin.resetAllData();
             }
           })
       );

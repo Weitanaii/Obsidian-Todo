@@ -27,6 +27,12 @@ export interface Task {
   // 软删除字段
   isDeleted: boolean;
   deletedAt: string | null;
+
+  // 重复任务字段
+  recurrenceGroupId: string | null;
+  isRecurrenceTemplate: boolean;
+  isRecurrenceSource: boolean;
+  recurrenceEndDate: string | null;
 }
 
 export function createTask(overrides: Partial<Task> = {}): Task {
@@ -51,6 +57,10 @@ export function createTask(overrides: Partial<Task> = {}): Task {
     completedAt: null,
     isDeleted: false,
     deletedAt: null,
+    recurrenceGroupId: null,
+    isRecurrenceTemplate: false,
+    isRecurrenceSource: false,
+    recurrenceEndDate: null,
     ...overrides,
   };
 }

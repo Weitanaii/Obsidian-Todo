@@ -659,6 +659,9 @@
   color: #6D28D9;
 }
 
+.todo-series-indicator {
+  opacity: 0.7;
+}
 .todo-prop-clear {
   font-size: 16px;
   color: #888;
@@ -2416,6 +2419,42 @@
   flex-direction: column;
   gap: 1px;
 }
+
+.todo-month-task-card {
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.todo-month-task-card:hover {
+  opacity: 0.85;
+}
+.todo-month-task-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.todo-month-task-rec {
+  flex-shrink: 0;
+  display: inline-flex;
+}
+.todo-month-task-rec svg {
+  width: 10px;
+  height: 10px;
+}
+.todo-task-list.todo-trash-active {
+  padding: 0;
+  overflow-y: auto;
+  min-height: 0;
+}
+
 .todo-task-list.todo-schedule-active {
   padding: 0;
   overflow: hidden;
@@ -2522,6 +2561,21 @@
   font-size: 10px;
   opacity: 0.85;
   white-space: nowrap;
+}
+.todo-event-title-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.todo-event-recurrence-icon {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+.todo-event-recurrence-icon svg {
+  width: 12px;
+  height: 12px;
 }
 .todo-event-title {
   font-weight: 500;
@@ -2680,12 +2734,17 @@
 .todo-trash-header {
   padding: 16px;
   border-bottom: 1px solid var(--background-modifier-border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .todo-trash-header h2 {
   margin: 0 0 4px 0;
   font-size: 18px;
   font-weight: 600;
+  flex: 1;
 }
 
 .todo-trash-desc {
@@ -2778,9 +2837,7 @@
   color: var(--text-on-accent);
 }
 
-.todo-trash-footer {
-  display: flex;
-  justify-content: flex-end;
-  padding: 16px;
-  border-top: 1px solid var(--background-modifier-border);
+.todo-trash-header-btn {
+  margin-left: auto;
+  white-space: nowrap;
 }

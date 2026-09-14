@@ -95,7 +95,12 @@ export class GroupService {
     await this.storage.write(STORE_FILENAME, store);
   }
 
-  private ensureLoaded(): void {
+  /** 清空 StorageService 的文件缓存（供 resetAllData 使用） */
+  public clearCache(): void {
+    this.storage.clearCache();
+  }
+
+    private ensureLoaded(): void {
     if (!this.loaded) {
       throw new Error("GroupService not initialized. Call init() first.");
     }

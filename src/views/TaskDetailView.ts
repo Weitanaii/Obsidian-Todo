@@ -3,6 +3,7 @@ import type { TodoPluginLike } from "./TodoView";
 import type { Task, PlanKind } from "../models/Task";
 import type { DomainTag } from "../models/Tag";
 import { ResourceSuggestModal } from "../ui/ResourceSuggestModal";
+import { formatRecurrenceDisplay } from "../utils/recurrence";
 import { localTodayStr, getPeriodKeyForDate, getParentPeriodKey, ageFromDueDate, currentAge } from "../utils/period";
 
 export class TaskDetailView {
@@ -127,6 +128,25 @@ export class TaskDetailView {
     // --- Bottom bar ---
     const bottomBar = this.root.createDiv({ cls: "todo-detail-bottom" });
     bottomBar.createDiv({ cls: "todo-detail-created", text: this.formatCreatedDate(task.createdAt) });
+    // 重复系列删除按钮
+    if (task.recurrenceGroupId && task.recurrence) {
+      const deleteSeriesBtn = bottomBar.createDiv({ cls: "todo-detail-delete" });
+      setIcon(deleteSeriesBtn, "trash");
+      deleteSeriesBtn.title = "删除整个系列";
+      deleteSeriesBtn.addEventListener("click", async () => {
+        const groupInstances = this.plugin.taskService.getGroupInstances(task.recurrenceGroupId!);
+        const uncompletedCount = groupInstances.filter(t => !t.isCompleted).length;
+        const confirmed = await new ConfirmModal(this.app, "将删除 " + uncompletedCount + " 个未完成实例，已完成的保留。确定继续？").openAndConfirm();
+        if (!confirmed) return;
+        await this.plugin.taskService.deleteSeries(task.recurrenceGroupId!);
+        new Notice("已删除整个重复系列");
+        this.plugin.settings.selectedTaskId = null;
+        await this.plugin.saveSettings();
+        this.close();
+        this.onClose?.();
+        this.onTaskUpdated?.(task.id);
+      });
+    }
     const deleteBtn = bottomBar.createDiv({ cls: "todo-detail-delete" });
     setIcon(deleteBtn, "trash-2");
     deleteBtn.addEventListener("click", () => void this.deleteTask(task));
@@ -265,15 +285,36 @@ export class TaskDetailView {
   private createRecurrenceRow(parent: HTMLElement, task: Task): void {
     const hasRec = !!task.recurrence;
     let display = "设置重复";
-    if (hasRec && task.recurrence) { display = "重复：" + this.formatRecurrenceDisplay(task.recurrence); }
+    if (hasRec && task.recurrence) { display = "重复：" + formatRecurrenceDisplay(task.recurrence); }
     this.createPropertyRow(parent, task, {
       icon: "repeat",
       unsetText: "设置重复",
       isSet: hasRec,
       displayText: display,
-      onClick: () => { new RecurrencePickerModal(this.app, task.recurrence, (rec) => { void this.saveChanges({ recurrence: rec }); }).open(); },
-      onClear: () => { void this.saveChanges({ recurrence: null }); },
+      onClick: () => { new RecurrencePickerModal(this.app, task.recurrence, async (rec) => { await this.plugin.taskService.setRecurrence(task.id, rec); this.plugin.settings.selectedTaskId = null; await this.plugin.saveSettings(); this.close(); this.onClose?.(); this.onTaskUpdated?.(task.id); }).open(); },
+      onClear: () => {
+        // 取消重复：从该任务开始，删除之后所有未完成的重复实例
+        if (task.recurrenceGroupId && task.recurrence) {
+          void this.plugin.taskService.stopRecurrence(task.recurrenceGroupId, task.id).then((deletedCount) => {
+            new Notice("已取消重复，删除了 " + deletedCount + " 个未来任务");
+            this.onTaskUpdated?.(task.id);
+          });
+        } else {
+          void this.saveChanges({ recurrence: null });
+        }
+      },
     });
+
+    // 重复系列标识
+    if (task.recurrenceGroupId && task.recurrence) {
+      const seriesRow = parent.createDiv({ cls: "todo-prop-row todo-series-indicator" });
+      const iconEl = seriesRow.createDiv({ cls: "todo-prop-icon" });
+      setIcon(iconEl, "link");
+      const textEl = seriesRow.createDiv({ cls: "todo-prop-text is-set" });
+      textEl.textContent = "重复系列成员";
+      textEl.style.fontSize = "12px";
+      textEl.style.color = "var(--text-muted)";
+    }
   }
   private applyValues(task: Task): void {
     if (!this.root.hasClass("todo-detail-active")) return;
@@ -562,12 +603,7 @@ export class TaskDetailView {
     return "创建于 " + d.getFullYear() + "年" + (d.getMonth() + 1) + "月" + d.getDate() + "日";
   }
 
-  private formatRecurrenceDisplay(rec: string): string {
-    const map: Record<string, string> = { daily: "每天", weekly: "每周", monthly: "每月", yearly: "每年" };
-    if (map[rec]) return map[rec];
-    if (rec.startsWith("custom:")) return "自定义";
-    return rec;
-  }
+
 
   private async deleteTask(task: Task): Promise<void> {
     await this.plugin.taskService.delete(task.id);

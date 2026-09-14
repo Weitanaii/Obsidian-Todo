@@ -112,7 +112,12 @@ export class TagService {
     }
   }
 
-  private ensureLoaded(): void {
+  /** 清空 StorageService 的文件缓存（供 resetAllData 使用） */
+  public clearCache(): void {
+    this.storage.clearCache();
+  }
+
+    private ensureLoaded(): void {
     if (!this.loaded) {
       throw new Error("TagService not initialized. Call init() first.");
     }
