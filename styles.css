@@ -1420,6 +1420,62 @@
 }
 
 /* Settings: preset tag group subtle distinction */
+
+/* ===== Settings: header ===== */
+.todo-settings-head {
+  margin-bottom: 1.2rem;
+}
+
+.todo-settings-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.todo-settings-sub {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin-top: 0.15rem;
+}
+
+/* ===== Settings: section cards (LifeHub style) ===== */
+.todo-setting-section {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+}
+
+.todo-setting-section-head {
+  padding: 0.65rem 0.85rem;
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.todo-setting-section-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.todo-setting-section-desc {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  margin-top: 0.1rem;
+}
+
+.todo-setting-section-body {
+  padding: 0.25rem 0;
+}
+
+.todo-setting-section-body .setting-item {
+  padding: 0.4rem 0.85rem;
+}
+
+/* Settings: stats row */
+.todo-setting-stats {
+  padding: 8px 16px 4px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
 .todo-setting-tag-preset .todo-setting-tag-item {
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
@@ -1433,28 +1489,6 @@
   bottom: 0;
   width: 3px;
   border-radius: var(--radius-s) 0 0 var(--radius-s);
-}
-
-/* Settings: advanced section collapsible */
-.todo-setting-adv-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-.todo-setting-adv-header:hover {
-  color: var(--text-normal);
-}
-.todo-setting-adv-arrow {
-  font-size: 10px;
-  transition: transform 0.15s;
-}
-.todo-setting-adv-body {
-  padding: 4px 0 8px;
 }
 
 /* Tag Edit Modal */

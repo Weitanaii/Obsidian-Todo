@@ -60,162 +60,133 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Obsidian Todo 设置" });
+    // --- Header ---
+    const head = containerEl.createDiv("todo-settings-head");
+    head.createDiv({ cls: "todo-settings-title", text: "Obsidian Todo" });
+    head.createDiv({ cls: "todo-settings-sub", text: "任务管理插件设置" });
 
-    new Setting(containerEl)
-      .setName("数据存储文件夹")
-      .setDesc("任务数据文件存储在 Vault 中的文件夹路径")
-      .addText((text) =>
-        text
-          .setPlaceholder("todo")
-          .setValue(this.plugin.settings.todoFolder)
-          .onChange(async (value) => {
-            this.plugin.settings.todoFolder = value;
-            await this.plugin.saveSettings();
-          })
-      );
+    // --- Basic Settings ---
+    this.settingGroup(containerEl, "基本设置", "插件核心配置", (group) => {
+      new Setting(group)
+        .setName("数据存储文件夹")
+        .setDesc("任务数据文件存储在 Vault 中的文件夹路径")
+        .addText((text) =>
+          text
+            .setPlaceholder("todo")
+            .setValue(this.plugin.settings.todoFolder)
+            .onChange(async (value) => {
+              this.plugin.settings.todoFolder = value;
+              await this.plugin.saveSettings();
+            })
+        );
 
-    new Setting(containerEl)
-      .setName("默认列表名称")
-      .setDesc("首次运行时自动创建的默认列表名称")
-      .addText((text) =>
-        text
-          .setPlaceholder("Tasks")
-          .setValue(this.plugin.settings.defaultListName)
-          .onChange(async (value) => {
-            this.plugin.settings.defaultListName = value;
-            await this.plugin.saveSettings();
-          })
-      );
+      new Setting(group)
+        .setName("默认列表名称")
+        .setDesc("首次运行时自动创建的默认列表名称")
+        .addText((text) =>
+          text
+            .setPlaceholder("Tasks")
+            .setValue(this.plugin.settings.defaultListName)
+            .onChange(async (value) => {
+              this.plugin.settings.defaultListName = value;
+              await this.plugin.saveSettings();
+            })
+        );
 
-
-    // --- Birthday ---
-    const birthdaySetting = new Setting(containerEl)
-      .setName("生日")
-      .setDesc("用于人生计划视图计算年龄（格式：YYYY-MM-DD）");
-    const birthdayInput = birthdaySetting.controlEl.createEl("input", {
-      attr: { type: "date" },
-    }) as HTMLInputElement;
-    birthdayInput.value = this.plugin.settings.birthday || "";
-    birthdayInput.addEventListener("change", async () => {
-      this.plugin.settings.birthday = birthdayInput.value;
-      await this.plugin.saveSettings();
+      const birthdaySetting = new Setting(group)
+        .setName("生日")
+        .setDesc("用于人生计划视图计算年龄（格式：YYYY-MM-DD）");
+      const birthdayInput = birthdaySetting.controlEl.createEl("input", {
+        attr: { type: "date" },
+      }) as HTMLInputElement;
+      birthdayInput.value = this.plugin.settings.birthday || "";
+      birthdayInput.addEventListener("change", async () => {
+        this.plugin.settings.birthday = birthdayInput.value;
+        await this.plugin.saveSettings();
+      });
     });
-    // --- Tag Management ---
-    containerEl.createEl("h2", { text: "标签管理" });
 
+    // --- Tag Management ---
     const allTags = this.plugin.tagService.getAll();
     const quadrantTags = allTags.filter((t) => t.sortOrder < 4);
     const domainTags = allTags.filter((t) => t.sortOrder >= 4 && t.sortOrder < 10);
     const customTags = allTags.filter((t) => !t.isDefault);
 
-    this.renderTagGroup(containerEl, "四象限标签", quadrantTags, false, "用于四象限视图的任务分类");
-    this.renderTagGroup(containerEl, "领域标签", domainTags, false, "用于人生领域维度的任务分类");
-    this.renderTagGroup(containerEl, "自定义标签", customTags, true, "自由创建的个性化标签");
-
-    // --- Advanced Settings (collapsible) ---
-    const advHeader = containerEl.createDiv({ cls: "todo-setting-adv-header" });
-    advHeader.createSpan({ cls: "todo-setting-adv-arrow", text: "▶" });
-    advHeader.createSpan({ text: "高级设置" });
-    const advBody = containerEl.createDiv({ cls: "todo-setting-adv-body" });
-    advBody.style.display = "none";
-    advHeader.addEventListener("click", () => {
-      const shown = advBody.style.display !== "none";
-      advBody.style.display = shown ? "none" : "";
-      const arrow = advHeader.querySelector(".todo-setting-adv-arrow");
-      if (arrow) arrow.textContent = shown ? "▶" : "▼";
+    this.settingGroup(containerEl, "标签管理", "任务分类与标签配置", (group) => {
+      this.renderTagGroup(group, "四象限标签", quadrantTags, false, "用于四象限视图的任务分类");
+      this.renderTagGroup(group, "领域标签", domainTags, false, "用于人生领域维度的任务分类");
+      this.renderTagGroup(group, "自定义标签", customTags, true, "自由创建的个性化标签");
     });
 
-    new Setting(advBody)
-      .setName("日志级别")
-      .setDesc("控制控制台日志的详细程度")
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("DEBUG", "调试")
-          .addOption("INFO", "信息")
-          .addOption("WARN", "警告")
-          .addOption("ERROR", "错误")
-          .setValue(this.plugin.settings.logLevel)
-          .onChange(async (value) => {
-            this.plugin.settings.logLevel = value;
-            logger.setLevel(LogLevel[value as keyof typeof LogLevel]);
-            await this.plugin.saveSettings();
-          })
-      );
-
-    // --- Data Management (collapsible) ---
-    const dataHeader = containerEl.createDiv({ cls: "todo-setting-data-header" });
-    dataHeader.createSpan({ cls: "todo-setting-data-arrow", text: "▶" });
-    dataHeader.createSpan({ text: "数据管理" });
-    const dataBody = containerEl.createDiv({ cls: "todo-setting-data-body" });
-    dataBody.style.display = "none";
-    dataHeader.addEventListener("click", () => {
-      const shown = dataBody.style.display !== "none";
-      dataBody.style.display = shown ? "none" : "";
-      const arrow = dataHeader.querySelector(".todo-setting-data-arrow");
-      if (arrow) arrow.textContent = shown ? "▶" : "▼";
+    // --- Advanced Settings ---
+    this.settingGroup(containerEl, "高级设置", "调试与日志", (group) => {
+      new Setting(group)
+        .setName("日志级别")
+        .setDesc("控制控制台日志的详细程度")
+        .addDropdown((dropdown) =>
+          dropdown
+            .addOption("DEBUG", "调试")
+            .addOption("INFO", "信息")
+            .addOption("WARN", "警告")
+            .addOption("ERROR", "错误")
+            .setValue(this.plugin.settings.logLevel)
+            .onChange(async (value) => {
+              this.plugin.settings.logLevel = value;
+              logger.setLevel(LogLevel[value as keyof typeof LogLevel]);
+              await this.plugin.saveSettings();
+            })
+        );
     });
 
+    // --- Data Management ---
     const stats = this.plugin.taskService.getStats();
-    const statsEl = dataBody.createDiv({ cls: "todo-setting-data-stats" });
-    statsEl.createEl("p", { text: `任务总数：${stats.total}（进行中：${stats.active}，已完成：${stats.completed}，回收站：${stats.deleted}）` });
+    this.settingGroup(containerEl, "数据管理", "备份、清空与重置", (group) => {
+      const statsEl = group.createDiv({ cls: "todo-setting-stats" });
+      statsEl.createSpan({ text: "任务总数：" + stats.total + "（进行中：" + stats.active + "，已完成：" + stats.completed + "，回收站：" + stats.deleted + "）" });
 
-    // Clear all tasks button
-    new Setting(dataBody)
-      .setName("清空所有任务")
-      .setDesc("删除所有任务数据，保留列表和标签配置。此操作会自动备份。")
-      .addButton((btn) =>
-        btn
-          .setButtonText("清空任务")
-          .setWarning()
-          .onClick(async () => {
-            const confirmed = confirm(`即将删除 ${stats.total} 个任务，此操作不可撤销。\\n\\n已自动备份到 todo/backups/，确认清空吗？`);
-            if (confirmed) {
-              const count = await this.plugin.taskService.clearAll();
-              new Notice(`已清空 ${count} 个任务`);
-              this.display();
-              try { await this.plugin.refreshView(); } catch(e) { logger.error("refreshView failed:", e); }
-            }
-          })
-      );
+      new Setting(group)
+        .setName("清空所有任务")
+        .setDesc("删除所有任务数据，保留列表和标签配置")
+        .addButton((btn) =>
+          btn
+            .setButtonText("清空任务")
+            .setWarning()
+            .onClick(async () => {
+              const confirmed = await new ConfirmModal(this.app, "即将删除 " + stats.total + " 个任务，此操作不可撤销。确认清空吗？").openAndConfirm();
+              if (confirmed) {
+                const count = await this.plugin.taskService.clearAll();
+                this.display();
+                try { await this.plugin.refreshView(); } catch(e) { logger.error("refreshView failed:", e); }
+              }
+            })
+        );
 
-    // Clear trash button
-    new Setting(dataBody)
-      .setName("清空回收站")
-      .setDesc("永久删除回收站中的任务")
-      .addButton((btn) =>
-        btn
-          .setButtonText(`清空回收站 (${stats.deleted})`)
-          .setDisabled(stats.deleted === 0)
-          .onClick(async () => {
-            const confirmed = confirm(`即将永久删除回收站中的 ${stats.deleted} 个任务，确认清空吗？`);
-            if (confirmed) {
-              const count = await this.plugin.taskService.emptyTrash();
-              new Notice(`已清空 ${count} 个任务`);
-              this.display();
-              try { await this.plugin.refreshView(); } catch(e) { logger.error("refreshView failed:", e); }
-            }
-          })
-      );
 
-    // Reset all data button
-    new Setting(dataBody)
-      .setName("重置所有数据")
-      .setDesc("清空所有任务、列表、标签、分组数据，恢复到初始状态。此操作会自动备份。")
-      .addButton((btn) =>
-        btn
-          .setButtonText("全部重置")
-          .setWarning()
-          .onClick(async () => {
-            const confirmed = confirm("即将重置所有数据（任务、列表、标签、分组），此操作不可撤销。\\n\\n已自动备份到 todo/backups/，确认重置吗？");
-            if (confirmed) {
-              await this.plugin.resetAllData();
-            }
-          })
-      );
-
+      new Setting(group)
+        .setName("重置所有数据")
+        .setDesc("清空所有任务、列表、标签、分组，恢复到初始状态")
+        .addButton((btn) =>
+          btn
+            .setButtonText("全部重置")
+            .setWarning()
+            .onClick(async () => {
+              const confirmed = await new ConfirmModal(this.app, "即将重置所有数据（任务、列表、标签、分组），此操作不可撤销。确认重置吗？").openAndConfirm();
+              if (confirmed) {
+                await this.plugin.resetAllData();
+              }
+            })
+        );
+    });
   }
 
+  private settingGroup(containerEl: HTMLElement, title: string, desc: string | undefined, render: (body: HTMLElement) => void): void {
+    const wrap = containerEl.createDiv("todo-setting-section");
+    const head = wrap.createDiv("todo-setting-section-head");
+    head.createDiv({ cls: "todo-setting-section-title", text: title });
+    if (desc) head.createDiv({ cls: "todo-setting-section-desc", text: desc });
+    const body = wrap.createDiv("todo-setting-section-body");
+    render(body);
+  }
   private renderTagGroup(container: HTMLElement, title: string, tags: { id: string; name: string; icon: string; color: string; isDefault: boolean }[], editable: boolean, desc?: string): void {
     const group = container.createDiv({ cls: "todo-setting-tag-group" + (editable ? "" : " todo-setting-tag-preset") });
     const titleRow = group.createDiv({ cls: "todo-setting-tag-title-row" });
@@ -271,7 +242,7 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
         });
         const delBtn = actions.createEl("button", { text: "删除", cls: "todo-setting-tag-btn mod-warning" });
         delBtn.addEventListener("click", async () => {
-          const confirmed = confirm("确定删除标签 “" + tag.name + "” 吗？");
+          const confirmed = await new ConfirmModal(this.app, "确定删除标签「" + tag.name + "」吗？").openAndConfirm();
           if (confirmed) {
             await this.plugin.tagService.delete(tag.id);
             this.display();
@@ -289,6 +260,25 @@ interface TagEditResult {
   color: string;
 }
 
+
+class ConfirmModal extends Modal {
+  private message: string;
+  private resolve!: (value: boolean) => void;
+  constructor(app: App, message: string) {
+    super(app);
+    this.message = message;
+  }
+  onOpen(): void {
+    this.contentEl.createEl("p", { text: this.message });
+    const actions = this.contentEl.createDiv({ cls: "todo-prompt-actions" });
+    actions.createEl("button", { text: "取消" }).addEventListener("click", () => { this.resolve(false); this.close(); });
+    actions.createEl("button", { text: "确认", cls: "mod-cta" }).addEventListener("click", () => { this.resolve(true); this.close(); });
+  }
+  onClose(): void { this.contentEl.empty(); }
+  openAndConfirm(): Promise<boolean> {
+    return new Promise<boolean>((resolve) => { this.resolve = resolve; this.open(); });
+  }
+}
 
 class TagEditModal extends Modal {
   private tag: { name: string; icon: string; color: string } | null;

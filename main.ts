@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile } from "obsidian";
+import { Notice, Plugin } from "obsidian";
 
 import {
   ObsidianTodoSettings,
@@ -69,52 +69,36 @@ export default class ObsidianTodoPlugin extends Plugin {
     logger.info("Obsidian Todo unloaded");
   }
 
-  /** 全部重置：备份 → vault.delete 清除缓存+磁盘 → 清空服务 → 重建视图 */
+  /** 全部重置：清空内存数据 → 删除磁盘文件（绕过 Vault 缓存）→ 重新初始化 → 刷新视图 */
   async resetAllData(): Promise<void> {
     const folder = this.settings.todoFolder;
-
-    // 确保 backups 目录存在
-    if (!(await this.app.vault.adapter.exists(folder + "/backups"))) {
-      await this.app.vault.createFolder(folder + "/backups");
-    }
-
-    const date = new Date().toISOString().split("T")[0];
     const dataFiles = ["database.json", "lists.json", "tags.json", "groups.json"];
 
+    // 1. 清空所有服务的文件缓存，防止后续 init() 读到缓存中的旧数据
+    this.taskService.clearCache();
+    this.listService.clearCache();
+    this.tagService.clearCache();
+    this.groupService.clearCache();
+
+    // 2. 用 adapter.remove() 删除磁盘文件（绕过 Vault 的 TFile 元数据和事件系统）
     for (const f of dataFiles) {
       const path = folder + "/" + f;
       try {
-        const af = this.app.vault.getAbstractFileByPath(path);
-        if (af instanceof TFile) {
-          // 备份
-          const raw = await this.app.vault.read(af);
-          const backupPath = folder + "/backups/" + date + "_" + f;
-          const bFile = this.app.vault.getAbstractFileByPath(backupPath);
-          if (bFile instanceof TFile) {
-            await this.app.vault.modify(bFile, raw);
-          } else {
-            await this.app.vault.create(backupPath, raw);
-          }
-          // vault.delete: 同时清除磁盘文件 + Vault 内部 TFile 元数据映射
-          // 这样之后 getAbstractFileByPath() 返回 null → StorageService 走 adapter.read 路径
-          await this.app.vault.delete(af);
+        if (await this.app.vault.adapter.exists(path)) {
+          await this.app.vault.adapter.remove(path);
         }
       } catch (e) {
-        console.error("resetAllData backup/delete failed:", path, e);
+        console.error("resetAllData: failed to remove", path, e);
       }
     }
 
-    // 清空所有服务的内存缓存，重新初始化（此时读磁盘：文件已删 → 返回 null → 创建默认数据）
-    this.taskService.clearCache();
+    // 3. 重新初始化所有服务（文件已删 → read 返回 null → 创建默认数据）
     await this.taskService.init();
-    this.listService.clearCache();
     await this.listService.init();
-    this.tagService.clearCache();
     await this.tagService.init();
-    this.groupService.clearCache();
     await this.groupService.init();
 
-    // 重置视图相关设置到默认值
+    // 4. 重置视图相关设置到默认值
     this.settings.activeViewNav = DEFAULT_SETTINGS.activeViewNav;
     this.settings.selectedListId = DEFAULT_SETTINGS.selectedListId;
     this.settings.selectedTaskId = DEFAULT_SETTINGS.selectedTaskId;
@@ -122,26 +106,21 @@ export default class ObsidianTodoPlugin extends Plugin {
     this.settings.activePlanKind = DEFAULT_SETTINGS.activePlanKind;
     await this.saveSettings();
 
-    // 关闭设置页
-    try {
-      const s = (this.app as any)?.setting;
-      if (s?.isOpen) s.close();
-    } catch {}
-
     new Notice("\u6240\u6709\u6570\u636e\u5df2\u91cd\u7f6e");
 
-    // 重建主视图
+    // 5. 重建主视图
     await this.refreshView();
   }
-
-    /** 刷新主视图（设置页清空/重置后调用：关闭并重建 TodoView） */
+  /** 刷新主视图：在已有视图上调 refreshAll，不销毁叶子 */
   async refreshView(): Promise<void> {
     const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TODO);
-    if (leaves.length === 0) return;
     for (const leaf of leaves) {
-      leaf.detach();
+      const view = leaf.view;
+      if (view instanceof TodoView && typeof view.refreshAll === "function") {
+        await view.refreshAll();
+        return;
+      }
     }
-    await this.activateView();
   }
 
   async activateView(): Promise<void> {
