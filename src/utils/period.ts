@@ -174,3 +174,9 @@ export function ageFromDueDate(birthday: string, dueDate: string): number {
 export function currentAge(birthday: string): number {
   return ageFromDueDate(birthday, new Date().toISOString().slice(0, 10));
 }
+
+
+export function localTodayStr(): string {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}

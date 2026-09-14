@@ -3,7 +3,7 @@ import type { TodoPluginLike } from "./TodoView";
 import type { Task, PlanKind } from "../models/Task";
 import type { DomainTag } from "../models/Tag";
 import { ResourceSuggestModal } from "../ui/ResourceSuggestModal";
-import { getPeriodKeyForDate, getParentPeriodKey, ageFromDueDate, currentAge } from "../utils/period";
+import { localTodayStr, getPeriodKeyForDate, getParentPeriodKey, ageFromDueDate, currentAge } from "../utils/period";
 
 export class TaskDetailView {
   private app: App;
@@ -205,10 +205,10 @@ export class TaskDetailView {
     this.createPropertyRow(parent, task, {
       icon: "sun",
       unsetText: "添加到\u201c我的一天\u201d",
-      isSet: task.isMyDay,
+      isSet: task.myDayDate === localTodayStr(),
       displayText: "\u5df2\u5728\u201c\u6211\u7684\u4e00\u5929\u201d\u4e2d",
-      onClick: () => { void this.saveChanges({ isMyDay: !task.isMyDay }); },
-      onClear: () => { void this.saveChanges({ isMyDay: false }); },
+      onClick: () => { void this.saveChanges({ myDayDate: task.myDayDate ? null : localTodayStr() }); },
+      onClear: () => { void this.saveChanges({ myDayDate: null }); },
     });
   }
 
@@ -570,8 +570,6 @@ export class TaskDetailView {
   }
 
   private async deleteTask(task: Task): Promise<void> {
-    const confirmed = await new ConfirmModal(this.app, "\u786e\u8ba4\u5220\u9664\u4efb\u52a1\u300c" + task.title + "\u300d\uff1f").openAndConfirm();
-    if (!confirmed) return;
     await this.plugin.taskService.delete(task.id);
     new Notice("\u4efb\u52a1\u5df2\u5220\u9664");
     this.plugin.settings.selectedTaskId = null;

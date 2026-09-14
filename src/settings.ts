@@ -1,4 +1,4 @@
-import { App, Modal, PluginSettingTab, setIcon, Setting } from "obsidian";
+import { App, Modal, Notice, PluginSettingTab, setIcon, Setting } from "obsidian";
 import type ObsidianTodoPlugin from "../main";
 import type { ViewNav } from "./views/TodoView";
 import type { PlanKind } from "./models/Task";
@@ -142,6 +142,78 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
+
+    // --- Data Management (collapsible) ---
+    const dataHeader = containerEl.createDiv({ cls: "todo-setting-data-header" });
+    dataHeader.createSpan({ cls: "todo-setting-data-arrow", text: "▶" });
+    dataHeader.createSpan({ text: "数据管理" });
+    const dataBody = containerEl.createDiv({ cls: "todo-setting-data-body" });
+    dataBody.style.display = "none";
+    dataHeader.addEventListener("click", () => {
+      const shown = dataBody.style.display !== "none";
+      dataBody.style.display = shown ? "none" : "";
+      const arrow = dataHeader.querySelector(".todo-setting-data-arrow");
+      if (arrow) arrow.textContent = shown ? "▶" : "▼";
+    });
+
+    const stats = this.plugin.taskService.getStats();
+    const statsEl = dataBody.createDiv({ cls: "todo-setting-data-stats" });
+    statsEl.createEl("p", { text: `任务总数：${stats.total}（进行中：${stats.active}，已完成：${stats.completed}，回收站：${stats.deleted}）` });
+
+    // Clear all tasks button
+    new Setting(dataBody)
+      .setName("清空所有任务")
+      .setDesc("删除所有任务数据，保留列表和标签配置。此操作会自动备份。")
+      .addButton((btn) =>
+        btn
+          .setButtonText("清空任务")
+          .setWarning()
+          .onClick(async () => {
+            const confirmed = confirm(`即将删除 ${stats.total} 个任务，此操作不可撤销。\\n\\n已自动备份到 todo/backups/，确认清空吗？`);
+            if (confirmed) {
+              const count = await this.plugin.taskService.clearAll();
+              new Notice(`已清空 ${count} 个任务`);
+              this.display();
+            }
+          })
+      );
+
+    // Clear trash button
+    new Setting(dataBody)
+      .setName("清空回收站")
+      .setDesc("永久删除回收站中的任务")
+      .addButton((btn) =>
+        btn
+          .setButtonText(`清空回收站 (${stats.deleted})`)
+          .setDisabled(stats.deleted === 0)
+          .onClick(async () => {
+            const confirmed = confirm(`即将永久删除回收站中的 ${stats.deleted} 个任务，确认清空吗？`);
+            if (confirmed) {
+              const count = await this.plugin.taskService.emptyTrash();
+              new Notice(`已清空 ${count} 个任务`);
+              this.display();
+            }
+          })
+      );
+
+    // Reset all data button
+    new Setting(dataBody)
+      .setName("重置所有数据")
+      .setDesc("清空所有任务、列表、标签、分组数据，恢复到初始状态。此操作会自动备份。")
+      .addButton((btn) =>
+        btn
+          .setButtonText("全部重置")
+          .setWarning()
+          .onClick(async () => {
+            const confirmed = confirm("即将重置所有数据（任务、列表、标签、分组），此操作不可撤销。\\n\\n已自动备份到 todo/backups/，确认重置吗？");
+            if (confirmed) {
+              await this.plugin.taskService.clearAll();
+              new Notice("所有数据已重置");
+              this.display();
+            }
+          })
+      );
+
   }
 
   private renderTagGroup(container: HTMLElement, title: string, tags: { id: string; name: string; icon: string; color: string; isDefault: boolean }[], editable: boolean, desc?: string): void {
@@ -216,6 +288,7 @@ interface TagEditResult {
   icon: string;
   color: string;
 }
+
 
 class TagEditModal extends Modal {
   private tag: { name: string; icon: string; color: string } | null;

@@ -93,12 +93,12 @@ class PromptModal extends Modal {
 import { App, ItemView, Menu, Modal, Notice, setIcon, WorkspaceLeaf } from "obsidian";
 import type ObsidianTodoPlugin from "../../main";
 import { Task, MyDayGroup, PlanKind } from "../models/Task";
-import { currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent, getParentPeriodKey, ageFromDueDate, currentAge, getISOWeekNumber } from "../utils/period";
+import { localTodayStr, currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent, getParentPeriodKey, ageFromDueDate, currentAge, getISOWeekNumber } from "../utils/period";
 import { TaskDetailView } from "./TaskDetailView";
 import { sortTasks, getMyDayGroupFromTime } from "../utils/sort";
 import type { SortConfig, SortField, SortDirection } from "../utils/sort";
 
-export type ViewNav = "myday" | "all" | "inbox" | "plan" | "schedule";
+export type ViewNav = "myday" | "all" | "inbox" | "plan" | "schedule" | "trash";
 
 export const VIEW_TYPE_TODO = "obsidian-todo-view";
 
@@ -134,6 +134,10 @@ export interface TodoPluginLike {
     getChildrenOf(parentId: string): Task[];
     countChildren(parentId: string): number;
     getParentOf(taskId: string): Task | undefined;
+    getDeleted(): Task[];
+    restore(id: string): Promise<boolean>;
+    hardDelete(id: string): Promise<boolean>;
+    emptyTrash(): Promise<number>;
   };
   listService: {
     getActive(): { id: string; name: string; isDefault: boolean; groupId: string | null }[];
@@ -275,7 +279,7 @@ export class TodoView extends ItemView {
     setIcon(this.navEls["schedule"].createSpan({ cls: "todo-nav-icon" }), "calendar");
     this.navEls["schedule"].createSpan({ text: "我的日程" });
 
-    // Plan mode nav group
+        // Plan mode nav group
     this.planGroupEl = upperItems.createDiv({ cls: "todo-nav-group todo-plan-group" });
     const planHeader = this.planGroupEl.createDiv({ cls: "todo-nav-group-header" });
     const planIcon = planHeader.createSpan();
@@ -357,6 +361,11 @@ export class TodoView extends ItemView {
       s?.open();
       s?.openTabById("obsidian-todo");
     });
+    // Trash button
+    this.navEls["trash"] = settingsContainer.createDiv({ cls: "todo-nav-settings-btn" });
+    setIcon(this.navEls["trash"], "trash-2");
+    this.navEls["trash"].title = "回收站";
+    this.navEls["trash"].addEventListener("click", async () => { await this.activateNav("trash"); });
     const addGroupBtn = settingsContainer.createDiv({ cls: "todo-nav-settings-btn" });
     setIcon(addGroupBtn, "folder-plus");
     addGroupBtn.title = "\u65b0\u5efa\u5206\u7ec4";
@@ -433,6 +442,16 @@ export class TodoView extends ItemView {
       this.taskListEl.empty();
       this.scheduleScrollTarget = "now";
       this.renderScheduleView();
+      return;
+    }
+    if (nav === "trash") {
+      this.sortBtnEl.style.display = "none";
+      this.quickContainerEl.style.display = "none";
+      Object.entries(this.navEls).forEach(([, el]) => el.removeClass("active"));
+      this.navEls["trash"].addClass("active");
+      this.taskListEl.addClass("todo-schedule-active");
+      this.taskListEl.empty();
+      this.renderTrashView();
       return;
     }
     if (nav === "plan" && this.activePlanKind) {
@@ -874,15 +893,7 @@ export class TodoView extends ItemView {
 
 
 
-    // Quadrant mode guidance for tasks without quadrant tags
-    if (view === "all") {
-      const quadTagIds = this.plugin.tagService.getQuadrantTags().map((t: { id: string }) => t.id);
-      const untagged = tasks.filter((t) => !t.isCompleted && !t.tags.some((tagId: string) => quadTagIds.includes(tagId)));
-      if (untagged.length > 0) {
-        const notice = this.taskListEl.createDiv({ cls: "todo-quadrant-notice" });
-        notice.createSpan({ cls: "todo-quadrant-notice-text", text: "\u2139\ufe0f \u4ee5\u4e0b " + untagged.length + " \u4e2a\u4efb\u52a1\u672a\u5206\u914d\u56db\u8c61\u9650\u6807\u7b7e\uff0c\u5efa\u8bae\u70b9\u51fb\u4efb\u52a1\u8865\u5145\u6807\u7b7e" });
-      }
-    }
+
     if (!tasks.length) {
       this.renderEmptyState(view);
       return;
@@ -1007,7 +1018,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     // Auto-update myDayGroup based on time for tasks with dates
     for (const t of tasks) {
-      if (t.isMyDay && (t.startDate || t.dueDate)) {
+      if (t.myDayDate && (t.startDate || t.dueDate)) {
         const autoGroup = getMyDayGroupFromTime(t.startDate, t.dueDate);
         if (autoGroup !== (t.myDayGroup || "allday")) {
           t.myDayGroup = autoGroup;
@@ -1033,7 +1044,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     });
   }
 
-  private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "all" | "inbox" | "list" | "plan" | "schedule"): void {
+  private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule"): void {
     const row = container.createDiv({
       cls: `todo-task-item${task.isCompleted ? " completed" : ""}${task.isImportant ? " important-row" : ""}${this.plugin.settings.selectedTaskId === task.id ? " todo-task-selected" : ""}`,
     });
@@ -1145,7 +1156,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   }
 
   
-  private renderEmptyState(view: "myday" | "all" | "inbox" | "list" | "plan" | "schedule" ): void {
+  private renderEmptyState(view: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" ): void {
     const empty = this.taskListEl.createDiv({ cls: "todo-empty-state todo-guide" });
 
     if (view === "myday") {
@@ -1286,7 +1297,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       .create({
         title: title.trim(),
         listId,
-        isMyDay: activeViewNav === "myday" && !selectedListId,
+        myDayDate: activeViewNav === "myday" && !selectedListId ? localTodayStr() : null,
       })
       .then(async () => {
         await this.renderLists();
@@ -1314,7 +1325,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     await this.plugin.taskService.create({
       title,
       listId,
-      isMyDay: activeViewNav === "myday" && !selectedListId,
+      myDayDate: activeViewNav === "myday" && !selectedListId ? localTodayStr() : null,
     });
 
     this.quickInputEl.value = "";
@@ -1723,6 +1734,63 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     return this.lightenColor(raw, 0.45);
   }
 
+  private renderTrashView(): void {
+    const container = this.taskListEl;
+    container.empty();
+
+    const header = container.createDiv({ cls: "todo-trash-header" });
+    header.createEl("h2", { text: "回收站" });
+    const desc = header.createDiv({ cls: "todo-trash-desc" });
+    desc.createSpan({ text: "已删除的任务将保留 30 天，之后自动清理" });
+
+    const deletedTasks = this.plugin.taskService.getDeleted();
+
+    if (deletedTasks.length === 0) {
+      const empty = container.createDiv({ cls: "todo-trash-empty" });
+      empty.createDiv({ text: "回收站是空的" });
+      return;
+    }
+
+    const stats = container.createDiv({ cls: "todo-trash-stats" });
+    stats.createSpan({ text: "共 " + deletedTasks.length + " 个任务" });
+
+    const list = container.createDiv({ cls: "todo-trash-list" });
+    for (const task of deletedTasks) {
+      const row = list.createDiv({ cls: "todo-trash-item" });
+      const info = row.createDiv({ cls: "todo-trash-item-info" });
+      info.createDiv({ cls: "todo-trash-item-title", text: task.title || "未命名任务" });
+      const meta = info.createDiv({ cls: "todo-trash-item-meta" });
+      if (task.deletedAt) {
+        const deleteDate = new Date(task.deletedAt);
+        meta.createSpan({ text: "删除于 " + deleteDate.toLocaleDateString() + " " + deleteDate.toLocaleTimeString() });
+      }
+
+      const actions = row.createDiv({ cls: "todo-trash-item-actions" });
+      const restoreBtn = actions.createEl("button", { text: "恢复", cls: "todo-trash-btn" });
+      restoreBtn.addEventListener("click", async () => {
+        await this.plugin.taskService.restore(task.id);
+        this.renderTrashView();
+      });
+      const deleteBtn = actions.createEl("button", { text: "彻底删除", cls: "todo-trash-btn todo-trash-btn-danger" });
+      deleteBtn.addEventListener("click", async () => {
+        const confirmed = await new ConfirmModal(this.app, "确定永久删除「" + (task.title || "未命名任务") + "」吗？此操作不可撤销。").openAndConfirm();
+        if (confirmed) {
+          await this.plugin.taskService.hardDelete(task.id);
+          this.renderTrashView();
+        }
+      });
+    }
+
+    const footer = container.createDiv({ cls: "todo-trash-footer" });
+    const emptyBtn = footer.createEl("button", { text: "清空回收站", cls: "todo-trash-btn todo-trash-btn-danger" });
+    emptyBtn.addEventListener("click", async () => {
+      const confirmed = await new ConfirmModal(this.app, "确定永久删除回收站中的 " + deletedTasks.length + " 个任务吗？此操作不可撤销。").openAndConfirm();
+      if (confirmed) {
+        await this.plugin.taskService.emptyTrash();
+        this.renderTrashView();
+      }
+    });
+  }
   private renderScheduleView(): void {
     if (this.timeLineTimer) { clearInterval(this.timeLineTimer); this.timeLineTimer = null; }
     const container = this.taskListEl;
@@ -1968,7 +2036,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const todayStr = today.getFullYear() + "-" + pad(today.getMonth() + 1) + "-" + pad(today.getDate());
     const alldayTasks = allTasks.filter(t => !t.isCompleted && (
       (t.dueDate && t.dueDate.startsWith(dateStr) && (!t.startDate || (new Date(t.startDate).getHours() === 0 && new Date(t.startDate).getMinutes() === 0 && new Date(t.dueDate).getHours() === 0 && new Date(t.dueDate).getMinutes() === 0)))
-      || (t.isMyDay && !t.startDate && !t.dueDate && dateStr === todayStr)
+      || (t.myDayDate && !t.startDate && !t.dueDate && dateStr === todayStr)
     ));
     let gridEl: HTMLDivElement;
     const allday = view.createDiv({ cls: "todo-day-allday" });
@@ -2077,7 +2145,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         listId: defaultList.id,
         startDate: this.minuteToIso(dateStr, startMin),
         dueDate: this.minuteToIso(dateStr, endMin),
-        isMyDay: true,
+        myDayDate: dateStr,
       });
       this.scheduleScrollTarget = "preserve";
       this.renderScheduleView();
@@ -2126,7 +2194,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     // All-day row
     const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
     const datedAllday = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.dueDate && (!t.startDate || (new Date(t.startDate).getHours() === 0 && new Date(t.startDate).getMinutes() === 0 && new Date(t.dueDate).getHours() === 0 && new Date(t.dueDate).getMinutes() === 0)));
-    const undatedMyDay = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.isMyDay && !t.startDate && !t.dueDate);
+    const undatedMyDay = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.myDayDate && !t.startDate && !t.dueDate);
     const alldayRow = thead.createDiv({ cls: "todo-week-allday" });
     alldayRow.createDiv({ cls: "todo-week-allday-label", text: "全天" });
     for (let i = 0; i < 7; i++) {
@@ -2261,7 +2329,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           listId: defaultList.id,
           startDate: this.minuteToIso(ds, startMin),
           dueDate: this.minuteToIso(ds, endMin),
-          isMyDay: true,
+          myDayDate: ds,
         });
         this.scheduleScrollTarget = "preserve";
         this.renderScheduleView();
@@ -2440,10 +2508,13 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         return;
       }
     }
+    const today = localTodayStr();
     await this.plugin.taskService.update(ds.taskId, {
       startDate: this.minuteToIso(finalDateStr, newStart),
       dueDate: this.minuteToIso(finalDateStr, newEnd),
+      myDayDate: finalDateStr === today ? today : null,
     });
+    this.refreshDetailIfActive(ds.taskId);
       this.scheduleScrollTarget = { taskId: ds.taskId };
     this.renderScheduleView();
   }
@@ -2516,7 +2587,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     if (layout) layout.removeClass("todo-layout-detail-open");
   }
 
-  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "inbox" | "list" | "plan" | "schedule" ): void {
+  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" ): void {
     const menu = new Menu();
 
     menu.addItem((item) =>
@@ -2545,17 +2616,17 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     menu.addItem((item) =>
       item
-        .setTitle(task.isMyDay ? "从“我的一天”移除" : "添加到“我的一天”")
-        .setIcon(task.isMyDay ? "calendar-minus" : "calendar-plus")
+        .setTitle(task.myDayDate ? "从“我的一天”移除" : "添加到“我的一天”")
+        .setIcon(task.myDayDate ? "calendar-minus" : "calendar-plus")
         .onClick(async () => {
-          await this.plugin.taskService.update(task.id, { isMyDay: !task.isMyDay });
+          await this.plugin.taskService.update(task.id, { myDayDate: task.myDayDate ? null : localTodayStr() });
           await this.renderTasks(currentView);
         }),
     );
 
 
     // Move to My Day group
-    if (currentView === "myday" && task.isMyDay) {
+    if (currentView === "myday" && task.myDayDate) {
       menu.addSeparator();
       MYDAY_GROUPS.forEach(({ key, label }) => {
         menu.addItem((item) =>

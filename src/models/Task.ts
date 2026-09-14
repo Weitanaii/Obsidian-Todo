@@ -8,7 +8,7 @@ export interface Task {
   note: string;
   isCompleted: boolean;
   isImportant: boolean;
-  isMyDay: boolean;
+  myDayDate: string | null;
   myDayGroup: MyDayGroup;
   startDate: string | null;
   dueDate: string | null;
@@ -23,6 +23,10 @@ export interface Task {
   parentId?: string;
   planKind?: PlanKind;
   planPeriodKey?: string;
+
+  // 软删除字段
+  isDeleted: boolean;
+  deletedAt: string | null;
 }
 
 export function createTask(overrides: Partial<Task> = {}): Task {
@@ -33,7 +37,7 @@ export function createTask(overrides: Partial<Task> = {}): Task {
     note: "",
     isCompleted: false,
     isImportant: false,
-    isMyDay: false,
+    myDayDate: null,
     myDayGroup: "allday",
     startDate: null,
     dueDate: null,
@@ -45,6 +49,8 @@ export function createTask(overrides: Partial<Task> = {}): Task {
     createdAt: now,
     updatedAt: now,
     completedAt: null,
+    isDeleted: false,
+    deletedAt: null,
     ...overrides,
   };
 }
