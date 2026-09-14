@@ -1354,10 +1354,14 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       return;
     }
 
+    const isMyDay = activeViewNav === "myday" && !selectedListId;
+    const todayStr = localTodayStr();
     await this.plugin.taskService.create({
       title,
       listId,
-      myDayDate: activeViewNav === "myday" && !selectedListId ? localTodayStr() : null,
+      myDayDate: isMyDay ? todayStr : null,
+      startDate: isMyDay ? todayStr + "T07:00:00" : null,
+      dueDate: isMyDay ? todayStr + "T23:30:00" : null,
     });
 
     this.quickInputEl.value = "";
@@ -1994,7 +1998,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const isResize = (ev.clientY - rect.top) > rect.height - 8;
       const startMin = sd.getHours() * 60 + sd.getMinutes();
       const endMin = ed.getHours() * 60 + ed.getMinutes();
-      const dateStr = task.dueDate!.substring(0, 10);
+      const dateStr = extractLocalDate(task.dueDate!);
       const hourHeight = 60;
 
       // Cross-day detection for week view
@@ -2083,11 +2087,24 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     return lum > 0.5 ? "#1a1a1a" : "#ffffff";
   }
 
+  private isAllDayTask(task: Task): boolean {
+    // 无任何日期
+    if (!task.startDate && !task.dueDate) return true;
+    // 有 dueDate 但无 startDate
+    if (task.dueDate && !task.startDate) return true;
+    // 有 dueDate，检查时间是否为全天标记
+    if (task.dueDate) {
+      const dueHasTime = task.dueDate.includes('T') && !task.dueDate.endsWith('T00:00:00') && !task.dueDate.endsWith('T23:30:00') && !task.dueDate.endsWith('T23:59:00') && !task.dueDate.endsWith('T07:00:00');
+      if (!dueHasTime) return true;
+    }
+    return false;
+  }
+
   private renderDayView(container: HTMLDivElement): void {
     const HOUR_HEIGHT = 60;
     const dateStr = this.scheduleYear + "-" + String(this.scheduleMonth + 1).padStart(2, "0") + "-" + String(this.scheduleDate).padStart(2, "0");
     const allTasks = this.plugin.taskService.getAll();
-    const dayTasks = allTasks.filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) === dateStr && t.startDate);
+    const dayTasks = allTasks.filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) === dateStr && !this.isAllDayTask(t));
 
     const view = container.createDiv({ cls: "todo-schedule-day-view" });
 
@@ -2095,8 +2112,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const today = new Date();
     const todayStr = today.getFullYear() + "-" + pad(today.getMonth() + 1) + "-" + pad(today.getDate());
     const alldayTasks = allTasks.filter(t => !t.isCompleted && (
-      (t.dueDate && extractLocalDate(t.dueDate) === dateStr && (!t.startDate || (new Date(t.startDate).getHours() === 0 && new Date(t.startDate).getMinutes() === 0 && new Date(t.dueDate).getHours() === 0 && new Date(t.dueDate).getMinutes() === 0)))
-      || (t.myDayDate && !t.startDate && !t.dueDate && dateStr === todayStr)
+      (t.dueDate && extractLocalDate(t.dueDate) === dateStr && this.isAllDayTask(t))
+      || (t.myDayDate === dateStr && this.isAllDayTask(t))
     ));
     let gridEl: HTMLDivElement;
     const allday = view.createDiv({ cls: "todo-day-allday" });
@@ -2253,7 +2270,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     // All-day row
     const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
-    const datedAllday = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.dueDate && (!t.startDate || (new Date(t.startDate).getHours() === 0 && new Date(t.startDate).getMinutes() === 0 && new Date(t.dueDate).getHours() === 0 && new Date(t.dueDate).getMinutes() === 0)));
+    const datedAllday = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.dueDate && this.isAllDayTask(t));
     const undatedMyDay = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.myDayDate && !t.startDate && !t.dueDate);
     const alldayRow = thead.createDiv({ cls: "todo-week-allday" });
     alldayRow.createDiv({ cls: "todo-week-allday-label", text: "全天" });
@@ -2262,7 +2279,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       d.setDate(d.getDate() + i);
       const ds = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
       const cell = alldayRow.createDiv({ cls: "todo-week-allday-cell" + (ds === todayStr ? " todo-week-today-col" : "") });
-      const cellTasks = [...datedAllday.filter(t => t.dueDate!.startsWith(ds)), ...(ds === todayStr ? undatedMyDay : [])];
+      const cellTasks = [...datedAllday.filter(t => extractLocalDate(t.dueDate!) === ds), ...(ds === todayStr ? undatedMyDay : [])];
       for (const t of cellTasks) {
         const card = cell.createDiv({ cls: "todo-day-allday-card" });
         card.style.backgroundColor = this.getTaskBlockColor(t);
@@ -2350,7 +2367,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       d.setDate(d.getDate() + i);
       const ds = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
       const col = columns.createDiv({ cls: "todo-week-column" });
-      const dayTasks = allTasks.filter(t => !t.isCompleted && t.startDate && t.dueDate && extractLocalDate(t.dueDate) === ds);
+      const dayTasks = allTasks.filter(t => !t.isCompleted && t.startDate && t.dueDate && extractLocalDate(t.dueDate) === ds && !this.isAllDayTask(t));
       const placements = this.layoutOverlapTasks(dayTasks);
       for (const p of placements) {
         const sd = new Date(p.task.startDate!);
@@ -2698,11 +2715,11 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
               const now = new Date();
               const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
               const groupTimes: Record<MyDayGroup, { startH: number; startM: number; endH: number; endM: number }> = {
-                allday: { startH: 6, startM: 0, endH: 23, endM: 59 },
-                morning: { startH: 6, startM: 0, endH: 11, endM: 59 },
+                allday: { startH: 7, startM: 0, endH: 23, endM: 30 },
+                morning: { startH: 7, startM: 0, endH: 11, endM: 59 },
                 noon: { startH: 12, startM: 0, endH: 13, endM: 59 },
                 afternoon: { startH: 14, startM: 0, endH: 17, endM: 59 },
-                evening: { startH: 18, startM: 0, endH: 23, endM: 59 },
+                evening: { startH: 18, startM: 0, endH: 23, endM: 30 },
               };
               const t = groupTimes[key];
               const startDate = new Date(today);

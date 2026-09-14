@@ -47,12 +47,12 @@ export class TaskService {
         recurrenceEndDate: t.recurrenceEndDate ?? null,
       }));
 
-      // 数据迁移：修复重复实例 startDate===dueDate 的问题（T-707 bug fix）
+      // 数据迁移：仅修复 startDate 完全等于 dueDate 的旧 bug（startDate 被设为 dueDate 的情况）
+      // 不再强制覆盖已有正确时间的实例
       this.tasks = this.tasks.map(t => {
-        if (t.recurrenceGroupId && !t.isRecurrenceSource && !t.isRecurrenceTemplate && t.startDate && t.dueDate && (t.startDate === t.dueDate || (t.startDate.endsWith("T23:59:00") && t.dueDate.endsWith("T23:59:00")))) {
-          const d = t.dueDate.replace(/T\d{2}:\d{2}:\d{2}/, "T23:59:00");
-          const s = t.startDate.replace(/T\d{2}:\d{2}:\d{2}/, "T08:00:00");
-          return { ...t, dueDate: d, startDate: s };
+        if (t.recurrenceGroupId && !t.isRecurrenceSource && !t.isRecurrenceTemplate && t.startDate && t.dueDate && t.startDate === t.dueDate) {
+          const s = t.startDate.replace(/T\d{2}:\d{2}:\d{2}/, "T07:00:00");
+          return { ...t, startDate: s };
         }
         return t;
       });
@@ -167,10 +167,8 @@ export class TaskService {
       const oldInstances = this.tasks.filter(
         t => t.recurrenceGroupId === updated.recurrenceGroupId && !t.isRecurrenceSource && !t.isCompleted && !t.isDeleted
       );
-      for (const inst of oldInstances) {
-        inst.isDeleted = true;
-        inst.deletedAt = new Date().toISOString();
-      }
+      const oldIds = new Set(oldInstances.map(inst => inst.id));
+      this.tasks = this.tasks.filter(t => !oldIds.has(t.id));
       await this.generateRecurrenceInstances(updated);
     }
 
@@ -319,10 +317,8 @@ export class TaskService {
       const oldInstances = this.tasks.filter(
         t => t.recurrenceGroupId === task.recurrenceGroupId && !t.isRecurrenceSource && !t.isCompleted && !t.isDeleted
       );
-      for (const inst of oldInstances) {
-        inst.isDeleted = true;
-        inst.deletedAt = new Date().toISOString();
-      }
+      const oldIds = new Set(oldInstances.map(inst => inst.id));
+        this.tasks = this.tasks.filter(t => !oldIds.has(t.id));
     }
 
     // 标记原任务为重复系列源头（不隐藏，正常显示）
@@ -371,13 +367,24 @@ export class TaskService {
         if (nextDue > endDate) break;
       }
 
-      const dueStr = formatDateStr(nextDue.getFullYear(), nextDue.getMonth(), nextDue.getDate());
+      const dueDateOnly = formatDateStr(nextDue.getFullYear(), nextDue.getMonth(), nextDue.getDate());
 
-      // 确保实例同时有 startDate 和 dueDate（日程视图需要）
-      let instanceStartDate = dueStr + "T08:00:00";
-      if (startOffsetDays !== 0) {
-        const startLocal = new Date(nextDue.getFullYear(), nextDue.getMonth(), nextDue.getDate() + startOffsetDays);
-        instanceStartDate = formatDateStr(startLocal.getFullYear(), startLocal.getMonth(), startLocal.getDate()) + "T08:00:00";
+      // 继承源任务的时间段，仅全天任务用默认值
+      const isAllDayDue = !template.dueDate || !template.dueDate.includes('T') || template.dueDate.endsWith('T00:00:00') || template.dueDate.endsWith('T23:30:00');
+      const dueTime = isAllDayDue ? 'T23:30:00' : template.dueDate!.substring(template.dueDate!.indexOf('T'));
+
+      let instanceStartDate: string | null = null;
+      if (template.startDate) {
+        const isAllDayStart = !template.startDate.includes('T') || template.startDate.endsWith('T00:00:00') || template.startDate.endsWith('T07:00:00');
+        const startTime = isAllDayStart ? 'T07:00:00' : template.startDate.substring(template.startDate.indexOf('T'));
+        if (startOffsetDays !== 0) {
+          const startLocal = new Date(nextDue.getFullYear(), nextDue.getMonth(), nextDue.getDate() + startOffsetDays);
+          instanceStartDate = formatDateStr(startLocal.getFullYear(), startLocal.getMonth(), startLocal.getDate()) + startTime;
+        } else {
+          instanceStartDate = dueDateOnly + startTime;
+        }
+      } else {
+        instanceStartDate = dueDateOnly + 'T07:00:00';
       }
 
       const instance = createTask({
@@ -393,7 +400,7 @@ export class TaskService {
         recurrenceGroupId: template.recurrenceGroupId,
         recurrenceEndDate: template.recurrenceEndDate,
         isRecurrenceTemplate: false,
-        dueDate: dueStr + "T23:59:00",
+        dueDate: dueDateOnly + dueTime,
         startDate: instanceStartDate,
       });
 
@@ -455,10 +462,22 @@ export class TaskService {
       const pad = (n: number) => String(n).padStart(2, "0");
       const dueStr = nextDue.getFullYear() + "-" + pad(nextDue.getMonth() + 1) + "-" + pad(nextDue.getDate());
 
-      let instanceStartDate: string | null = dueStr + "T08:00:00";
-      if (startOffsetDays !== 0) {
-        const startLocal = new Date(nextDue.getFullYear(), nextDue.getMonth(), nextDue.getDate() + startOffsetDays);
-        instanceStartDate = formatDateStr(startLocal.getFullYear(), startLocal.getMonth(), startLocal.getDate()) + "T08:00:00";
+      // 继承源任务的时间段，仅全天任务用默认值
+      const isAllDayDue = !source.dueDate || !source.dueDate.includes('T') || source.dueDate.endsWith('T00:00:00') || source.dueDate.endsWith('T23:30:00');
+      const dueTime = isAllDayDue ? 'T23:30:00' : source.dueDate!.substring(source.dueDate!.indexOf('T'));
+
+      let instanceStartDate: string | null = null;
+      if (source.startDate) {
+        const isAllDayStart = !source.startDate.includes('T') || source.startDate.endsWith('T00:00:00') || source.startDate.endsWith('T07:00:00');
+        const startTime = isAllDayStart ? 'T07:00:00' : source.startDate.substring(source.startDate.indexOf('T'));
+        if (startOffsetDays !== 0) {
+          const startLocal = new Date(nextDue.getFullYear(), nextDue.getMonth(), nextDue.getDate() + startOffsetDays);
+          instanceStartDate = formatDateStr(startLocal.getFullYear(), startLocal.getMonth(), startLocal.getDate()) + startTime;
+        } else {
+          instanceStartDate = dueStr + startTime;
+        }
+      } else {
+        instanceStartDate = dueStr + 'T07:00:00';
       }
 
       const instance = createTask({
@@ -474,7 +493,7 @@ export class TaskService {
         recurrenceGroupId: groupId,
         recurrenceEndDate: source.recurrenceEndDate,
         isRecurrenceTemplate: false,
-        dueDate: dueStr + "T23:59:00",
+        dueDate: dueStr + dueTime,
         startDate: instanceStartDate,
       });
 
@@ -549,19 +568,20 @@ export class TaskService {
     const fromTask = fromTaskId ? this.tasks.find(t => t.id === fromTaskId) : null;
     const fromDateStr = fromTask && fromTask.dueDate ? extractLocalDate(fromTask.dueDate) : null;
 
-    // 从该任务开始，删除之后（含当天）所有未完成的实例
+    // 从该任务之后开始，硬删除更晚的未完成实例（保留当前任务）
+    const deletedIds = new Set<string>();
     for (const t of this.tasks) {
       if (t.recurrenceGroupId !== groupId || t.isCompleted || t.isDeleted) continue;
       // 如果有 fromDate，只删除 dueDate >= fromDate 的实例
       if (fromDateStr && t.dueDate) {
         const instDate = extractLocalDate(t.dueDate);
-        if (instDate < fromDateStr) continue;
+        if (instDate <= fromDateStr) continue;
       }
-      t.isDeleted = true;
-      t.deletedAt = now;
-      t.updatedAt = now;
+      deletedIds.add(t.id);
       deletedCount++;
     }
+
+    if (deletedIds.size > 0) this.tasks = this.tasks.filter(t => !deletedIds.has(t.id));
 
     // 清除源任务的重复规则，变回普通任务
     const source = this.tasks.find(t => t.recurrenceGroupId === groupId && t.isRecurrenceSource && !t.isDeleted);

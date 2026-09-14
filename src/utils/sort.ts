@@ -52,25 +52,36 @@ export function sortTasks(tasks: Task[], config: SortConfig): Task[] {
 
 // Determine My Day group based on task time
 export function getMyDayGroupFromTime(startDate: string | null, dueDate: string | null): MyDayGroup {
-  // Check if it's an "allday" task: dueDate ends at 23:59
-  if (dueDate) {
+  // Check if it's an "allday" task: dueDate ends at 23:30 or 23:59 AND no specific startDate
+  if (dueDate && !startDate) {
     const due = new Date(dueDate);
-    if (!isNaN(due.getTime()) && due.getHours() === 23 && due.getMinutes() === 59) {
+    if (!isNaN(due.getTime()) && due.getHours() === 23 && (due.getMinutes() === 59 || due.getMinutes() === 30)) {
       return "allday";
     }
   }
 
+  // Both dates present: check if it's an all-day span (7:00-23:30)
+  if (startDate && dueDate) {
+    const start = new Date(startDate);
+    const due = new Date(dueDate);
+    if (!isNaN(start.getTime()) && !isNaN(due.getTime())) {
+      const startIsAllDay = start.getHours() === 7 && start.getMinutes() === 0;
+      const dueIsAllDay = due.getHours() === 23 && (due.getMinutes() === 30 || due.getMinutes() === 59);
+      if (startIsAllDay && dueIsAllDay) return "allday";
+    }
+  }
+
   // Use dueDate time if available, otherwise startDate
-  const timeStr = dueDate || startDate;
+  const timeStr = startDate || dueDate;
   if (!timeStr) return "allday";
 
   const date = new Date(timeStr);
   if (isNaN(date.getTime())) return "allday";
 
   const hours = date.getHours();
-  if (hours >= 6 && hours < 12) return "morning";
+  if (hours >= 7 && hours < 12) return "morning";
   if (hours >= 12 && hours < 14) return "noon";
   if (hours >= 14 && hours < 18) return "afternoon";
-  if (hours >= 18 && hours < 24) return "evening";
-  return "allday"; // 0:00 - 5:59
+  if (hours >= 18 && hours <= 23) return "evening";
+  return "allday"; // 0:00 - 6:59
 }

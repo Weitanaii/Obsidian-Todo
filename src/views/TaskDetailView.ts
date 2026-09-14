@@ -293,10 +293,10 @@ export class TaskDetailView {
       displayText: display,
       onClick: () => { new RecurrencePickerModal(this.app, task.recurrence, async (rec) => { await this.plugin.taskService.setRecurrence(task.id, rec); this.plugin.settings.selectedTaskId = null; await this.plugin.saveSettings(); this.close(); this.onClose?.(); this.onTaskUpdated?.(task.id); }).open(); },
       onClear: () => {
-        // 取消重复：从该任务开始，删除之后所有未完成的重复实例
+        // 取消重复：保留当前任务，仅删除更晚的未完成重复实例
         if (task.recurrenceGroupId && task.recurrence) {
           void this.plugin.taskService.stopRecurrence(task.recurrenceGroupId, task.id).then((deletedCount) => {
-            new Notice("已取消重复，删除了 " + deletedCount + " 个未来任务");
+            new Notice("已取消重复" + (deletedCount > 0 ? "，删除了 " + deletedCount + " 个未来任务" : ""));
             this.onTaskUpdated?.(task.id);
           });
         } else {
@@ -746,11 +746,11 @@ class DatePickerModal extends Modal {
     // Quick time presets
     const presets = this.contentEl.createDiv({ cls: "todo-dp-presets" });
     const presetData = [
-      { label: "全天", icon: "clock", hour: 6, minute: 0, endHour: 23, endMinute: 59 },
-      { label: "早上", icon: "sunrise", hour: 6, minute: 0, endHour: 11, endMinute: 59 },
+      { label: "全天", icon: "clock", hour: 7, minute: 0, endHour: 23, endMinute: 30 },
+      { label: "早上", icon: "sunrise", hour: 7, minute: 0, endHour: 11, endMinute: 59 },
       { label: "中午", icon: "sun", hour: 12, minute: 0, endHour: 13, endMinute: 59 },
       { label: "下午", icon: "sun-dim", hour: 14, minute: 0, endHour: 17, endMinute: 59 },
-      { label: "晚上", icon: "moon", hour: 18, minute: 0, endHour: 23, endMinute: 59 },
+      { label: "晚上", icon: "moon", hour: 18, minute: 0, endHour: 23, endMinute: 30 },
     ];
     presetData.forEach((p) => {
       const btn = presets.createEl("button", { cls: "todo-dp-preset-btn" });
@@ -863,7 +863,7 @@ class AgePickerModal extends Modal {
       const bd = new Date(this.birthday);
       const dueDate = new Date(bd.getFullYear() + this.selectedAge, bd.getMonth(), bd.getDate());
       const pad = (n: number) => String(n).padStart(2, "0");
-      const isoStr = dueDate.getFullYear() + "-" + pad(dueDate.getMonth() + 1) + "-" + pad(dueDate.getDate()) + "T06:00:00";
+      const isoStr = dueDate.getFullYear() + "-" + pad(dueDate.getMonth() + 1) + "-" + pad(dueDate.getDate()) + "T07:00:00";
       this.onSelect(isoStr);
       this.close();
     });
