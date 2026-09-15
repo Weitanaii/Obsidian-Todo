@@ -18,7 +18,6 @@ export interface Task {
   relatedPaths: string[];
   relatedFolders: string[];
   createdAt: string;
-  updatedAt: string;
   completedAt: string | null;
   parentId?: string;
   planKind?: PlanKind;
@@ -53,7 +52,6 @@ export function createTask(overrides: Partial<Task> = {}): Task {
     relatedPaths: [],
     relatedFolders: [],
     createdAt: now,
-    updatedAt: now,
     completedAt: null,
     isDeleted: false,
     deletedAt: null,
@@ -64,3 +62,4 @@ export function createTask(overrides: Partial<Task> = {}): Task {
     ...overrides,
   };
 }
+
