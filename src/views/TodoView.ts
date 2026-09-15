@@ -99,7 +99,7 @@ import { TaskDetailView } from "./TaskDetailView";
 import { sortTasks, getMyDayGroupFromTime } from "../utils/sort";
 import type { SortConfig, SortField, SortDirection } from "../utils/sort";
 
-export type ViewNav = "myday" | "all" | "inbox" | "plan" | "schedule" | "stats" | "trash";
+export type ViewNav = "myday" | "all" | "inbox" | "plan" | "schedule" | "trash";
 
 export const VIEW_TYPE_TODO = "obsidian-todo-view";
 
@@ -283,9 +283,6 @@ export class TodoView extends ItemView {
     this.navEls["schedule"] = upperItems.createDiv({ cls: "todo-nav-item" });
     setIcon(this.navEls["schedule"].createSpan({ cls: "todo-nav-icon" }), "calendar");
     this.navEls["schedule"].createSpan({ text: "我的日程" });
-    this.navEls["stats"] = upperItems.createDiv({ cls: "todo-nav-item" });
-    setIcon(this.navEls["stats"].createSpan({ cls: "todo-nav-icon" }), "bar-chart-3");
-    this.navEls["stats"].createSpan({ text: "复盘统计" });
 
         // Plan mode nav group
     this.planGroupEl = upperItems.createDiv({ cls: "todo-nav-group todo-plan-group" });
@@ -476,20 +473,6 @@ export class TodoView extends ItemView {
       this.taskListEl.empty();
       this.scheduleScrollTarget = "now";
       this.renderScheduleView();
-      return;
-    }
-    if (nav === "stats") {
-      this.sortBtnEl.style.display = "none";
-      this.quickContainerEl.style.display = "none";
-      await this.plugin.saveSettings();
-      await this.renderLists();
-      Object.entries(this.navEls).forEach(([, el]) => el.removeClass("active"));
-      this.navEls["stats"].addClass("active");
-      this.taskListEl.removeClass("todo-trash-active");
-      this.taskListEl.removeClass("todo-schedule-active");
-      this.taskListEl.addClass("todo-stats-active");
-      this.taskListEl.empty();
-      this.renderStatsView();
       return;
     }
     if (nav === "trash") {
@@ -1093,7 +1076,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     });
   }
 
-  private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "all" | "inbox" | "stats" | "trash" | "list" | "plan" | "schedule"): void {
+  private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule"): void {
     const row = container.createDiv({
       cls: `todo-task-item${task.isCompleted ? " completed" : ""}${task.isImportant ? " important-row" : ""}${this.plugin.settings.selectedTaskId === task.id ? " todo-task-selected" : ""}`,
     });
@@ -1205,7 +1188,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   }
 
   
-  private renderEmptyState(view: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" | "stats" ): void {
+  private renderEmptyState(view: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" ): void {
     const empty = this.taskListEl.createDiv({ cls: "todo-empty-state todo-guide" });
 
     if (view === "myday") {
@@ -1845,35 +1828,6 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       });
     }
 
-  }
-  private renderStatsView(): void {
-    const container = this.taskListEl;
-    container.empty();
-
-    const wrapper = container.createDiv({ cls: "todo-stats-container" });
-    const header = wrapper.createDiv({ cls: "todo-stats-header" });
-    header.createEl("h2", { text: "\u590d\u76d8\u7edf\u8ba1" });
-
-    // Filter bar placeholder (T-705)
-    const filterBar = wrapper.createDiv({ cls: "todo-stats-filter" });
-    filterBar.createSpan({ text: "\u7b5b\u9009\u6761\u4f4d\u7f6e\uff08\u65e5/\u5468/\u6708/\u81ea\u5b9a\u4e49\uff09" });
-
-    // Summary cards placeholder (T-706)
-    const summaryRow = wrapper.createDiv({ cls: "todo-stats-summary" });
-    const cardStreak = summaryRow.createDiv({ cls: "todo-stats-card" });
-    cardStreak.createDiv({ cls: "todo-stats-card-value", text: "0" });
-    cardStreak.createDiv({ cls: "todo-stats-card-label", text: "\u8fde\u7eed\u6253\u5361\u5929\u6570" });
-    const cardCompleted = summaryRow.createDiv({ cls: "todo-stats-card" });
-    cardCompleted.createDiv({ cls: "todo-stats-card-value", text: "0" });
-    cardCompleted.createDiv({ cls: "todo-stats-card-label", text: "\u5df2\u5b8c\u6210" });
-    const cardRate = summaryRow.createDiv({ cls: "todo-stats-card" });
-    cardRate.createDiv({ cls: "todo-stats-card-value", text: "0%" });
-    cardRate.createDiv({ cls: "todo-stats-card-label", text: "\u5b8c\u6210\u7387" });
-
-    // Chart placeholder (T-706)
-    const chartArea = wrapper.createDiv({ cls: "todo-stats-chart" });
-    chartArea.createDiv({ cls: "todo-stats-chart-title", text: "\u6bcf\u65e5\u5b8c\u6210\u6570" });
-    chartArea.createDiv({ cls: "todo-stats-chart-placeholder", text: "\u56fe\u8868\u533a\u57df\uff08\u67f1\u72b6\u56fe\uff09" });
   }
   private renderScheduleView(): void {
     if (this.timeLineTimer) { clearInterval(this.timeLineTimer); this.timeLineTimer = null; }
@@ -2710,7 +2664,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     if (layout) layout.removeClass("todo-layout-detail-open");
   }
 
-  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" | "stats" ): void {
+  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" ): void {
     const menu = new Menu();
 
     menu.addItem((item) =>
@@ -2841,13 +2795,6 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   }
 
 }
-
-
-
-
-
-
-
 
 
 

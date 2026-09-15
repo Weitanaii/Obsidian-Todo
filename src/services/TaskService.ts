@@ -59,7 +59,7 @@ export class TaskService {
         // 数据迁移：isMyDay -> myDayDate
         this.tasks = this.tasks.map(t => {
           if ((t as any).isMyDay && !t.myDayDate) {
-            const d = (t.createdAt || "").substring(0, 10);
+            const d = (t.updatedAt || t.createdAt || "").substring(0, 10);
             t.myDayDate = d || null;
           }
           delete (t as any).isMyDay;
@@ -156,6 +156,7 @@ export class TaskService {
     this.tasks[index] = {
       ...this.tasks[index],
       ...changes,
+      updatedAt: new Date().toISOString(),
     };
     await this.save();
     logger.info("Task updated:", id);
@@ -210,6 +211,7 @@ export class TaskService {
     const now = new Date().toISOString();
     task.isDeleted = true;
     task.deletedAt = now;
+    task.updatedAt = now;
     // 软删除子任务
     const children = this.tasks.filter((t) => t.parentId === id && !t.isDeleted);
     for (const child of children) {
@@ -230,6 +232,7 @@ export class TaskService {
     }
     task.isDeleted = false;
     task.deletedAt = null;
+    task.updatedAt = new Date().toISOString();
     await this.save();
     logger.info("Task restored:", task.title);
     return true;
@@ -304,6 +307,7 @@ export class TaskService {
       task.isRecurrenceSource = false;
       task.recurrenceEndDate = null;
       task.recurrenceGroupId = null;
+      task.updatedAt = new Date().toISOString();
       await this.save();
       return;
     }
@@ -323,6 +327,7 @@ export class TaskService {
     task.isRecurrenceSource = true;
     task.recurrenceGroupId = groupId;
     task.recurrenceEndDate = endDate !== undefined ? endDate : task.recurrenceEndDate;
+    task.updatedAt = new Date().toISOString();
 
     // 预生成未来实例（从原任务 dueDate 之后开始）
     await this.generateRecurrenceInstances(task);
@@ -532,6 +537,7 @@ export class TaskService {
       if (t.recurrenceGroupId === groupId && !t.isCompleted && !t.isDeleted) {
         t.isDeleted = true;
         t.deletedAt = now;
+        t.updatedAt = now;
         count++;
       }
     }
@@ -541,6 +547,7 @@ export class TaskService {
     if (source) {
       source.isDeleted = true;
       source.deletedAt = now;
+      source.updatedAt = now;
       count++;
     }
 
@@ -583,6 +590,7 @@ export class TaskService {
       source.recurrence = null;
       source.recurrenceGroupId = null;
       source.recurrenceEndDate = null;
+      source.updatedAt = now;
     }
 
     // 清除剩余未完成实例的重复字段（之前的实例，不再触发补充）
@@ -590,6 +598,7 @@ export class TaskService {
       if (t.recurrenceGroupId === groupId && !t.isDeleted && !t.isCompleted) {
         t.recurrence = null;
         t.recurrenceGroupId = null;
+        t.updatedAt = now;
       }
     }
 
@@ -616,6 +625,3 @@ export class TaskService {
     }
   }
 }
-
-
-
