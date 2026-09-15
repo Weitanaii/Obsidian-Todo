@@ -98,8 +98,9 @@ import { localTodayStr, currentPeriodKey, periodLabel, subGroupLabel, periodKeyS
 import { TaskDetailView } from "./TaskDetailView";
 import { sortTasks, getMyDayGroupFromTime } from "../utils/sort";
 import type { SortConfig, SortField, SortDirection } from "../utils/sort";
+import { renderStatCard, renderDistributionBar } from "../utils/chart";
 
-export type ViewNav = "myday" | "all" | "inbox" | "plan" | "schedule" | "trash";
+export type ViewNav = "myday" | "all" | "inbox" | "plan" | "schedule" | "review" | "trash";
 
 export const VIEW_TYPE_TODO = "obsidian-todo-view";
 
@@ -145,6 +146,7 @@ export interface TodoPluginLike {
     stopRecurrence(groupId: string, fromTaskId?: string): Promise<number>;
   };
   listService: {
+    getById(id: string): { id: string; name: string; isDefault: boolean; groupId: string | null } | undefined;
     getActive(): { id: string; name: string; isDefault: boolean; groupId: string | null }[];
     getDefault(): { id: string; name: string } | undefined;
     create(fields: { name: string }): Promise<{ id: string; name: string }>;
@@ -154,9 +156,9 @@ export interface TodoPluginLike {
   };
   tagService: {
     getAll(): { id: string; name: string; color: string; icon: string; isDefault: boolean; sortOrder: number }[];
-    getById(id: string): { id: string; name: string; color: string; icon: string } | undefined;
+    getById(id: string): { id: string; name: string; color: string; icon: string; sortOrder: number } | undefined;
     getQuadrantTags(): { id: string; name: string; color: string; icon: string; sortOrder: number }[];
-    getQuadrantTagForTask(tagIds: string[]): { id: string; name: string; sortOrder: number } | undefined;
+    getQuadrantTagForTask(tagIds: string[]): { id: string; name: string; color: string; sortOrder: number } | undefined;
   };
   groupService: {
     getAll(): { id: string; name: string; isCollapsed: boolean; sortOrder: number }[];
@@ -165,6 +167,14 @@ export interface TodoPluginLike {
     toggleCollapse(id: string): Promise<{ id: string; isCollapsed: boolean } | null>;
     delete(id: string): Promise<boolean>;
     update(id: string, changes: { sortOrder?: number; name?: string; isCollapsed?: boolean }): Promise<{ id: string; name: string } | null>;
+  };
+  statsService: {
+    getDayStats(date: string): any;
+    getWeekStats(year: number, week: number): any;
+    getMonthStats(year: number, month: number): any;
+    getYearStats(year: number): any;
+    calcStreak(fromDate: string): number;
+    calcMaxStreak(startDate: string, endDate: string): number;
   };
   settings: {
     activeViewNav: ViewNav;
@@ -178,6 +188,7 @@ export interface TodoPluginLike {
     planGroupCollapsed: boolean;
     quadrantGroupCollapsed: boolean;
     activeScheduleMode: "day" | "week" | "month";
+    activeReviewMode: "day" | "week" | "month" | "year";
   };
   saveSettings(): Promise<void>;
     app?: App;
@@ -204,6 +215,10 @@ export class TodoView extends ItemView {
   private scheduleYear!: number;
   private scheduleMonth!: number;
   private scheduleDate!: number;
+  private reviewMode: "day" | "week" | "month" | "year" = "day";
+  private reviewYear!: number;
+  private reviewMonth!: number;
+  private reviewDate!: number;
   private timeLineTimer: number | null = null;
   private dragState: {
     type: "move" | "resize";
@@ -332,7 +347,8 @@ export class TodoView extends ItemView {
         this.plugin.settings.activeViewNav = "all";
         await this.plugin.saveSettings();
         this.plugin.settings.selectedListId = null;
-        qList.querySelectorAll(".todo-nav-item").forEach((el) => el.removeClass("active"));
+        qList.querySelectorAll(".todo-nav-item").forEach((el) => el.removeClass("active"));
+        Object.entries(this.navEls).forEach(([, el]) => el.removeClass("active"));
         qItem.addClass("active");
         await this.renderTasks("all");
       });
@@ -367,6 +383,10 @@ export class TodoView extends ItemView {
       s?.openTabById("obsidian-todo");
     });
     // Trash button
+    this.navEls["review"] = settingsContainer.createDiv({ cls: "todo-nav-settings-btn" });
+    setIcon(this.navEls["review"], "bar-chart-2");
+    this.navEls["review"].title = "\u590d\u76d8";
+    this.navEls["review"].addEventListener("click", async () => { await this.activateNav("review"); });
     this.navEls["trash"] = settingsContainer.createDiv({ cls: "todo-nav-settings-btn" });
     setIcon(this.navEls["trash"], "trash-2");
     this.navEls["trash"].title = "回收站";
@@ -456,6 +476,25 @@ export class TodoView extends ItemView {
     this.closeDetail();
     this.plugin.settings.activeViewNav = nav;
     this.plugin.settings.selectedListId = null;
+    if (nav === "review") {
+      this.sortBtnEl.style.display = "none";
+      this.quickContainerEl.style.display = "none";
+      this.reviewMode = this.plugin.settings.activeReviewMode || "day";
+      const now = new Date();
+      this.reviewYear = now.getFullYear();
+      this.reviewMonth = now.getMonth();
+      this.reviewDate = now.getDate();
+      await this.plugin.saveSettings();
+      await this.renderLists();
+      Object.entries(this.navEls).forEach(([, el]) => el.removeClass("active"));
+      this.navEls["review"].addClass("active");
+      this.taskListEl.removeClass("todo-trash-active");
+      this.taskListEl.removeClass("todo-schedule-active");
+      this.taskListEl.addClass("todo-review-active");
+      this.taskListEl.empty();
+      this.renderReviewView();
+      return;
+    }
     if (nav === "schedule") {
       this.sortBtnEl.style.display = "none";
       this.quickContainerEl.style.display = "none";
@@ -501,10 +540,12 @@ export class TodoView extends ItemView {
     }
     this.activePlanKind = null;
     this.plugin.settings.activePlanKind = null;
+    this.plugin.settings.selectedQuadrant = null;
     this.sortBtnEl.style.display = "";
     this.quickContainerEl.style.display = "";
     this.taskListEl.removeClass("todo-schedule-active");
     this.taskListEl.removeClass("todo-trash-active");
+    this.taskListEl.removeClass("todo-review-active");
     await this.plugin.saveSettings();
 
     if (this.planContainerEl) {
@@ -517,6 +558,8 @@ export class TodoView extends ItemView {
       el.toggleClass("active", key === nav);
     });
     this.listItemsEl?.querySelectorAll<HTMLDivElement>(".todo-nav-item").forEach((el) => el.removeClass("active"));
+    this.quadrantGroupEl?.querySelectorAll<HTMLDivElement>(".todo-quadrant-item").forEach((el) => el.removeClass("active"));
+    this.planGroupEl?.querySelectorAll<HTMLDivElement>(".todo-plan-item").forEach((el) => el.removeClass("active"));
 
     await this.renderTasks(nav);
     this.updateQuickPlaceholder();
@@ -1076,7 +1119,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     });
   }
 
-  private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule"): void {
+  private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" | "review"): void {
     const row = container.createDiv({
       cls: `todo-task-item${task.isCompleted ? " completed" : ""}${task.isImportant ? " important-row" : ""}${this.plugin.settings.selectedTaskId === task.id ? " todo-task-selected" : ""}`,
     });
@@ -1188,7 +1231,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   }
 
   
-  private renderEmptyState(view: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" ): void {
+  private renderEmptyState(view: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" | "review"): void {
     const empty = this.taskListEl.createDiv({ cls: "todo-empty-state todo-guide" });
 
     if (view === "myday") {
@@ -2664,7 +2707,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     if (layout) layout.removeClass("todo-layout-detail-open");
   }
 
-  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" ): void {
+  private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" | "review"): void {
     const menu = new Menu();
 
     menu.addItem((item) =>
@@ -2696,7 +2739,12 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         .setTitle(task.myDayDate ? "从“我的一天”移除" : "添加到“我的一天”")
         .setIcon(task.myDayDate ? "calendar-minus" : "calendar-plus")
         .onClick(async () => {
-          await this.plugin.taskService.update(task.id, { myDayDate: task.myDayDate ? null : localTodayStr() });
+          const todayStr = localTodayStr();
+          if (task.myDayDate) {
+            await this.plugin.taskService.update(task.id, { myDayDate: null });
+          } else {
+            await this.plugin.taskService.update(task.id, { myDayDate: todayStr, startDate: todayStr + "T07:00:00", dueDate: todayStr + "T23:30:00" });
+          }
           await this.renderTasks(currentView);
         }),
     );
@@ -2794,7 +2842,172 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     menu.showAtMouseEvent(ev);
   }
 
+  private getReviewTitle(): string {
+    const dayNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+    if (this.reviewMode === "day") {
+      const d = new Date(this.reviewYear, this.reviewMonth, this.reviewDate);
+      return (this.reviewMonth + 1) + "月" + this.reviewDate + "日 " + dayNames[d.getDay()];
+    }
+    if (this.reviewMode === "week") {
+      const d = new Date(this.reviewYear, this.reviewMonth, this.reviewDate);
+      const wn = getISOWeekNumber(d);
+      return this.reviewYear + "年第" + wn + "周";
+    }
+    if (this.reviewMode === "month") {
+      return this.reviewYear + "年 " + (this.reviewMonth + 1) + "月";
+    }
+    return this.reviewYear + "年";
+  }
+
+  private normalizeReviewDate(): void {
+    const d = new Date(this.reviewYear, this.reviewMonth, this.reviewDate);
+    this.reviewYear = d.getFullYear();
+    this.reviewMonth = d.getMonth();
+    this.reviewDate = d.getDate();
+  }
+
+  private reviewDateToStr(): string {
+    return this.reviewYear + "-" + String(this.reviewMonth + 1).padStart(2, "0") + "-" + String(this.reviewDate).padStart(2, "0");
+  }
+
+  private renderReviewView(): void {
+    const container = this.taskListEl;
+    container.empty();
+    const wrap = container.createDiv({ cls: "todo-review-container" });
+
+    const header = wrap.createDiv({ cls: "todo-review-header" });
+    const nav = header.createDiv({ cls: "todo-review-nav" });
+    const prevBtn = nav.createEl("button", { cls: "todo-review-prev", text: "◀" });
+    const titleEl = nav.createSpan({ cls: "todo-review-title", text: this.getReviewTitle() });
+    const nextBtn = nav.createEl("button", { cls: "todo-review-next", text: "▶" });
+    const todayBtn = nav.createEl("button", { cls: "todo-review-today-btn", text: "今天" });
+
+    const updateView = () => {
+      titleEl.textContent = this.getReviewTitle();
+      this.renderReviewContent(contentEl);
+    };
+
+    prevBtn.addEventListener("click", () => {
+      if (this.reviewMode === "day") { this.reviewDate--; this.normalizeReviewDate(); }
+      else if (this.reviewMode === "week") { this.reviewDate -= 7; this.normalizeReviewDate(); }
+      else if (this.reviewMode === "month") { this.reviewMonth--; if (this.reviewMonth < 0) { this.reviewMonth = 11; this.reviewYear--; } }
+      else { this.reviewYear--; }
+      updateView();
+    });
+    nextBtn.addEventListener("click", () => {
+      if (this.reviewMode === "day") { this.reviewDate++; this.normalizeReviewDate(); }
+      else if (this.reviewMode === "week") { this.reviewDate += 7; this.normalizeReviewDate(); }
+      else if (this.reviewMode === "month") { this.reviewMonth++; if (this.reviewMonth > 11) { this.reviewMonth = 0; this.reviewYear++; } }
+      else { this.reviewYear++; }
+      updateView();
+    });
+    todayBtn.addEventListener("click", () => {
+      const now = new Date();
+      this.reviewYear = now.getFullYear();
+      this.reviewMonth = now.getMonth();
+      this.reviewDate = now.getDate();
+      updateView();
+    });
+
+    const switchEl = header.createDiv({ cls: "todo-review-mode-switch" });
+    const modes = ["day", "week", "month", "year"] as const;
+    const modeLabels: Record<string, string> = { day: "日", week: "周", month: "月", year: "年" };
+    for (const m of modes) {
+      const btn = switchEl.createSpan({
+        cls: "todo-review-mode-btn" + (m === this.reviewMode ? " active" : ""),
+        text: modeLabels[m],
+      });
+      btn.addEventListener("click", async () => {
+        this.reviewMode = m;
+        this.plugin.settings.activeReviewMode = m;
+        await this.plugin.saveSettings();
+        switchEl.querySelectorAll(".todo-review-mode-btn").forEach((el) => el.removeClass("active"));
+        btn.addClass("active");
+        titleEl.textContent = this.getReviewTitle();
+        this.renderReviewContent(contentEl);
+      });
+    }
+
+    const contentEl = wrap.createDiv({ cls: "todo-review-content" });
+    this.renderReviewContent(contentEl);
+  }
+
+  private renderReviewContent(container: HTMLDivElement): void {
+    container.empty();
+    const modeLabels: Record<string, string> = { day: "日", week: "周", month: "月", year: "年" };
+    switch (this.reviewMode) {
+      case "day":
+        this.renderDayReview(container);
+        break;
+      case "week":
+      case "month":
+      case "year": {
+        const placeholder = container.createDiv({ cls: "todo-review-placeholder" });
+        placeholder.createDiv({ text: "🛠️ " + modeLabels[this.reviewMode] + "视图开发中..." });
+        break;
+      }
+    }
+  }
+
+  private renderDayReview(container: HTMLDivElement): void {
+    const dateStr = this.reviewDateToStr();
+    const stats = this.plugin.statsService.getDayStats(dateStr);
+
+    const todayDueCount = this.plugin.taskService.getAll().filter(t => t.dueDate && extractLocalDate(t.dueDate) === dateStr).length;
+    const statsRow = container.createDiv({ cls: "todo-review-stats-row" });
+    renderStatCard(statsRow, "今日任务", String(todayDueCount), "calendar-check", "#4A90D9");
+    renderStatCard(statsRow, "今日完成", String(stats.completedCount), "check-circle-2", "#2ECC71");
+    renderStatCard(statsRow, "完成率", Math.round(stats.completionRate * 100) + "%", "bar-chart-2", "#9B59B6");
+    const yesterday = new Date(this.reviewYear, this.reviewMonth, this.reviewDate - 1);
+    const yesterdayStr = yesterday.getFullYear() + "-" + String(yesterday.getMonth() + 1).padStart(2, "0") + "-" + String(yesterday.getDate()).padStart(2, "0");
+    const yesterdayOverdue = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) === yesterdayStr).length;
+    renderStatCard(statsRow, "逾期任务", String(yesterdayOverdue), "alert-triangle", "#E74C3C");
+
+    // 今日任务按象限分组
+    const todayTasks = this.plugin.taskService.getAll().filter(t => t.dueDate && extractLocalDate(t.dueDate) === dateStr);
+    const quadrantColors: Record<string, string> = {
+      "重要紧急": "#E74C3C", "重要不紧急": "#4A90D9",
+      "不重要紧急": "#F5A623", "不重要不紧急": "#95A5A6",
+    };
+    const allTags = this.plugin.tagService.getAll();
+    const quadrantTags = allTags.filter(t => t.sortOrder < 4);
+    const qGroups = new Map<string, { total: number; completed: number; color: string }>();
+    for (const tag of quadrantTags) { qGroups.set(tag.name, { total: 0, completed: 0, color: quadrantColors[tag.name] || "#6B7280" }); }
+    for (const task of todayTasks) {
+      const qTag = task.tags.find(tid => { const tag = this.plugin.tagService.getById(tid); return tag && tag.sortOrder < 4; });
+      const qName = qTag ? (this.plugin.tagService.getById(qTag)?.name ?? null) : null;
+      if (qName && qGroups.has(qName)) {
+        const g = qGroups.get(qName)!;
+        g.total++;
+        if (task.isCompleted) g.completed++;
+      }
+    }
+    const qData = Array.from(qGroups.entries()).filter(([, v]) => v.total > 0).map(([, v]) => ({ ...v, label: "" })).map((v, i) => ({ ...v, label: Array.from(qGroups.keys())[i] }));
+    const qDataFixed = Array.from(qGroups.entries()).filter(([, v]) => v.total > 0).map(([name, v]) => ({ label: name, total: v.total, completed: v.completed, color: v.color }));
+    if (qDataFixed.length > 0) {
+      const qSection = container.createDiv({ cls: "todo-review-section" });
+      qSection.createDiv({ cls: "todo-review-section-title", text: "四象限分布" });
+      renderDistributionBar(qSection, qDataFixed);
+    }
+
+    // 今日任务按领域分组
+    const domainTags = allTags.filter(t => t.sortOrder >= 4);
+    const dGroups = new Map<string, { total: number; completed: number; color: string }>();
+    for (const tag of domainTags) { dGroups.set(tag.name, { total: 0, completed: 0, color: tag.color }); }
+    for (const task of todayTasks) {
+      const dTag = task.tags.find(tid => { const tag = this.plugin.tagService.getById(tid); return tag && tag.sortOrder >= 4; });
+      const dName = dTag ? (this.plugin.tagService.getById(dTag)?.name ?? null) : null;
+      if (dName && dGroups.has(dName)) {
+        const g = dGroups.get(dName)!;
+        g.total++;
+        if (task.isCompleted) g.completed++;
+      }
+    }
+    const dDataFixed = Array.from(dGroups.entries()).filter(([, v]) => v.total > 0).map(([name, v]) => ({ label: name, total: v.total, completed: v.completed, color: v.color }));
+    if (dDataFixed.length > 0) {
+      const dSection = container.createDiv({ cls: "todo-review-section" });
+      dSection.createDiv({ cls: "todo-review-section-title", text: "领域分布" });
+      renderDistributionBar(dSection, dDataFixed);
+    }
+  }
 }
-
-
-

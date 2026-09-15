@@ -20,6 +20,7 @@ export interface ObsidianTodoSettings {
   planGroupCollapsed: boolean;
   quadrantGroupCollapsed: boolean;
   activeScheduleMode: "day" | "week" | "month";
+  activeReviewMode: "day" | "week" | "month" | "year";
 }
 
 export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
@@ -40,6 +41,7 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
   planGroupCollapsed: true,
   quadrantGroupCollapsed: true,
   activeScheduleMode: "month",
+  activeReviewMode: "day",
 };
 
 const ICON_OPTIONS = [

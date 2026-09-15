@@ -14,6 +14,7 @@ import { TagService } from "./src/services/TagService";
 import { GroupService } from "./src/services/GroupService";
 
 import { TodoView, VIEW_TYPE_TODO } from "./src/views/TodoView";
+import { StatsService } from "./src/services/StatsService";
 
 export default class ObsidianTodoPlugin extends Plugin {
   settings: ObsidianTodoSettings;
@@ -22,6 +23,7 @@ export default class ObsidianTodoPlugin extends Plugin {
   listService!: ListService;
   tagService!: TagService;
   groupService!: GroupService;
+  statsService!: StatsService;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -35,6 +37,7 @@ export default class ObsidianTodoPlugin extends Plugin {
     await this.tagService.init();
     this.groupService = new GroupService(this.app.vault, this.settings.todoFolder);
     await this.groupService.init();
+    this.statsService = new StatsService(this.taskService, this.tagService, this.listService);
 
     this.addSettingTab(new ObsidianTodoSettingTab(this.app, this));
     this.registerView(VIEW_TYPE_TODO, (leaf) => new TodoView(leaf, this));
