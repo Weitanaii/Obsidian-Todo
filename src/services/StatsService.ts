@@ -18,7 +18,7 @@ export interface ReviewStats {
   domainDist: Record<string, number>;
   listDist: Record<string, number>;
   hourlyDist: number[];
-  dailyTrend: { date: string; count: number; rate: number }[];
+  dailyTrend: { date: string; count: number; rate: number; uncompleted: number }[];
 }
 
 export class StatsService {
@@ -201,16 +201,17 @@ export class StatsService {
     return { quadrantDist, domainDist, listDist, hourlyDist };
   }
 
-  private calcDailyTrend(start: string, end: string, completed: Task[]): { date: string; count: number; rate: number }[] {
-    const trend: { date: string; count: number; rate: number }[] = [];
+  private calcDailyTrend(start: string, end: string, completed: Task[]): { date: string; count: number; rate: number; uncompleted: number }[] {
+    const trend: { date: string; count: number; rate: number; uncompleted: number }[] = [];
     const d = new Date(start + "T00:00:00");
     const endDate = new Date(end + "T00:00:00");
-    const active = this.getActiveTasks().length;
+    const allTasks = this.taskService.getAll();
     while (d <= endDate) {
       const dateStr = this.dateToStr(d);
       const dayCompleted = completed.filter(t => t.completedAt && extractLocalDate(t.completedAt) === dateStr).length;
-      const denom = dayCompleted + active;
-      trend.push({ date: dateStr, count: dayCompleted, rate: denom > 0 ? dayCompleted / denom : 0 });
+      const dayUncompleted = allTasks.filter(t => t.dueDate && extractLocalDate(t.dueDate) === dateStr && (!t.isCompleted || (t.completedAt && extractLocalDate(t.completedAt) > dateStr))).length;
+      const denom = dayCompleted + dayUncompleted;
+      trend.push({ date: dateStr, count: dayCompleted, rate: denom > 0 ? dayCompleted / denom : 0, uncompleted: dayUncompleted });
       d.setDate(d.getDate() + 1);
     }
     return trend;

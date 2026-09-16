@@ -12,6 +12,7 @@ export interface ObsidianTodoSettings {
   activeViewNav: ViewNav;
   selectedListId: string | null;
   completedCollapsed: boolean;
+  overdueCollapsed: boolean;
   selectedTaskId: string | null;
   selectedQuadrant: string | null;
   activePlanKind: PlanKind | null;
@@ -30,6 +31,7 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
   activeViewNav: "myday",
   selectedListId: null,
   completedCollapsed: true,
+  overdueCollapsed: true,
   selectedTaskId: null,
   sortConfig: {
     primary: { field: "importance", direction: "desc" },

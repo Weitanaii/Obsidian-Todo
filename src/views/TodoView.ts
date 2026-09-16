@@ -94,11 +94,11 @@ import { App, ItemView, Menu, Modal, Notice, setIcon, WorkspaceLeaf } from "obsi
 import type ObsidianTodoPlugin from "../../main";
 import { Task, MyDayGroup, PlanKind } from "../models/Task";
 import { extractLocalDate } from "../utils/recurrence";
-import { localTodayStr, currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent, getParentPeriodKey, ageFromDueDate, currentAge, getISOWeekNumber } from "../utils/period";
+import { localTodayStr, currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent, getParentPeriodKey, ageFromDueDate, currentAge, getISOWeekNumber, getISOWeekRange } from "../utils/period";
 import { TaskDetailView } from "./TaskDetailView";
 import { sortTasks, getMyDayGroupFromTime } from "../utils/sort";
 import type { SortConfig, SortField, SortDirection } from "../utils/sort";
-import { renderStatCard, renderDistributionBar } from "../utils/chart";
+import { renderStatCard, renderDistributionBar, renderStackedBarChart, renderMonthCalendar, renderBarChart, renderYearHeatmap } from "../utils/chart";
 
 export type ViewNav = "myday" | "all" | "inbox" | "plan" | "schedule" | "review" | "trash";
 
@@ -180,6 +180,7 @@ export interface TodoPluginLike {
     activeViewNav: ViewNav;
     selectedListId: string | null;
     completedCollapsed: boolean;
+    overdueCollapsed: boolean;
     selectedTaskId: string | null;
     sortConfig: SortConfig;
     selectedQuadrant: string | null;
@@ -219,6 +220,7 @@ export class TodoView extends ItemView {
   private reviewYear!: number;
   private reviewMonth!: number;
   private reviewDate!: number;
+  private reviewFilter: { type: "date" | "overdue" | "tag"; value: string; label: string; dateField?: "dueDate" | "completedAt" } | null = null;
   private timeLineTimer: number | null = null;
   private dragState: {
     type: "move" | "resize";
@@ -347,7 +349,8 @@ export class TodoView extends ItemView {
         this.plugin.settings.activeViewNav = "all";
         await this.plugin.saveSettings();
         this.plugin.settings.selectedListId = null;
-        qList.querySelectorAll(".todo-nav-item").forEach((el) => el.removeClass("active"));
+        qList.querySelectorAll(".todo-nav-item").forEach((el) => el.removeClass("active"));
+
         Object.entries(this.navEls).forEach(([, el]) => el.removeClass("active"));
         qItem.addClass("active");
         await this.renderTasks("all");
@@ -358,6 +361,7 @@ export class TodoView extends ItemView {
       qList.style.display = this.plugin.settings.quadrantGroupCollapsed ? "none" : "";
       void this.plugin.saveSettings();
     });
+
 
     Object.entries(this.navEls).forEach(([key, el]) => {
       el.addEventListener("click", async () => {
@@ -472,8 +476,14 @@ export class TodoView extends ItemView {
     }
   }
 
+  private async navigateWithFilter(filter: { type: "date" | "overdue" | "tag"; value: string; label: string; dateField?: "dueDate" | "completedAt" }): Promise<void> {
+    this.reviewFilter = filter;
+    await this.activateNav("all");
+  }
+
   private async activateNav(nav: ViewNav): Promise<void> {
     this.closeDetail();
+    if (nav !== "all") this.reviewFilter = null;
     this.plugin.settings.activeViewNav = nav;
     this.plugin.settings.selectedListId = null;
     if (nav === "review") {
@@ -969,6 +979,31 @@ export class TodoView extends ItemView {
 
 
 
+
+    // Apply review filter if active
+    if (this.reviewFilter && view === "all") {
+      const f = this.reviewFilter;
+      if (f.type === "date" && f.dateField === "completedAt") {
+        tasks = tasks.filter(t => t.isCompleted && t.completedAt && extractLocalDate(t.completedAt) === f.value);
+      } else if (f.type === "date" && f.dateField === "dueDate") {
+        tasks = tasks.filter(t => t.dueDate && extractLocalDate(t.dueDate) === f.value);
+      } else if (f.type === "overdue") {
+        const today = new Date();
+        const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
+        tasks = tasks.filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < todayStr);
+      } else if (f.type === "tag") {
+        tasks = tasks.filter(t => t.tags.includes(f.value));
+      }
+      // Render filter tag
+      const filterTag = this.taskListEl.createDiv({ cls: "todo-review-filter-tag" });
+      filterTag.createSpan({ cls: "todo-review-filter-tag-label", text: "筛选: " + f.label });
+      const clearBtn = filterTag.createSpan({ cls: "todo-review-filter-tag-clear", text: "✕" });
+      clearBtn.addEventListener("click", () => {
+        this.reviewFilter = null;
+        this.renderTasks("all");
+      });
+    }
+
     if (!tasks.length) {
       this.renderEmptyState(view);
       return;
@@ -981,10 +1016,34 @@ export class TodoView extends ItemView {
     }
 
     const sorted = sortTasks(tasks, this.plugin.settings.sortConfig);
-    const incomplete = sorted.filter((t) => !t.isCompleted);
+    const today = new Date();
+    const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
+    const overdue = sorted.filter((t) => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < todayStr);
+    const incomplete = sorted.filter((t) => !t.isCompleted && !(t.dueDate && extractLocalDate(t.dueDate) < todayStr));
     const completed = sorted.filter((t) => t.isCompleted);
 
+
     incomplete.forEach((task) => this.renderTaskRow(this.taskListEl, task, currentView));
+    // Overdue group
+    if (overdue.length > 0) {
+      const overdueGroup = this.taskListEl.createDiv({ cls: "todo-overdue-group" });
+      const overdueHeader = overdueGroup.createDiv({ cls: "todo-overdue-header" });
+      const overdueArrow = overdueHeader.createSpan({
+        cls: "todo-overdue-arrow" + (this.plugin.settings.overdueCollapsed ? " collapsed" : ""),
+        text: "▼",
+      });
+      overdueHeader.createSpan({ cls: "todo-overdue-label", text: "已逾期 " + overdue.length });
+      const overdueList = overdueGroup.createDiv({ cls: "todo-overdue-list" });
+      if (this.plugin.settings.overdueCollapsed) { overdueList.style.display = "none"; }
+      overdue.forEach((task) => this.renderTaskRow(overdueList, task, currentView));
+      overdueHeader.addEventListener("click", async () => {
+        this.plugin.settings.overdueCollapsed = !this.plugin.settings.overdueCollapsed;
+        overdueList.style.display = this.plugin.settings.overdueCollapsed ? "none" : "";
+        overdueArrow.toggleClass("collapsed", this.plugin.settings.overdueCollapsed);
+        await this.plugin.saveSettings();
+      });
+    }
+
 
     if (completed.length) {
       const group = this.taskListEl.createDiv({ cls: "todo-completed-group" });
@@ -2137,7 +2196,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     if (task.dueDate && !task.startDate) return true;
     // 有 dueDate，检查时间是否为全天标记
     if (task.dueDate) {
-      const dueHasTime = task.dueDate.includes('T') && !task.dueDate.endsWith('T00:00:00') && !task.dueDate.endsWith('T23:30:00') && !task.dueDate.endsWith('T23:59:00') && !task.dueDate.endsWith('T07:00:00');
+      const dueHasTime = task.dueDate.includes('T') && !task.dueDate.endsWith('T00:00:00') && !task.dueDate.endsWith('T23:30:00') && !task.dueDate.endsWith('T07:00:00');
       if (!dueHasTime) return true;
     }
     return false;
@@ -2490,8 +2549,9 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
   // T-703: Utility — dateStr + minuteOfDay → ISO string
   private minuteToIso(dateStr: string, minute: number): string {
-    const h = Math.floor(minute / 60);
-    const m = minute % 60;
+    const capped = Math.min(minute, 1439);
+    const h = Math.floor(capped / 60);
+    const m = capped % 60;
     const pad = (n: number) => String(n).padStart(2, "0");
     return dateStr + "T" + pad(h) + ":" + pad(m) + ":00";
   }
@@ -2749,6 +2809,41 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         }),
     );
 
+    // Postpone options
+    if (!task.isCompleted && task.dueDate) {
+      menu.addSeparator();
+      const currentDue = task.dueDate;
+      const dueDateStr = extractLocalDate(currentDue);
+      const baseDate = new Date(dueDateStr + "T00:00:00");
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const formatNewDate = (d: Date) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+      const dueTimeSuffix = currentDue.substring(10);
+      const hasStart = !!task.startDate;
+      const startBase = hasStart ? new Date(extractLocalDate(task.startDate!) + "T00:00:00") : null;
+      const startTimeSuffix = hasStart ? task.startDate!.substring(10) : "";
+      const shiftDays = (base: Date, days: number) => { const d = new Date(base); d.setDate(base.getDate() + days); return d; };
+      menu.addItem((item) =>
+        item.setTitle("延期到明天").setIcon("calendar").onClick(async () => {
+          const newDueDate = formatNewDate(shiftDays(baseDate, 1)) + dueTimeSuffix;
+          const changes: Partial<Task> = { dueDate: newDueDate };
+          if (hasStart && startBase) { changes.startDate = formatNewDate(shiftDays(startBase, 1)) + startTimeSuffix; }
+          if (task.myDayDate && extractLocalDate(newDueDate) !== localTodayStr()) { changes.myDayDate = null; }
+          await this.plugin.taskService.update(task.id, changes);
+          await this.renderTasks(currentView);
+        }),
+      );
+      menu.addItem((item) =>
+        item.setTitle("延期到后天").setIcon("calendar").onClick(async () => {
+          const newDueDate = formatNewDate(shiftDays(baseDate, 2)) + dueTimeSuffix;
+          const changes: Partial<Task> = { dueDate: newDueDate };
+          if (hasStart && startBase) { changes.startDate = formatNewDate(shiftDays(startBase, 2)) + startTimeSuffix; }
+          if (task.myDayDate && extractLocalDate(newDueDate) !== localTodayStr()) { changes.myDayDate = null; }
+          await this.plugin.taskService.update(task.id, changes);
+          await this.renderTasks(currentView);
+        }),
+      );
+    }
+
 
     // Move to My Day group
     if (currentView === "myday" && task.myDayDate) {
@@ -2851,7 +2946,13 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     if (this.reviewMode === "week") {
       const d = new Date(this.reviewYear, this.reviewMonth, this.reviewDate);
       const wn = getISOWeekNumber(d);
-      return this.reviewYear + "年第" + wn + "周";
+      const weekYear = d.getFullYear();
+      const range = getISOWeekRange(weekYear, wn);
+      const sm = range.start.getMonth() + 1;
+      const sd = range.start.getDate();
+      const em = range.end.getMonth() + 1;
+      const ed = range.end.getDate();
+      return weekYear + "年第" + wn + "周 (" + sm + "." + sd + " - " + em + "." + ed + ")";
     }
     if (this.reviewMode === "month") {
       return this.reviewYear + "年 " + (this.reviewMonth + 1) + "月";
@@ -2940,13 +3041,58 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         this.renderDayReview(container);
         break;
       case "week":
-      case "month":
-      case "year": {
-        const placeholder = container.createDiv({ cls: "todo-review-placeholder" });
-        placeholder.createDiv({ text: "🛠️ " + modeLabels[this.reviewMode] + "视图开发中..." });
+        this.renderWeekReview(container);
         break;
-      }
+      case "month":
+        this.renderMonthReview(container);
+        break;
+      case "year":
+        this.renderYearReview(container);
+        break;
     }
+  }
+
+
+  private renderQuadrantDist(container: HTMLElement, tasks: Task[]): void {
+    const quadrantColors: Record<string, string> = {
+      "重要紧急": "#BC6F67", "重要不紧急": "#6D91B6",
+      "不重要紧急": "#C19957", "不重要不紧急": "#9AA1A1",
+    };
+    const allTags = this.plugin.tagService.getAll();
+    const quadrantTags = allTags.filter(t => t.sortOrder < 4);
+    const qGroups = new Map<string, { total: number; completed: number; color: string }>();
+    for (const tag of quadrantTags) { qGroups.set(tag.name, { total: 0, completed: 0, color: quadrantColors[tag.name] || "#71747A" }); }
+    qGroups.set("未分类", { total: 0, completed: 0, color: "#71747A" });
+    for (const task of tasks) {
+      const qTag = task.tags.find(tid => { const tag = this.plugin.tagService.getById(tid); return tag && tag.sortOrder < 4; });
+      const qName = qTag ? (this.plugin.tagService.getById(qTag)?.name ?? "未分类") : "未分类";
+      const g = qGroups.get(qName)!;
+      g.total++;
+      if (task.isCompleted) g.completed++;
+    }
+    const qDataFixed = Array.from(qGroups.entries()).map(([name, v]) => ({ label: name, total: v.total, completed: v.completed, color: v.color }));
+    const qSection = container.createDiv({ cls: "todo-review-section" });
+    qSection.createDiv({ cls: "todo-review-section-title", text: "四象限分布" });
+    renderDistributionBar(qSection, qDataFixed);
+  }
+
+  private renderDomainDist(container: HTMLElement, tasks: Task[]): void {
+    const allTags = this.plugin.tagService.getAll();
+    const domainTags = allTags.filter(t => t.sortOrder >= 4);
+    const dGroups = new Map<string, { total: number; completed: number; color: string }>();
+    for (const tag of domainTags) { dGroups.set(tag.name, { total: 0, completed: 0, color: tag.color }); }
+    dGroups.set("未分类", { total: 0, completed: 0, color: "#71747A" });
+    for (const task of tasks) {
+      const dTag = task.tags.find(tid => { const tag = this.plugin.tagService.getById(tid); return tag && tag.sortOrder >= 4; });
+      const dName = dTag ? (this.plugin.tagService.getById(dTag)?.name ?? "未分类") : "未分类";
+      const g = dGroups.get(dName)!;
+      g.total++;
+      if (task.isCompleted) g.completed++;
+    }
+    const dDataFixed = Array.from(dGroups.entries()).map(([name, v]) => ({ label: name, total: v.total, completed: v.completed, color: v.color }));
+    const dSection = container.createDiv({ cls: "todo-review-section" });
+    dSection.createDiv({ cls: "todo-review-section-title", text: "领域分布" });
+    renderDistributionBar(dSection, dDataFixed);
   }
 
   private renderDayReview(container: HTMLDivElement): void {
@@ -2955,59 +3101,177 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     const todayDueCount = this.plugin.taskService.getAll().filter(t => t.dueDate && extractLocalDate(t.dueDate) === dateStr).length;
     const statsRow = container.createDiv({ cls: "todo-review-stats-row" });
-    renderStatCard(statsRow, "今日任务", String(todayDueCount), "calendar-check", "#4A90D9");
-    renderStatCard(statsRow, "今日完成", String(stats.completedCount), "check-circle-2", "#2ECC71");
-    renderStatCard(statsRow, "完成率", Math.round(stats.completionRate * 100) + "%", "bar-chart-2", "#9B59B6");
+    renderStatCard(statsRow, "今日任务", String(todayDueCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: dateStr, label: dateStr + " 到期任务", dateField: "dueDate" }));
+    renderStatCard(statsRow, "今日完成", String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: dateStr, label: dateStr + " 完成任务", dateField: "completedAt" }));
+    renderStatCard(statsRow, "完成率", Math.round(stats.completionRate * 100) + "%", "bar-chart-2", "#91719E");
     const yesterday = new Date(this.reviewYear, this.reviewMonth, this.reviewDate - 1);
     const yesterdayStr = yesterday.getFullYear() + "-" + String(yesterday.getMonth() + 1).padStart(2, "0") + "-" + String(yesterday.getDate()).padStart(2, "0");
     const yesterdayOverdue = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) === yesterdayStr).length;
-    renderStatCard(statsRow, "逾期任务", String(yesterdayOverdue), "alert-triangle", "#E74C3C");
+    renderStatCard(statsRow, "昨日逾期", String(yesterdayOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "date", value: yesterdayStr, label: yesterdayStr + " 逾期任务", dateField: "dueDate" }));
 
     // 今日任务按象限分组
     const todayTasks = this.plugin.taskService.getAll().filter(t => t.dueDate && extractLocalDate(t.dueDate) === dateStr);
-    const quadrantColors: Record<string, string> = {
-      "重要紧急": "#E74C3C", "重要不紧急": "#4A90D9",
-      "不重要紧急": "#F5A623", "不重要不紧急": "#95A5A6",
-    };
-    const allTags = this.plugin.tagService.getAll();
-    const quadrantTags = allTags.filter(t => t.sortOrder < 4);
-    const qGroups = new Map<string, { total: number; completed: number; color: string }>();
-    for (const tag of quadrantTags) { qGroups.set(tag.name, { total: 0, completed: 0, color: quadrantColors[tag.name] || "#6B7280" }); }
-    for (const task of todayTasks) {
-      const qTag = task.tags.find(tid => { const tag = this.plugin.tagService.getById(tid); return tag && tag.sortOrder < 4; });
-      const qName = qTag ? (this.plugin.tagService.getById(qTag)?.name ?? null) : null;
-      if (qName && qGroups.has(qName)) {
-        const g = qGroups.get(qName)!;
-        g.total++;
-        if (task.isCompleted) g.completed++;
-      }
+    this.renderQuadrantDist(container, todayTasks);
+
+    this.renderDomainDist(container, todayTasks);
+  }
+
+  private renderWeekReview(container: HTMLDivElement): void {
+    const d = new Date(this.reviewYear, this.reviewMonth, this.reviewDate);
+    const weekYear = d.getFullYear();
+    const wn = getISOWeekNumber(d);
+    const range = getISOWeekRange(weekYear, wn);
+    const startStr = range.start.getFullYear() + "-" + String(range.start.getMonth() + 1).padStart(2, "0") + "-" + String(range.start.getDate()).padStart(2, "0");
+    const endStr = range.end.getFullYear() + "-" + String(range.end.getMonth() + 1).padStart(2, "0") + "-" + String(range.end.getDate()).padStart(2, "0");
+
+    const stats = this.plugin.statsService.getWeekStats(weekYear, wn);
+
+    // 概览卡片
+    const weekDueCount = this.plugin.taskService.getAll().filter(t => t.dueDate && !t.isCompleted && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
+    const weekTotalCount = stats.completedCount + weekDueCount;
+    const statsRow = container.createDiv({ cls: "todo-review-stats-row" });
+    renderStatCard(statsRow, "本周任务", String(weekTotalCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: startStr, label: "本周到期任务", dateField: "dueDate" }));
+    renderStatCard(statsRow, "本周完成", String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: startStr, label: "本周完成任务", dateField: "completedAt" }));
+    const denom = stats.completedCount + weekDueCount;
+    const weekRate = denom > 0 ? Math.round(stats.completedCount / denom * 100) : 0;
+    renderStatCard(statsRow, "完成率", weekRate + "%", "bar-chart-2", "#91719E");
+    const today = new Date();
+    const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
+    const weekOverdue = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < todayStr && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
+    renderStatCard(statsRow, "逾期任务", String(weekOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "overdue", value: "", label: "逾期任务" }));
+
+    // 每日完成趋势堆叠柱状图
+    const dayLabels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+    const stackedData = stats.dailyTrend.map((item: { date: string; count: number; rate: number; uncompleted: number }, i: number) => ({
+      label: dayLabels[i] || item.date,
+      segments: [
+        { value: item.uncompleted, color: "#C8C8C8", label: "未完成" },
+        { value: item.count, color: "#41B974", label: "完成" },
+      ],
+    }));
+    const trendSection = container.createDiv({ cls: "todo-review-section" });
+    trendSection.createDiv({ cls: "todo-review-section-title", text: "每日任务趋势" });
+    renderStackedBarChart(trendSection, stackedData);
+
+    const allTasks = this.plugin.taskService.getAll();
+    const weekTasks = allTasks.filter(t => t.dueDate && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr);
+    this.renderQuadrantDist(container, weekTasks);
+
+    this.renderDomainDist(container, weekTasks);
+  }
+  private renderMonthReview(container: HTMLDivElement): void {
+    const year = this.reviewYear;
+    const month = this.reviewMonth;
+    const stats = this.plugin.statsService.getMonthStats(year, month);
+
+    // 本月日期范围
+    const startStr = year + "-" + String(month + 1).padStart(2, "0") + "-01";
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const endStr = year + "-" + String(month + 1).padStart(2, "0") + "-" + String(daysInMonth).padStart(2, "0");
+
+    // 概览卡片
+    const allTasks = this.plugin.taskService.getAll();
+    const monthDueCount = allTasks.filter(t => t.dueDate && !t.isCompleted && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
+    const monthTotalCount = stats.completedCount + monthDueCount;
+    const statsRow = container.createDiv({ cls: "todo-review-stats-row" });
+    renderStatCard(statsRow, "本月任务", String(monthTotalCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: startStr, label: "本月到期任务", dateField: "dueDate" }));
+    renderStatCard(statsRow, "本月完成", String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: startStr, label: "本月完成任务", dateField: "completedAt" }));
+    const denom = stats.completedCount + monthDueCount;
+    const monthRate = denom > 0 ? Math.round(stats.completedCount / denom * 100) : 0;
+    renderStatCard(statsRow, "完成率", monthRate + "%", "bar-chart-2", "#91719E");
+    const today = new Date();
+    const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
+    const monthOverdue = allTasks.filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < todayStr && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
+    renderStatCard(statsRow, "逾期任务", String(monthOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "overdue", value: "", label: "逾期任务" }));
+
+    // 月历热力图
+    const calSection = container.createDiv({ cls: "todo-review-section" });
+    calSection.createDiv({ cls: "todo-review-section-title", text: "月度打卡" });
+    renderMonthCalendar(calSection, year, month, stats.dailyTrend.map((d: { date: string; count: number }) => ({ date: d.date, count: d.count })));
+
+    // 每周任务趋势堆叠柱状图
+    const weekCompletedMap = new Map<string, number>();
+    const weekUncompletedMap = new Map<string, number>();
+    for (const d of stats.dailyTrend) {
+      const dateObj = new Date(d.date + "T00:00:00");
+      const wy = getISOWeekNumber(dateObj);
+      const key = "第" + wy + "周";
+      weekCompletedMap.set(key, (weekCompletedMap.get(key) || 0) + d.count);
+      weekUncompletedMap.set(key, (weekUncompletedMap.get(key) || 0) + d.uncompleted);
     }
-    const qData = Array.from(qGroups.entries()).filter(([, v]) => v.total > 0).map(([, v]) => ({ ...v, label: "" })).map((v, i) => ({ ...v, label: Array.from(qGroups.keys())[i] }));
-    const qDataFixed = Array.from(qGroups.entries()).filter(([, v]) => v.total > 0).map(([name, v]) => ({ label: name, total: v.total, completed: v.completed, color: v.color }));
-    if (qDataFixed.length > 0) {
-      const qSection = container.createDiv({ cls: "todo-review-section" });
-      qSection.createDiv({ cls: "todo-review-section-title", text: "四象限分布" });
-      renderDistributionBar(qSection, qDataFixed);
+    const weekStackedData = Array.from(weekCompletedMap.keys()).sort().map(key => ({
+      label: key,
+      segments: [
+        { value: weekUncompletedMap.get(key) || 0, color: "#C8C8C8", label: "未完成" },
+        { value: weekCompletedMap.get(key) || 0, color: "#41B974", label: "完成" },
+      ],
+    }));
+    if (weekStackedData.length > 0) {
+      const weekSection = container.createDiv({ cls: "todo-review-section" });
+      weekSection.createDiv({ cls: "todo-review-section-title", text: "每周任务趋势" });
+      renderStackedBarChart(weekSection, weekStackedData);
     }
 
-    // 今日任务按领域分组
-    const domainTags = allTags.filter(t => t.sortOrder >= 4);
-    const dGroups = new Map<string, { total: number; completed: number; color: string }>();
-    for (const tag of domainTags) { dGroups.set(tag.name, { total: 0, completed: 0, color: tag.color }); }
-    for (const task of todayTasks) {
-      const dTag = task.tags.find(tid => { const tag = this.plugin.tagService.getById(tid); return tag && tag.sortOrder >= 4; });
-      const dName = dTag ? (this.plugin.tagService.getById(dTag)?.name ?? null) : null;
-      if (dName && dGroups.has(dName)) {
-        const g = dGroups.get(dName)!;
-        g.total++;
-        if (task.isCompleted) g.completed++;
-      }
+    const monthTasks = allTasks.filter(t => t.dueDate && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr);
+    this.renderQuadrantDist(container, monthTasks);
+
+    this.renderDomainDist(container, monthTasks);
+  }
+
+  private renderYearReview(container: HTMLDivElement): void {
+    const year = this.reviewYear;
+    const stats = this.plugin.statsService.getYearStats(year);
+
+    const startStr = year + "-01-01";
+    const endStr = year + "-12-31";
+
+    // 概览卡片
+    const allTasks = this.plugin.taskService.getAll();
+    const yearDueCount = allTasks.filter(t => t.dueDate && !t.isCompleted && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
+    const yearTotalCount = stats.completedCount + yearDueCount;
+    const statsRow = container.createDiv({ cls: "todo-review-stats-row" });
+    renderStatCard(statsRow, "本年任务", String(yearTotalCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: startStr, label: "本年到期任务", dateField: "dueDate" }));
+    renderStatCard(statsRow, "本年完成", String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: startStr, label: "本年完成任务", dateField: "completedAt" }));
+    const denom = stats.completedCount + yearDueCount;
+    const yearRate = denom > 0 ? Math.round(stats.completedCount / denom * 100) : 0;
+    renderStatCard(statsRow, "完成率", yearRate + "%", "bar-chart-2", "#91719E");
+    const today = new Date();
+    const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
+    const yearOverdue = allTasks.filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < todayStr && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
+    renderStatCard(statsRow, "逾期任务", String(yearOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "overdue", value: "", label: "逾期任务" }));
+
+    // GitHub 风格年热力图
+    const heatSection = container.createDiv({ cls: "todo-review-section" });
+    heatSection.createDiv({ cls: "todo-review-section-title", text: "年度打卡" });
+    renderYearHeatmap(heatSection, year, stats.dailyTrend.map((d: { date: string; count: number }) => ({ date: d.date, count: d.count })));
+
+    // 每月任务趋势堆叠柱状图
+    const monthCompletedMap = new Map<string, number>();
+    const monthUncompletedMap = new Map<string, number>();
+    for (const d of stats.dailyTrend) {
+      const m = d.date.substring(5, 7);
+      const key = parseInt(m, 10) + "月";
+      monthCompletedMap.set(key, (monthCompletedMap.get(key) || 0) + d.count);
+      monthUncompletedMap.set(key, (monthUncompletedMap.get(key) || 0) + d.uncompleted);
     }
-    const dDataFixed = Array.from(dGroups.entries()).filter(([, v]) => v.total > 0).map(([name, v]) => ({ label: name, total: v.total, completed: v.completed, color: v.color }));
-    if (dDataFixed.length > 0) {
-      const dSection = container.createDiv({ cls: "todo-review-section" });
-      dSection.createDiv({ cls: "todo-review-section-title", text: "领域分布" });
-      renderDistributionBar(dSection, dDataFixed);
+    const monthStackedData: { label: string; segments: { value: number; color: string; label: string }[] }[] = [];
+    for (let m = 1; m <= 12; m++) {
+      const key = m + "月";
+      monthStackedData.push({
+        label: key,
+        segments: [
+          { value: monthUncompletedMap.get(key) || 0, color: "#C8C8C8", label: "未完成" },
+          { value: monthCompletedMap.get(key) || 0, color: "#41B974", label: "完成" },
+        ],
+      });
     }
+    const monthSection = container.createDiv({ cls: "todo-review-section" });
+    monthSection.createDiv({ cls: "todo-review-section-title", text: "每月任务趋势" });
+    renderStackedBarChart(monthSection, monthStackedData);
+
+    const yearTasks = allTasks.filter(t => t.dueDate && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr);
+    this.renderQuadrantDist(container, yearTasks);
+
+    this.renderDomainDist(container, yearTasks);
   }
 }

@@ -7,7 +7,8 @@ export function renderStatCard(
   label: string,
   value: string,
   icon: string,
-  color: string
+  color: string,
+  onClick?: () => void
 ): void {
   const card = container.createDiv({ cls: "todo-review-stat-card" });
   const iconEl = card.createDiv({ cls: "todo-review-stat-icon" });
@@ -16,6 +17,7 @@ export function renderStatCard(
   const valueEl = card.createDiv({ cls: "todo-review-stat-value", text: value });
   valueEl.style.color = color;
   card.createDiv({ cls: "todo-review-stat-label", text: label });
+  if (onClick) { card.style.cursor = "pointer"; card.addEventListener("click", onClick); }
 }
 
 /** 渲染纯 CSS 纵向柱状图 */
@@ -299,5 +301,169 @@ export function renderDistributionBar(
     const pct = item.total > 0 ? Math.round(item.completed / item.total * 100) : 0;
     row.createDiv({ cls: "todo-review-dist-count", text: item.completed + "/" + item.total });
     row.createDiv({ cls: "todo-review-dist-pct", text: pct + "%" });
+  }
+}
+
+/** 渲染堆叠纵向柱状图（每根柱子由多个色块从底部堆叠） */
+export function renderStackedBarChart(
+  container: HTMLElement,
+  data: { label: string; segments: { value: number; color: string; label: string }[] }[]
+): void {
+  const chart = container.createDiv({ cls: "todo-review-stacked-bar-chart" });
+  const maxTotal = Math.max(...data.map(d => d.segments.reduce((s, seg) => s + seg.value, 0)), 1);
+
+  for (const item of data) {
+    const barItem = chart.createDiv({ cls: "todo-review-stacked-bar-item" });
+    const barWrap = barItem.createDiv({ cls: "todo-review-stacked-bar-wrap" });
+    const total = item.segments.reduce((s, seg) => s + seg.value, 0);
+
+    for (const seg of item.segments) {
+      if (seg.value > 0) {
+        const fill = barWrap.createDiv({ cls: "todo-review-stacked-bar-segment" });
+        fill.style.height = (seg.value / maxTotal * 100) + "%";
+        fill.style.backgroundColor = seg.color;
+        fill.title = seg.label + ": " + seg.value;
+      }
+    }
+
+    if (total > 0) {
+      barItem.createDiv({ cls: "todo-review-stacked-bar-total", text: String(total) });
+    }
+    barItem.createDiv({ cls: "todo-review-stacked-bar-label", text: item.label });
+  }
+}
+
+/** 渲染月历热力图（7列日历网格，显示日期+完成数着色） */
+export function renderMonthCalendar(
+  container: HTMLElement,
+  year: number,
+  month: number,
+  data: { date: string; count: number }[]
+): void {
+  const countMap = new Map<string, number>();
+  for (const d of data) { countMap.set(d.date, d.count); }
+
+  const cal = container.createDiv({ cls: "todo-review-month-calendar" });
+
+  // 列头
+  const headers = ["一", "二", "三", "四", "五", "六", "日"];
+  for (const h of headers) {
+    cal.createDiv({ cls: "todo-review-month-calendar-header", text: h });
+  }
+
+  // 1号是星期几（0=周日，调整为周一起始）
+  const firstDay = new Date(year, month, 1);
+  let startCol = firstDay.getDay();
+  if (startCol === 0) startCol = 7;
+  startCol--; // 0-based: 周一=0, 周日=6
+
+  // 该月天数
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  // 填充月初空格
+  for (let i = 0; i < startCol; i++) {
+    cal.createDiv({ cls: "todo-review-month-calendar-day todo-review-month-calendar-day--empty" });
+  }
+
+  // 填充日期
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = year + "-" + String(month + 1).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+    const count = countMap.get(dateStr) || 0;
+    let level = 0;
+    if (count >= 6) level = 3;
+    else if (count >= 3) level = 2;
+    else if (count >= 1) level = 1;
+
+    const cell = cal.createDiv({
+      cls: "todo-review-month-calendar-day todo-review-month-calendar-day--level-" + level,
+    });
+    cell.createSpan({ cls: "todo-review-month-calendar-day-num", text: String(day) });
+    if (count > 0) {
+      cell.createSpan({ cls: "todo-review-month-calendar-day-count", text: String(count) });
+    }
+    cell.title = dateStr + ": 完成 " + count + " 个任务";
+  }
+
+  // 填充月末空格（补齐到完整行）
+  const totalCells = startCol + daysInMonth;
+  const remainder = totalCells % 7;
+  if (remainder > 0) {
+    for (let i = 0; i < 7 - remainder; i++) {
+      cal.createDiv({ cls: "todo-review-month-calendar-day todo-review-month-calendar-day--empty" });
+    }
+  }
+
+  // 图例
+  const legend = container.createDiv({ cls: "todo-review-month-calendar-legend" });
+  legend.createSpan({ text: "少" });
+  for (let i = 0; i <= 3; i++) {
+    legend.createSpan({ cls: "todo-review-month-calendar-legend-cell todo-review-month-calendar-day--level-" + i });
+  }
+  legend.createSpan({ text: "多" });
+}
+
+/** 渲染 GitHub 风格年热力图（53列×7行，周一起始） */
+export function renderYearHeatmap(
+  container: HTMLElement,
+  year: number,
+  data: { date: string; count: number }[]
+): void {
+  const countMap = new Map<string, number>();
+  for (const d of data) { countMap.set(d.date, d.count); }
+
+  const wrap = container.createDiv({ cls: "todo-review-year-heatmap-wrap" });
+
+  // 月份标签行
+  const monthRow = wrap.createDiv({ cls: "todo-review-year-months" });
+  monthRow.createDiv({ cls: "todo-review-year-day-labels" }); // 占位列
+  const firstDay = new Date(year, 0, 1);
+  let startCol = firstDay.getDay();
+  if (startCol === 0) startCol = 7;
+  startCol--;
+
+  for (let m = 0; m < 12; m++) {
+    const monthStart = new Date(year, m, 1);
+    let col = startCol;
+    const jan1 = new Date(year, 0, 1);
+    const diffDays = Math.floor((monthStart.getTime() - jan1.getTime()) / 86400000);
+    col = startCol + diffDays;
+    const weekCol = Math.floor(col / 7);
+    const label = monthRow.createSpan({ cls: "todo-review-year-month-label", text: (m + 1) + "月" });
+    label.style.gridColumn = String(weekCol + 2); // +2 for label column
+  }
+
+  // 热力图主体
+  const grid = wrap.createDiv({ cls: "todo-review-year-grid" });
+
+  // 左侧周几标签
+  const dayLabels = ["", "一", "", "三", "", "五", ""];
+  for (let r = 0; r < 7; r++) {
+    const lbl = grid.createDiv({ cls: "todo-review-year-day-label" });
+    lbl.textContent = dayLabels[r];
+  }
+
+  // 填充 53 列 × 7 行
+  const jan1Date = new Date(year, 0, 1);
+  const dec31 = new Date(year, 11, 31);
+  const totalDays = Math.floor((dec31.getTime() - jan1Date.getTime()) / 86400000) + 1;
+  const totalCols = Math.ceil((startCol + totalDays) / 7);
+
+  for (let c = 0; c < totalCols; c++) {
+    for (let r = 0; r < 7; r++) {
+      const dayOffset = c * 7 + r - startCol;
+      if (dayOffset < 0 || dayOffset >= totalDays) {
+        grid.createDiv({ cls: "todo-review-year-cell todo-review-year-cell--empty" });
+      } else {
+        const d = new Date(year, 0, 1 + dayOffset);
+        const dateStr = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+        const count = countMap.get(dateStr) || 0;
+        let level = 0;
+        if (count >= 6) level = 3;
+        else if (count >= 3) level = 2;
+        else if (count >= 1) level = 1;
+        const cell = grid.createDiv({ cls: "todo-review-year-cell todo-review-year-cell--level-" + level });
+        cell.title = dateStr + ": 完成 " + count + " 个任务";
+      }
+    }
   }
 }
