@@ -99,6 +99,8 @@ import { TaskDetailView } from "./TaskDetailView";
 import { sortTasks, getMyDayGroupFromTime } from "../utils/sort";
 import type { SortConfig, SortField, SortDirection } from "../utils/sort";
 import { renderStatCard, renderDistributionBar, renderStackedBarChart, renderMonthCalendar, renderBarChart, renderYearHeatmap } from "../utils/chart";
+import { IconPickerModal } from "../ui/IconPickerModal";
+import { CreateListModal } from "../ui/CreateListModal";
 
 export type ViewNav = "myday" | "all" | "inbox" | "plan" | "schedule" | "review" | "trash";
 
@@ -146,13 +148,13 @@ export interface TodoPluginLike {
     stopRecurrence(groupId: string, fromTaskId?: string): Promise<number>;
   };
   listService: {
-    getById(id: string): { id: string; name: string; isDefault: boolean; groupId: string | null } | undefined;
-    getActive(): { id: string; name: string; isDefault: boolean; groupId: string | null }[];
+    getById(id: string): { id: string; name: string; isDefault: boolean; groupId: string | null; icon: string } | undefined;
+    getActive(): { id: string; name: string; isDefault: boolean; groupId: string | null; icon: string }[];
     getDefault(): { id: string; name: string } | undefined;
-    create(fields: { name: string }): Promise<{ id: string; name: string }>;
+    create(fields: { name: string; icon?: string }): Promise<{ id: string; name: string; icon: string }>;
     rename(id: string, name: string): Promise<{ id: string; name: string } | null>;
     delete(id: string): Promise<boolean>;
-    update(id: string, changes: { groupId?: string | null; name?: string; sortOrder?: number }): Promise<{ id: string; name: string; groupId: string | null } | null>;
+    update(id: string, changes: { groupId?: string | null; name?: string; sortOrder?: number; icon?: string }): Promise<{ id: string; name: string; groupId: string | null; icon: string } | null>;
   };
   tagService: {
     getAll(): { id: string; name: string; color: string; icon: string; isDefault: boolean; sortOrder: number }[];
@@ -201,6 +203,8 @@ export class TodoView extends ItemView {
   private taskListEl!: HTMLDivElement;
   private sortBtnEl!: HTMLButtonElement;
   private sortLabelEl!: HTMLSpanElement;
+  private headerIconEl!: HTMLSpanElement;
+  private headerTitleEl!: HTMLSpanElement;
   private navEls: Record<ViewNav, HTMLDivElement> = {} as Record<ViewNav, HTMLDivElement>;
   private listNavEl!: HTMLDivElement;
   private listItemsEl!: HTMLDivElement;
@@ -276,6 +280,8 @@ export class TodoView extends ItemView {
     const nav = layout.createDiv({ cls: "todo-nav" });
     const main = layout.createDiv({ cls: "todo-main" });
     const taskHeader = main.createDiv({ cls: "todo-task-header" });
+    this.headerIconEl = taskHeader.createSpan({ cls: "todo-header-icon" });
+    this.headerTitleEl = taskHeader.createSpan({ cls: "todo-header-title" });
     this.sortBtnEl = taskHeader.createEl("button", { cls: "todo-sort-btn" });
     setIcon(this.sortBtnEl, "arrow-up-down");
     this.sortLabelEl = this.sortBtnEl.createSpan({ text: this.getSortLabel(this.plugin.settings.sortConfig.primary.field) });
@@ -310,12 +316,14 @@ export class TodoView extends ItemView {
     const planList = this.planGroupEl.createDiv({ cls: "todo-nav-group-list" });
     if (this.plugin.settings.planGroupCollapsed) planList.style.display = "none";
     const planItems = [
-      { name: "\u4eba\u751f\u8ba1\u5212", kind: "life" as PlanKind },
-      { name: "\u5e74\u5ea6\u8ba1\u5212", kind: "year" as PlanKind },
-      { name: "\u6708\u5ea6\u8ba1\u5212", kind: "month" as PlanKind },
+      { name: "人生计划", kind: "life" as PlanKind, icon: "globe" },
+      { name: "年度计划", kind: "year" as PlanKind, icon: "calendar-check" },
+      { name: "月度计划", kind: "month" as PlanKind, icon: "timer" },
     ];
     for (const pi of planItems) {
       const item = planList.createDiv({ cls: "todo-nav-item todo-plan-item" });
+      const piIcon = item.createSpan({ cls: "todo-nav-icon" });
+      setIcon(piIcon, pi.icon);
       item.createSpan({ cls: "todo-plan-name", text: pi.name });
       item.addEventListener("click", async () => {
         await this.activatePlan(pi.kind);
@@ -336,13 +344,15 @@ export class TodoView extends ItemView {
     const qList = this.quadrantGroupEl.createDiv({ cls: "todo-nav-group-list" });
     if (this.plugin.settings.quadrantGroupCollapsed) qList.style.display = "none";
     const quadrantDefs = [
-      { key: "\u91cd\u8981\u7d27\u6025", color: "#E74C3C" },
-      { key: "\u91cd\u8981\u4e0d\u7d27\u6025", color: "#4A90D9" },
-      { key: "\u4e0d\u91cd\u8981\u7d27\u6025", color: "#F5A623" },
-      { key: "\u4e0d\u91cd\u8981\u4e0d\u7d27\u6025", color: "#95A5A6" },
+      { key: "重要紧急", color: "#E74C3C", icon: "alarm-clock" },
+      { key: "重要不紧急", color: "#4A90D9", icon: "calendar-check" },
+      { key: "不重要紧急", color: "#F5A623", icon: "bell" },
+      { key: "不重要不紧急", color: "#95A5A6", icon: "coffee" },
     ];
     for (const qd of quadrantDefs) {
       const qItem = qList.createDiv({ cls: "todo-nav-item todo-quadrant-item" + (this.plugin.settings.selectedQuadrant === qd.key ? " active" : "") });
+      const qdIcon = qItem.createSpan({ cls: "todo-nav-icon" });
+      setIcon(qdIcon, qd.icon);
       qItem.createSpan({ cls: "todo-quadrant-name", text: qd.key });
       qItem.addEventListener("click", async () => {
         this.plugin.settings.selectedQuadrant = qd.key;
@@ -350,10 +360,12 @@ export class TodoView extends ItemView {
         await this.plugin.saveSettings();
         this.plugin.settings.selectedListId = null;
         qList.querySelectorAll(".todo-nav-item").forEach((el) => el.removeClass("active"));
+        this.planGroupEl?.querySelectorAll(".todo-plan-item").forEach((el) => el.removeClass("active"));
 
         Object.entries(this.navEls).forEach(([, el]) => el.removeClass("active"));
         qItem.addClass("active");
         await this.renderTasks("all");
+        this.updateHeaderInfo();
       });
     }
     qHeader.addEventListener("click", () => {
@@ -481,12 +493,129 @@ export class TodoView extends ItemView {
     await this.activateNav("all");
   }
 
-  private async activateNav(nav: ViewNav): Promise<void> {
+  
+  private updateHeaderInfo(): void {
+    if (!this.headerIconEl || !this.headerTitleEl) return;
+    
+    const { activeViewNav, selectedListId, selectedQuadrant } = this.plugin.settings;
+    
+    // Plan icon mapping
+    const planIcons: Record<PlanKind, string> = {
+      life: "globe",
+      year: "calendar-check",
+      quarter: "calendar",
+      month: "timer",
+      week: "calendar-days",
+    };
+    const planNames: Record<PlanKind, string> = {
+      life: "人生计划",
+      year: "年度计划",
+      quarter: "季度计划",
+      month: "月度计划",
+      week: "周计划",
+    };
+    
+    // Quadrant icon mapping
+    const quadrantIcons: Record<string, string> = {
+      "重要紧急": "alarm-clock",
+      "重要不紧急": "calendar-check",
+      "不重要紧急": "bell",
+      "不重要不紧急": "coffee",
+    };
+    
+    let icon = "list-checks";
+    let title = "所有任务";
+    let isEditable = false;
+    let listId: string | null = null;
+    
+    if (selectedListId) {
+      const list = this.plugin.listService.getById(selectedListId);
+      if (list) {
+        icon = list.icon || "list";
+        title = list.name;
+        isEditable = true;
+        listId = selectedListId;
+      }
+    } else if (selectedQuadrant && activeViewNav === "all") {
+      icon = quadrantIcons[selectedQuadrant] || "layout-grid";
+      title = selectedQuadrant;
+      isEditable = false;
+    } else if (activeViewNav === "plan" && this.activePlanKind) {
+      icon = planIcons[this.activePlanKind] || "calendar-days";
+      title = planNames[this.activePlanKind] || "我的计划";
+      isEditable = false;
+    } else {
+      switch (activeViewNav) {
+        case "myday":
+          icon = "sun";
+          title = "我的一天";
+          break;
+        case "all":
+          icon = "list-checks";
+          title = "所有任务";
+          break;
+        case "inbox":
+          icon = "inbox";
+          title = "任务";
+          break;
+        case "schedule":
+          icon = "calendar";
+          title = "我的日程";
+          break;
+        case "plan":
+          icon = "calendar-days";
+          title = "我的计划";
+          break;
+        case "review":
+          icon = "bar-chart-2";
+          title = "统计";
+          break;
+        case "trash":
+          icon = "trash-2";
+          title = "回收站";
+          break;
+        default:
+          icon = "list-checks";
+          title = "所有任务";
+      }
+    }
+    
+    // Update icon
+    this.headerIconEl.empty();
+    setIcon(this.headerIconEl, icon);
+    this.headerIconEl.onclick = null;
+    this.headerIconEl.toggleClass("editable", isEditable);
+    if (isEditable && listId) {
+      this.headerIconEl.onclick = () => {
+        new IconPickerModal(this.app, icon, async (iconName) => {
+          await this.plugin.listService.update(listId, { icon: iconName });
+          this.updateHeaderInfo();
+          await this.renderLists();
+        }).open();
+      };
+    }
+    
+    // Update title
+    this.headerTitleEl.textContent = title;
+    this.headerTitleEl.toggleClass("editable", isEditable);
+    this.headerTitleEl.onclick = null;
+    if (isEditable) {
+      this.headerTitleEl.onclick = () => {
+        const selection = window.getSelection();
+        if (selection) {
+          selection.selectAllChildren(this.headerTitleEl);
+        }
+      };
+    }
+  }
+
+private async activateNav(nav: ViewNav): Promise<void> {
     this.closeDetail();
     if (nav !== "all") this.reviewFilter = null;
     this.plugin.settings.activeViewNav = nav;
     this.plugin.settings.selectedListId = null;
     if (nav === "review") {
+      this.plugin.settings.selectedQuadrant = null;
       this.sortBtnEl.style.display = "none";
       this.quickContainerEl.style.display = "none";
       this.reviewMode = this.plugin.settings.activeReviewMode || "day";
@@ -503,9 +632,11 @@ export class TodoView extends ItemView {
       this.taskListEl.addClass("todo-review-active");
       this.taskListEl.empty();
       this.renderReviewView();
+      this.updateHeaderInfo();
       return;
     }
     if (nav === "schedule") {
+      this.plugin.settings.selectedQuadrant = null;
       this.sortBtnEl.style.display = "none";
       this.quickContainerEl.style.display = "none";
       this.scheduleMode = this.plugin.settings.activeScheduleMode || "month";
@@ -522,9 +653,11 @@ export class TodoView extends ItemView {
       this.taskListEl.empty();
       this.scheduleScrollTarget = "now";
       this.renderScheduleView();
+      this.updateHeaderInfo();
       return;
     }
     if (nav === "trash") {
+      this.plugin.settings.selectedQuadrant = null;
       this.sortBtnEl.style.display = "none";
       this.quickContainerEl.style.display = "none";
       Object.entries(this.navEls).forEach(([, el]) => el.removeClass("active"));
@@ -532,9 +665,11 @@ export class TodoView extends ItemView {
       this.taskListEl.removeClass("todo-schedule-active");
       this.taskListEl.empty();
       this.renderTrashView();
+      this.updateHeaderInfo();
       return;
     }
     if (nav === "plan" && this.activePlanKind) {
+      this.plugin.settings.selectedQuadrant = null;
       this.sortBtnEl.style.display = "none";
       this.quickContainerEl.style.display = "none";
       await this.plugin.saveSettings();
@@ -546,6 +681,7 @@ export class TodoView extends ItemView {
       } else {
         await this.renderPlanView(this.activePlanKind);
       }
+      this.updateHeaderInfo();
       return;
     }
     this.activePlanKind = null;
@@ -573,6 +709,7 @@ export class TodoView extends ItemView {
 
     await this.renderTasks(nav);
     this.updateQuickPlaceholder();
+    this.updateHeaderInfo();
   }
 
   private async activateList(listId: string): Promise<void> {
@@ -587,6 +724,7 @@ export class TodoView extends ItemView {
 
     await this.renderTasks("list");
     this.updateQuickPlaceholder();
+    this.updateHeaderInfo();
   }
 
   private async renderLists(): Promise<void> {
@@ -664,10 +802,12 @@ export class TodoView extends ItemView {
     }
   }
 
-  private renderListItem(container: HTMLElement, list: { id: string; name: string; isDefault: boolean }, groupId: string | null): void {
+  private renderListItem(container: HTMLElement, list: { id: string; name: string; isDefault: boolean; icon?: string }, groupId: string | null): void {
     const row = container.createDiv({ cls: "todo-nav-item todo-list-item" + (this.plugin.settings.selectedListId === list.id ? " active" : "") });
     row.dataset.listId = list.id;
     row.draggable = true;
+    const listIcon = row.createSpan({ cls: "todo-list-icon" });
+    setIcon(listIcon, list.icon || "list");
     row.createSpan({ cls: "todo-list-name", text: list.name });
 
     const actions = row.createDiv({ cls: "todo-list-actions" });
@@ -719,11 +859,7 @@ export class TodoView extends ItemView {
       await this.renderLists();
     });
 
-    row.addEventListener("contextmenu", (ev) => {
-      ev.preventDefault();
-      this.showListContextMenu(ev, list.id, list.name);
-    });
-  }
+      }
 
   private setupDropZone(el: HTMLElement, targetGroupId: string | null): void {
     el.addEventListener("dragover", (ev) => {
@@ -894,6 +1030,14 @@ export class TodoView extends ItemView {
         subMenu.showAtMouseEvent(ev);
       }));
     }
+    const list = this.plugin.listService.getById(listId);
+    const currentIcon = list?.icon || "list";
+    menu.addItem((item) => item.setTitle("更改图标").setIcon("image").onClick(() => {
+      new IconPickerModal(this.app, currentIcon, async (iconName) => {
+        await this.plugin.listService.update(listId, { icon: iconName });
+        await this.renderLists();
+      }).open();
+    }));
     menu.addItem((item) => item.setTitle("\u91cd\u547d\u540d").setIcon("pencil").onClick(async () => {
       const row = this.listItemsEl.querySelector('[data-list-id="' + listId + '"]') as HTMLDivElement;
       if (row) await this.renameListInline(listId, listName, row);
@@ -1328,12 +1472,12 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   }
 
   private async createListByInput(): Promise<void> {
-    const name = await new PromptModal(this.app, "请输入新列表名称").openAndGetValue();
-    if (!name?.trim()) {
+    const result = await new CreateListModal(this.app).openAndGetValue();
+    if (!result?.name?.trim()) {
       return;
     }
 
-    const created = await this.plugin.listService.create({ name: name.trim() });
+    const created = await this.plugin.listService.create({ name: result.name.trim(), icon: result.icon });
     await this.renderLists();
     await this.activateList(created.id);
   }
@@ -1484,6 +1628,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     await this.plugin.saveSettings();
     Object.entries(this.navEls).forEach(([, el]) => el.removeClass("active"));
     this.listItemsEl?.querySelectorAll<HTMLDivElement>(".todo-nav-item").forEach((el) => el.removeClass("active"));
+    this.quadrantGroupEl?.querySelectorAll<HTMLDivElement>(".todo-quadrant-item").forEach((el) => el.removeClass("active"));
     const planListEl = this.planGroupEl?.querySelector(".todo-nav-group-list") as HTMLElement;
     if (planListEl) planListEl.querySelectorAll(".todo-plan-item").forEach((el: Element, i: number) => {
       el.toggleClass("active", (kind === "life" && i === 0) || (kind === "year" && i === 1) || (kind === "month" && i === 2));
@@ -1496,6 +1641,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     } else {
       await this.renderPlanView(kind);
     }
+    this.updateHeaderInfo();
   }
 
   /** Navigate to a task: switch plan view + highlight + scroll + open detail */

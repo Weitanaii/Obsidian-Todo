@@ -5,6 +5,7 @@ export interface TodoList {
   isArchived: boolean;
   isDefault: boolean;
   groupId: string | null;
+  icon: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -18,6 +19,7 @@ export function createList(overrides: Partial<TodoList> = {}): TodoList {
     isArchived: false,
     isDefault: false,
     groupId: null,
+    icon: "list",
     createdAt: now,
     updatedAt: now,
     ...overrides,

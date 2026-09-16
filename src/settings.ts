@@ -47,9 +47,19 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
 };
 
 const ICON_OPTIONS = [
-  "tag", "star", "bookmark", "flag", "folder", "file", "globe", "home",
-  "mail", "phone", "rocket", "shield", "gift", "music", "camera",
-  "compass", "map", "sun", "moon", "cloud", "zap", "heart",
+  "book", "book-open", "library", "book-marked", "newspaper",
+  "film", "clapperboard", "video", "tv", "popcorn",
+  "music", "headphones", "mic", "radio", "disc-3",
+  "map-pin", "map", "globe", "compass", "plane",
+  "shopping-cart", "shopping-basket", "shopping-bag", "store",
+  "tag", "utensils", "chef-hat", "cooking-pot", "coffee", "cake",
+  "home", "sofa", "bed", "lamp", "washing-machine",
+  "heart-pulse", "activity", "stethoscope", "pill", "hospital",
+  "dumbbell", "footprints", "bike", "timer", "trophy",
+  "briefcase", "building-2", "clipboard-list", "kanban", "list-checks",
+  "piggy-bank", "banknote", "coins", "calculator", "receipt",
+  "users", "user-round", "heart-handshake", "message-circle", "phone",
+  "repeat", "calendar-check", "check-check", "circle-check", "alarm-clock",
 ];
 
 export class ObsidianTodoSettingTab extends PluginSettingTab {
@@ -113,7 +123,7 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
     // --- Tag Management ---
     const allTags = this.plugin.tagService.getAll();
     const quadrantTags = allTags.filter((t) => t.sortOrder < 4);
-    const domainTags = allTags.filter((t) => t.sortOrder >= 4 && t.sortOrder < 10);
+    const domainTags = allTags.filter((t) => t.sortOrder >= 4);
     const customTags = allTags.filter((t) => !t.isDefault);
 
     this.settingGroup(containerEl, "标签管理", "任务分类与标签配置", (group) => {
@@ -288,13 +298,14 @@ class TagEditModal extends Modal {
   private tag: { name: string; icon: string; color: string } | null;
   private onSave: (result: TagEditResult) => void;
   private nameInput!: HTMLInputElement;
-  private iconSelect!: HTMLSelectElement;
+  private selectedIcon: string;
   private colorInput!: HTMLInputElement;
 
   constructor(app: App, tag: { name: string; icon: string; color: string } | null, onSave: (result: TagEditResult) => void) {
     super(app);
     this.tag = tag;
     this.onSave = onSave;
+    this.selectedIcon = tag?.icon || "tag";
   }
 
   onOpen(): void {
@@ -308,13 +319,31 @@ class TagEditModal extends Modal {
     this.nameInput.value = this.tag?.name || "";
 
     // Icon
-    const iconRow = this.contentEl.createDiv({ cls: "todo-tag-edit-row" });
-    iconRow.createEl("label", { text: "图标" });
-    this.iconSelect = iconRow.createEl("select") as HTMLSelectElement;
-    for (const icon of ICON_OPTIONS) {
-      const opt = this.iconSelect.createEl("option", { value: icon, text: icon });
-      if (this.tag && this.tag.icon === icon) opt.selected = true;
-      if (!this.tag && icon === "tag") opt.selected = true;
+    const iconGroup = this.contentEl.createDiv({ cls: "todo-tag-edit-row" });
+    iconGroup.createEl("label", { text: "图标" });
+    
+    // Current icon preview
+    const iconPreview = iconGroup.createDiv({ cls: "todo-tag-edit-icon-preview" });
+    const iconDisplay = iconPreview.createSpan({ cls: "todo-tag-edit-icon-display" });
+    setIcon(iconDisplay, this.selectedIcon);
+    const iconNameDisplay = iconPreview.createSpan({ cls: "todo-tag-edit-icon-name", text: this.selectedIcon });
+
+    // Icon grid
+    const gridEl = iconGroup.createDiv({ cls: "todo-tag-edit-icon-grid" });
+
+    for (const iconName of ICON_OPTIONS) {
+      const item = gridEl.createDiv({
+        cls: "todo-tag-edit-icon-item" + (iconName === this.selectedIcon ? " selected" : ""),
+      });
+      item.title = iconName;
+      setIcon(item, iconName);
+      item.addEventListener("click", () => {
+        this.selectedIcon = iconName;
+        setIcon(iconDisplay, iconName);
+        iconNameDisplay.setText(iconName);
+        gridEl.querySelectorAll(".todo-tag-edit-icon-item").forEach((el) => el.removeClass("selected"));
+        item.addClass("selected");
+      });
     }
 
     // Color
@@ -330,7 +359,7 @@ class TagEditModal extends Modal {
     saveBtn.addEventListener("click", () => {
       const name = this.nameInput.value.trim();
       if (!name) return;
-      this.onSave({ name, icon: this.iconSelect.value, color: this.colorInput.value });
+      this.onSave({ name, icon: this.selectedIcon, color: this.colorInput.value });
       this.close();
     });
 
