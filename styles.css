@@ -764,9 +764,20 @@
   }
 
   .todo-detail {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    max-height: 90vh;
+    height: 90vh;
     border-left: none;
     border-top: 1px solid var(--background-modifier-border);
-    max-height: 40vh;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -10px 30px rgba(0,0,0,0.2);
+    z-index: 1000;
+    overflow: auto;
+    overscroll-behavior: contain;
   }
 }
 
@@ -3848,4 +3859,121 @@
 .todo-setting-section {
   margin-left: 16px;
   margin-right: 16px;
+}/* ===== Goal Plan Navigator (step 2) ===== */
+.todo-goal-nav{display:flex;align-items:center;gap:10px;padding:8px 0 12px}
+.todo-goal-nav-btn{min-width:36px;min-height:36px;border-radius:8px;border:1px solid var(--background-modifier-border);background:var(--background-secondary);color:var(--text-normal);cursor:pointer}
+.todo-goal-nav-btn:hover{background:var(--background-modifier-hover)}
+.todo-goal-nav-label{font-size:14px;font-weight:600;color:var(--text-normal)}
+.todo-goal-nav-back{margin-left:auto}
+.todo-goal-stats{color:var(--text-muted);font-size:12px;padding-bottom:8px}
+.todo-goal-placeholder{color:var(--text-muted);font-size:12px;padding:8px 0}
+/* ===== Goal Plan Stats Row (step 3) ===== */
+.todo-goal-stats-row{display:flex;gap:10px;flex-wrap:wrap;padding:8px 0 12px}
+.todo-goal-stat-card{flex:1 1 120px;max-width:180px;padding:10px 12px;border-radius:10px;background:var(--background-secondary);border:1px solid var(--background-modifier-border)}
+.todo-goal-stat-value{font-size:20px;font-weight:700;color:var(--text-normal)}
+.todo-goal-stat-label{font-size:11px;color:var(--text-muted);margin-top:2px}
+.todo-goal-stat-overdue{border-color:var(--text-error);background:color-mix(in srgb, var(--text-error) 8%, var(--background-secondary))}
+.todo-goal-stat-overdue .todo-goal-stat-value{color:var(--text-error)}
+/* ===== Goal Plan Cards (step 4) ===== */
+.todo-goal-cards{display:flex;flex-direction:column;gap:12px;padding:8px 0 16px}
+.todo-goal-card{padding:14px 16px;border-radius:12px;background:var(--background-secondary);border:1px solid var(--background-modifier-border);cursor:pointer}
+.todo-goal-card:hover{background:var(--background-modifier-hover)}
+.todo-goal-card-overdue{border-color:var(--text-error)}
+.todo-goal-card-row{display:flex;align-items:center;gap:8px}
+.todo-goal-star{font-size:14px;line-height:1}
+.todo-goal-card-title{flex:1;font-size:14px;font-weight:600;color:var(--text-normal);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.todo-goal-card-arrow{font-size:12px;color:var(--text-muted);padding:6px 8px;border-radius:8px}
+.todo-goal-card-arrow:hover{background:var(--background-modifier-hover)}
+.todo-goal-card-meta{display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding-top:8px;font-size:12px;color:var(--text-muted)}
+.todo-goal-meta-item{white-space:nowrap}
+.todo-goal-unset{color:var(--text-faint)}
+.todo-goal-parent{opacity:0.85}
+.todo-goal-progress{position:relative;height:8px;flex:1 1 160px;background:var(--background-modifier-border);border-radius:8px}
+.todo-goal-progress-fill{height:100%;border-radius:8px;background:linear-gradient(90deg,var(--interactive-accent),color-mix(in srgb,var(--interactive-accent) 70%,var(--background-secondary)))}
+.todo-goal-progress-text{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text-normal)}
+.todo-goal-tags{display:flex;flex-wrap:wrap;gap:6px;padding-top:8px}
+.todo-goal-tag-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border:1px solid;border-radius:999px;background:transparent;font-size:11px}
+.todo-goal-card-body{display:none;padding-top:8px;color:var(--text-muted);font-size:12px}
+/* ===== Goal Plan Add Entry (step 5) ===== */
+.todo-goal-add{padding:6px 0 10px}
+.todo-goal-add-btn{width:100%;min-height:38px;border:1px dashed var(--background-modifier-border);border-radius:10px;background:transparent;color:var(--text-muted);cursor:pointer;font-size:13px}
+.todo-goal-add-btn:hover{color:var(--text-normal);background:var(--background-modifier-hover)}
+.todo-goal-add-input{padding-top:8px}
+.todo-goal-add-input input{width:100%;padding:10px 12px;border:1px solid var(--background-modifier-border);border-radius:10px;background:transparent;color:var(--text-normal);font-size:var(--font-ui-normal)}
+.todo-goal-add-input input::placeholder{color:var(--text-faint)}
+/* ===== Goal Plan Card Body / Expand (step 7) ===== */
+.todo-goal-card-body{padding:8px 0 4px;overflow:hidden;transition:max-height 0.25s ease, opacity 0.2s ease;opacity:1}
+.todo-goal-card-body-collapsed{max-height:0!important;opacity:0;padding:0}
+.todo-goal-subgroup-title{font-size:11px;color:var(--text-muted);padding:8px 0 4px;border-top:1px dashed var(--background-modifier-border)}
+.todo-goal-kr-item{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;color:var(--text-normal)}
+.todo-goal-kr-done .todo-goal-kr-title{text-decoration:line-through;color:var(--text-muted)}
+.todo-goal-kr-check{font-size:12px;color:var(--text-muted)}
+.todo-goal-kr-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.todo-goal-kr-due{color:var(--text-faint);white-space:nowrap}
+.todo-goal-empty{color:var(--text-faint);font-size:12px;padding:6px 0}
+
+/* ===== Goal Plan Polish (step 9) ===== */
+.todo-goal-card:focus-visible{outline:2px solid var(--interactive-accent);outline-offset:2px}
+.todo-goal-card-overdue .todo-goal-card-title::after{content:" (逾期)";color:var(--text-error);font-weight:600}
+.todo-goal-card-body{max-height:420px;overflow:auto;scroll-behavior:smooth}
+
+@media (max-width: 900px){
+  .todo-goal-stats-row{grid-template-columns:repeat(3,1fr)}
+  .todo-goal-stat-card{max-width:none}
 }
+@media (max-width: 600px){
+  .todo-goal-nav{flex-wrap:wrap;gap:8px}
+  .todo-goal-stats-row{display:grid;grid-template-columns:1fr;gap:8px}
+  .todo-goal-card{min-height:56px}
+  .todo-goal-card-arrow{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  .todo-goal-add-btn{min-height:48px}
+}
+
+/* ===== Goal Plan P1 polish ===== */
+.todo-goal-stat-card{display:flex;flex-direction:column;gap:6px}
+.todo-goal-stat-top{display:flex;align-items:center;gap:8px}
+.todo-goal-stat-icon{color:var(--text-muted)}
+.todo-goal-stat-total .todo-goal-stat-icon{color:var(--interactive-accent)}
+.todo-goal-stat-completed{border-color:color-mix(in srgb, var(--text-success) 35%, var(--background-modifier-border))}
+.todo-goal-stat-completed .todo-goal-stat-icon,.todo-goal-stat-completed .todo-goal-stat-value{color:var(--text-success)}
+.todo-goal-stat-inprogress .todo-goal-stat-icon,.todo-goal-stat-inprogress .todo-goal-stat-value{color:var(--interactive-accent)}
+.todo-goal-stat-overdue-empty .todo-goal-stat-icon{color:var(--text-muted)}
+.todo-goal-stat-overdue .todo-goal-stat-icon,.todo-goal-stat-overdue .todo-goal-stat-value{color:var(--text-error)}
+.todo-goal-stat-rate-full .todo-goal-stat-icon,.todo-goal-stat-rate-full .todo-goal-stat-value{color:var(--text-success)}
+
+.todo-goal-card{display:flex;flex-direction:column;gap:8px}
+.todo-goal-card-row{display:flex;align-items:center;gap:8px}
+.todo-goal-star svg{width:14px;height:14px;color:var(--text-muted)}
+.todo-goal-star.is-important svg{color:var(--text-warning)}
+.todo-goal-card-title{flex:1;font-size:14px;font-weight:600;color:var(--text-normal);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.todo-goal-card-arrow{font-size:12px;color:var(--text-muted);padding:6px 8px;border-radius:8px;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+.todo-goal-card-arrow:hover{background:var(--background-modifier-hover)}
+
+.todo-goal-card-metrics{display:flex;align-items:center;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--text-muted)}
+.todo-goal-metric-item{white-space:nowrap}
+.todo-goal-overdue-badge{margin-left:2px;padding:1px 8px;border-radius:999px;background:color-mix(in srgb, var(--text-error) 12%, transparent);color:var(--text-error);font-weight:600;font-size:11px}
+.todo-goal-card-context{display:flex;align-items:center;flex-wrap:wrap;gap:8px;color:var(--text-muted);font-size:12px}
+.todo-goal-parent{opacity:.9}
+
+.todo-goal-guide{padding:14px;border:1px dashed var(--background-modifier-border);border-radius:12px;color:var(--text-muted);background:var(--background-secondary)}
+.todo-goal-guide-hint{padding-top:6px;color:var(--text-muted)}
+.todo-goal-guide-btn{color:var(--interactive-accent);font-weight:600}
+
+.todo-goal-card-body{padding:8px 0 4px;overflow:hidden;transition:max-height 0.25s ease, opacity 0.2s ease;opacity:1;max-height:420px}
+.todo-goal-card-body-collapsed{max-height:0!important;opacity:0;padding:0}
+.todo-goal-subgroup-title{font-size:11px;color:var(--text-muted);padding:8px 0 4px;border-top:1px dashed var(--background-modifier-border)}
+.todo-goal-kr-item{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;color:var(--text-normal)}
+.todo-goal-kr-done .todo-goal-kr-title{text-decoration:line-through;color:var(--text-muted)}
+.todo-goal-kr-overdue .todo-goal-kr-title{color:var(--text-error)}
+.todo-goal-kr-check{font-size:12px;color:var(--text-muted)}
+.todo-goal-kr-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.todo-goal-kr-sub{padding:1px 6px;border-radius:999px;background:var(--background-modifier-hover);color:var(--text-muted);font-size:10px}
+.todo-goal-kr-due{color:var(--text-faint);white-space:nowrap}
+.todo-goal-kr-open{color:var(--interactive-accent);cursor:pointer;font-size:11px;padding:6px 8px;border-radius:8px}
+.todo-goal-kr-open:hover{background:var(--background-modifier-hover)}
+.todo-goal-empty{display:flex;align-items:center;gap:6px;color:var(--text-faint);font-size:12px;padding:6px 0}
+.todo-goal-empty-link{color:var(--interactive-accent);cursor:pointer;padding:6px 8px;border-radius:8px}
+.todo-goal-empty-link:hover{background:var(--background-modifier-hover)}
+.todo-goal-sentinel{height:1px}
+.todo-goal-kr-more{width:100%;margin-top:6px;padding:8px 10px;border:1px dashed var(--background-modifier-border);border-radius:10px;background:transparent;color:var(--text-muted);cursor:pointer;font-size:12px}
+.todo-goal-kr-more:hover{color:var(--text-normal);background:var(--background-modifier-hover)}

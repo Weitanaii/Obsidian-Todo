@@ -432,6 +432,11 @@ export class TaskDetailView {
       this.createAgeRow(container, task);
       this.createTagRow(container, task, true);
       this.createChildrenSection(container, task);
+    } else if (task.planKind === 'year' || task.planKind === 'month') {
+      this.createDueDateRow(container, task);
+      this.createTagRow(container, task);
+      this.createParentSection(container, task);
+      this.createChildrenSection(container, task);
     } else {
       this.createMyDayRow(container, task);
       this.createStartDateRow(container, task);
@@ -1024,8 +1029,13 @@ class ParentPickerModal extends Modal {
     const renderList = (filter: string) => {
       listEl.empty();
       if (!targetKind) { listEl.createDiv({ cls: "todo-parent-picker-empty", text: "\u65e0\u53ef\u9009\u4efb\u52a1" }); return; }
+      const goalLike = this.task.planKind === "year" || this.task.planKind === "month";
       const all = this.ts.getAll().filter((t: any) => {
+        if (t.isDeleted || t.isRecurrenceTemplate) return false;
         if (this.excludeIds.includes(t.id)) return false;
+        if (goalLike && this.mode === "parent") {
+          return t.planKind === targetKind;
+        }
         if (t.planKind !== targetKind) return false;
         // Period key matching
         if (this.mode === "parent" && this.task.planKind) {

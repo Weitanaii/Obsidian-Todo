@@ -216,6 +216,8 @@ export class TodoView extends ItemView {
   private planGroupEl!: HTMLDivElement;
   private quadrantGroupEl!: HTMLDivElement;
   private activePlanKind: PlanKind | null = null;
+  private goalPeriodKey: string | null = null;
+  private goalKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private scheduleMode: "day" | "week" | "month" = "month";
   private scheduleYear!: number;
   private scheduleMonth!: number;
@@ -430,7 +432,9 @@ export class TodoView extends ItemView {
     this.detailEl = layout.createDiv({ cls: "todo-detail" });
     this.detailView = new TaskDetailView(this.app, this.plugin, this.detailEl, (taskId) => {
       this.refreshDetailIfActive(taskId);
-      if (this.plugin.settings.activeViewNav === "schedule") {
+      if (this.plugin.settings.activeViewNav === "plan" && (this.activePlanKind === "year" || this.activePlanKind === "month")) {
+        void this.renderGoalDashboard(this.activePlanKind);
+      } else if (this.plugin.settings.activeViewNav === "schedule") {
         this.scheduleScrollTarget = { taskId };
         this.renderScheduleView();
       } else {
@@ -460,6 +464,7 @@ export class TodoView extends ItemView {
     if (this.timeLineTimer) { clearInterval(this.timeLineTimer); this.timeLineTimer = null; }
     if (this._onDragMove) document.removeEventListener("mousemove", this._onDragMove);
     if (this._onDragEnd) document.removeEventListener("mouseup", this._onDragEnd);
+    if (this.goalKeyHandler) { document.removeEventListener("keydown", this.goalKeyHandler); this.goalKeyHandler = null; }
     this.containerEl.empty();
   }
 
@@ -678,6 +683,8 @@ private async activateNav(nav: ViewNav): Promise<void> {
       this.taskListEl.empty();
       if (this.activePlanKind === 'life') {
         await this.renderLifePlanView();
+      } else if (this.activePlanKind === 'year' || this.activePlanKind === 'month') {
+        await this.renderGoalDashboard(this.activePlanKind);
       } else {
         await this.renderPlanView(this.activePlanKind);
       }
@@ -1087,6 +1094,8 @@ private async activateNav(nav: ViewNav): Promise<void> {
       this.quickContainerEl.style.display = "none";
       if (this.activePlanKind === 'life') {
         await this.renderLifePlanView();
+      } else if (this.activePlanKind === 'year' || this.activePlanKind === 'month') {
+        await this.renderGoalDashboard(this.activePlanKind);
       } else {
         await this.renderPlanView(this.activePlanKind);
       }
@@ -1638,6 +1647,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     this.taskListEl.empty();
     if (kind === "life") {
       await this.renderLifePlanView();
+    } else if (kind === "year" || kind === "month") {
+      await this.renderGoalDashboard(kind);
     } else {
       await this.renderPlanView(kind);
     }
@@ -1780,6 +1791,285 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     }
   }
 
+
+  private async renderGoalDashboard(kind: "year"|"month"): Promise<void> {
+    this.taskListEl.empty();
+    const curNow = currentPeriodKey(kind);
+    if (!this.goalPeriodKey || (kind === "year" && this.goalPeriodKey.length !== 4) || (kind === "month" && this.goalPeriodKey.length !== 7)) {
+      this.goalPeriodKey = curNow;
+    }
+    if (this.goalKeyHandler) { document.removeEventListener("keydown", this.goalKeyHandler); this.goalKeyHandler = null; }
+
+    const nav = this.taskListEl.createDiv({ cls: "todo-goal-nav" });
+    const prevBtn = nav.createEl("button", { cls: "todo-goal-nav-btn", text: "◀" });
+    prevBtn.setAttribute("aria-label", "上一周期");
+    const labelEl = nav.createSpan({ cls: "todo-goal-nav-label", text: kind === "year" ? this.goalPeriodKey + " 年" : this.goalPeriodKey });
+    const nextBtn = nav.createEl("button", { cls: "todo-goal-nav-btn", text: "▶" });
+    nextBtn.setAttribute("aria-label", "下一周期");
+    const backBtn = nav.createEl("button", { cls: "todo-goal-nav-btn todo-goal-nav-back", text: kind === "year" ? "回到今年" : "回到本月" });
+    backBtn.setAttribute("aria-label", "回到当前");
+
+    const updateLabel = () => {
+      labelEl.setText(kind === "year" ? (this.goalPeriodKey ?? "") + " 年" : (this.goalPeriodKey ?? ""));
+    };
+    const clampKey = (k: string) => {
+      if (kind === "year") {
+        const min = 2000, max = new Date().getFullYear() + 5;
+        const y = Math.min(max, Math.max(min, parseInt(k, 10)));
+        return String(y);
+      }
+      return k;
+    };
+    const shift = (delta: number) => {
+      if (kind === "year") {
+        const y = parseInt(this.goalPeriodKey!, 10) + delta;
+        this.goalPeriodKey = clampKey(String(y));
+      } else {
+        const [yStr, mStr] = this.goalPeriodKey!.split("-");
+        let y = parseInt(yStr, 10), m = parseInt(mStr, 10) + delta;
+        if (m < 1) { y -= 1; m = 12; } else if (m > 12) { y += 1; m = 1; }
+        const yy = Math.max(2000, Math.min(new Date().getFullYear() + 5, y));
+        this.goalPeriodKey = yy + "-" + String(m).padStart(2, "0");
+      }
+      updateLabel();
+      this.renderGoalDashboard(kind);
+    };
+
+    prevBtn.addEventListener("click", () => shift(-1));
+    nextBtn.addEventListener("click", () => shift(1));
+    backBtn.addEventListener("click", () => {
+      this.goalPeriodKey = curNow;
+      updateLabel();
+      this.renderGoalDashboard(kind);
+    });
+    this.goalKeyHandler = (e: KeyboardEvent) => {
+      if (!(this.plugin.settings.activeViewNav === "plan" && (this.activePlanKind === "year" || this.activePlanKind === "month"))) return;
+      if (e.key === "ArrowLeft") { e.preventDefault(); shift(-1); }
+      if (e.key === "ArrowRight") { e.preventDefault(); shift(1); }
+    };
+    document.addEventListener("keydown", this.goalKeyHandler);
+
+    const prevScrollTop = this.taskListEl.scrollTop;
+    const goalAllTasks = this.plugin.taskService.getAll();
+    const periodTasks = goalAllTasks.filter((t) => t.planKind === kind && t.planPeriodKey === this.goalPeriodKey && !t.isDeleted && !t.isRecurrenceTemplate);
+    const totalCount = periodTasks.length;
+    const completedCount = periodTasks.filter((t) => t.isCompleted).length;
+    const inProgressCount = totalCount - completedCount;
+    const todayStr = localTodayStr();
+    const overdueCount = periodTasks.filter((t) => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < todayStr).length;
+    const completionRate = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
+
+    const statsRow = this.taskListEl.createDiv({ cls: "todo-goal-stats-row" });
+    const addStatCard = (label: string, value: string, icon: string, extraCls?: string) => {
+      const card = statsRow.createDiv({ cls: "todo-goal-stat-card" + (extraCls ? " " + extraCls : "") });
+      const top = card.createDiv({ cls: "todo-goal-stat-top" });
+      const iconEl = top.createSpan({ cls: "todo-goal-stat-icon" });
+      setIcon(iconEl, icon);
+      top.createSpan({ cls: "todo-goal-stat-value", text: value });
+      card.createDiv({ cls: "todo-goal-stat-label", text: label });
+    };
+    addStatCard("目标数", String(totalCount), "list-checks", "todo-goal-stat-total");
+    addStatCard("已完成", String(completedCount), "check-circle-2", "todo-goal-stat-completed");
+    addStatCard("进行中", String(inProgressCount), "timer", "todo-goal-stat-inprogress");
+    addStatCard("逾期", String(overdueCount), "alert-triangle", overdueCount > 0 ? "todo-goal-stat-overdue" : "todo-goal-stat-overdue-empty");
+    addStatCard("完成率", completionRate + "%", "pie-chart", completionRate >= 100 ? "todo-goal-stat-rate-full" : undefined);
+
+    const addWrap = this.taskListEl.createDiv({ cls: "todo-goal-add" });
+    const addBtn = addWrap.createEl("button", { cls: "todo-goal-add-btn", text: (kind === "year" ? "＋ 新建年度目标" : "＋ 新建月度目标") });
+    addBtn.setAttribute("aria-label", "新建目标");
+    addBtn.addEventListener("click", () => {
+      if (addWrap.querySelector(".todo-goal-add-input")) return;
+      const row = addWrap.createDiv({ cls: "todo-goal-add-input" });
+      const input = row.createEl("input");
+      input.placeholder = kind === "year" ? "输入年度目标标题" : "输入月度目标标题";
+      window.setTimeout(() => input.focus(), 30);
+      let saved = false;
+      const save = async () => {
+        if (saved) return;
+        saved = true;
+        const title = input.value.trim();
+        if (title) {
+          await this.plugin.taskService.create({ title, planKind: kind, planPeriodKey: this.goalPeriodKey! });
+          await this.renderGoalDashboard(kind);
+        } else {
+          row.remove();
+        }
+      };
+      input.addEventListener("keydown", async (ev) => {
+        if (ev.key === "Enter") { ev.preventDefault(); await save(); }
+        if (ev.key === "Escape") { ev.preventDefault(); saved = true; row.remove(); }
+      });
+      input.addEventListener("blur", async () => { await save(); });
+    });
+
+    const cards = this.taskListEl.createDiv({ cls: "todo-goal-cards" });
+    const goalScrollTarget = cards.createDiv({ cls: "todo-goal-scroll-target" });
+    goalScrollTarget.style.height = "0px";
+    const goalAllTags = this.plugin.tagService.getAll();
+    const sorted = periodTasks.slice().sort((a, b) => (b.isImportant ? 1 : 0) - (a.isImportant ? 1 : 0));
+
+    if (sorted.length === 0) {
+      const guide = cards.createDiv({ cls: "todo-goal-guide" });
+      guide.createDiv({ text: "还没有目标，先创建一个年度目标，再拆解到月度与KR。" });
+      const hint = guide.createDiv({ cls: "todo-goal-guide-hint" });
+      hint.createSpan({ text: "点击上方「" });
+      hint.createSpan({ cls: "todo-goal-guide-btn", text: kind === "year" ? "＋ 新建年度目标" : "＋ 新建月度目标" });
+      hint.createSpan({ text: "」开始。" });
+    }
+
+    const BATCH = 40;
+    let goalIdx = 0;
+    const renderGoal = (goal: Task) => {
+      const children = this.plugin.taskService.getChildrenOf(goal.id);
+      const total = children.length;
+      const done = children.filter((c) => c.isCompleted).length;
+      const rate = total === 0 ? null : done / total;
+      const overdue = !goal.isCompleted && goal.dueDate && extractLocalDate(goal.dueDate) < todayStr;
+      const parent = this.plugin.taskService.getParentOf(goal.id);
+      const goalTags = (goal.tags || []).map((id) => goalAllTags.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t);
+
+      const card = cards.createDiv({ cls: "todo-goal-card" + (overdue ? " todo-goal-card-overdue" : "") });
+      card.tabIndex = 0;
+      card.setAttribute("role", "button");
+
+      // row1: star + title + arrow
+      const row1 = card.createDiv({ cls: "todo-goal-card-row" });
+      const star = row1.createSpan({ cls: "todo-goal-star" });
+      setIcon(star, "star");
+      if (goal.isImportant) star.addClass("is-important");
+      row1.createSpan({ cls: "todo-goal-card-title", text: goal.title });
+      const arrow = row1.createSpan({ cls: "todo-goal-card-arrow", text: "▾" });
+
+      // row2: metrics
+      const row2 = card.createDiv({ cls: "todo-goal-card-metrics" });
+      if (goal.dueDate) row2.createSpan({ cls: "todo-goal-metric-item", text: "截止 " + extractLocalDate(goal.dueDate) });
+      row2.createSpan({ cls: "todo-goal-metric-item", text: total === 0 ? "KR 0/0" : "KR " + done + "/" + total });
+      if (rate === null) {
+        row2.createSpan({ cls: "todo-goal-metric-item todo-goal-unset", text: "未设定目标" });
+      } else {
+        const pct = Math.round(rate * 100);
+        const barWrap = row2.createDiv({ cls: "todo-goal-progress" });
+        const barFill = barWrap.createDiv({ cls: "todo-goal-progress-fill" });
+        barFill.style.width = pct + "%";
+        barWrap.createSpan({ cls: "todo-goal-progress-text", text: pct + "%" });
+      }
+      if (overdue) row2.createSpan({ cls: "todo-goal-overdue-badge", text: "逾期" });
+
+      // row3: parent + tags
+      const row3 = card.createDiv({ cls: "todo-goal-card-context" });
+      if (parent) {
+        const parentLabel = parent.planKind === "life" ? "人生目标" : "年度目标";
+        row3.createSpan({ cls: "todo-goal-parent", text: parentLabel + " → " + parent.title });
+      }
+      if (goalTags.length > 0) {
+        const tagsWrap = row3.createDiv({ cls: "todo-goal-tags" });
+        goalTags.forEach((tag) => {
+          const pill = tagsWrap.createSpan({ cls: "todo-goal-tag-pill" });
+          pill.style.borderColor = tag.color;
+          pill.style.color = tag.color;
+          pill.createSpan({ text: "#" + tag.name });
+        });
+      }
+
+      // expand body
+      const body = card.createDiv({ cls: "todo-goal-card-body todo-goal-card-body-collapsed" });
+      let bodyRendered = false;
+      const openGoal = async () => {
+        this.detailView.clearHistory();
+        this.plugin.settings.selectedTaskId = goal.id;
+        await this.plugin.saveSettings();
+        this.detailView.open(goal.id);
+        this.highlightSelectedTask(goal.id);
+        const layout = this.containerEl.querySelector(".todo-layout");
+        if (layout) layout.addClass("todo-layout-detail-open");
+      };
+      card.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); void openGoal(); } });
+      arrow.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const collapsed = body.classList.contains("todo-goal-card-body-collapsed");
+        if (collapsed && !bodyRendered) {
+          bodyRendered = true;
+          const subKind = kind === "year" ? "quarter" : "week";
+          const subKeys = getSubPeriodKeysForParent(kind, this.goalPeriodKey!);
+          const grouped = new Map<string, { task: Task; completed: boolean }[]>();
+          for (const sk of ["__none__", ...subKeys]) grouped.set(sk, []);
+          for (const c of children) {
+            const key = c.planPeriodKey && grouped.has(c.planPeriodKey) ? c.planPeriodKey : "__none__";
+            grouped.get(key)!.push({ task: c, completed: c.isCompleted });
+          }
+          let hasAny = false;
+          const KR_LIMIT = 50;
+          let krRendered = 0;
+          const renderKRItem = (sk: string, it: { task: Task; completed: boolean }) => {
+            const krOverdue = !it.completed && it.task.dueDate && extractLocalDate(it.task.dueDate) < todayStr;
+            const row = body.createDiv({ cls: "todo-goal-kr-item" + (it.completed ? " todo-goal-kr-done" : "") + (krOverdue ? " todo-goal-kr-overdue" : "") });
+            row.createSpan({ cls: "todo-goal-kr-check", text: it.completed ? "☑" : "☐" });
+            row.createSpan({ cls: "todo-goal-kr-title", text: it.task.title });
+            if (sk !== "__none__") row.createSpan({ cls: "todo-goal-kr-sub", text: sk });
+            if (it.task.dueDate) row.createSpan({ cls: "todo-goal-kr-due", text: extractLocalDate(it.task.dueDate) });
+            const openBtn = row.createSpan({ cls: "todo-goal-kr-open", text: "打开详情" });
+            openBtn.addEventListener("click", (ev) => { ev.stopPropagation(); void openGoal(); });
+          };
+          for (const [sk, items] of grouped) {
+            if (items.length === 0) continue;
+            hasAny = true;
+            const title = sk === "__none__" ? "未分类" : subGroupLabel(subKind, sk);
+            body.createDiv({ cls: "todo-goal-subgroup-title", text: title });
+            for (const it of items) {
+              if (krRendered < KR_LIMIT) { renderKRItem(sk, it); krRendered++; }
+            }
+          }
+          const remaining = children.length - krRendered;
+          if (remaining > 0) {
+            const moreBtn = body.createEl("button", { cls: "todo-goal-kr-more", text: "查看更多KR（" + remaining + "）" });
+            moreBtn.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              let left = remaining;
+              for (const [sk, items] of grouped) {
+                for (const it of items) {
+                  if (left <= 0) break;
+                  renderKRItem(sk, it);
+                  left--;
+                }
+                if (left <= 0) break;
+              }
+              moreBtn.remove();
+            });
+          }
+          if (!hasAny) {
+            const empty = body.createDiv({ cls: "todo-goal-empty" });
+            empty.createSpan({ text: "暂无KR，请在详情栏添加 " });
+            const link = empty.createSpan({ cls: "todo-goal-empty-link", text: "打开详情" });
+            link.addEventListener("click", (ev) => { ev.stopPropagation(); void openGoal(); });
+          }
+        }
+        body.classList.toggle("todo-goal-card-body-collapsed", !collapsed);
+        arrow.setText(collapsed ? "▴" : "▾");
+      });
+      card.addEventListener("click", () => { void openGoal(); });
+    };
+
+    const appendBatch = () => {
+      const end = Math.min(sorted.length, goalIdx + BATCH);
+      for (; goalIdx < end; goalIdx++) renderGoal(sorted[goalIdx]);
+    };
+    appendBatch();
+    if (goalIdx < sorted.length) {
+      const sentinel = cards.createDiv({ cls: "todo-goal-sentinel" });
+      const obs = new IntersectionObserver((entries) => {
+        if (entries.some((e) => e.isIntersecting)) { appendBatch(); if (goalIdx >= sorted.length) { obs.disconnect(); sentinel.remove(); } }
+      }, { root: this.taskListEl });
+      obs.observe(sentinel);
+    }
+
+    const firstCard = cards.querySelector(".todo-goal-card") as HTMLElement | null;
+    const targetEl = firstCard ?? statsRow;
+    if (prevScrollTop > 0) {
+      this.taskListEl.scrollTop = prevScrollTop;
+    } else if (targetEl) {
+      targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
 
   private async renderLifePlanView(): Promise<void> {
     this.taskListEl.empty();
@@ -2873,7 +3163,11 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         const title = input.value.trim();
         if (title) {
           await this.plugin.taskService.create({ title, planKind: kind, planPeriodKey: periodKey });
-          await this.renderPlanView(this.activePlanKind!);
+          if (this.activePlanKind === 'year' || this.activePlanKind === 'month') {
+            await this.renderGoalDashboard(this.activePlanKind);
+          } else {
+            await this.renderPlanView(this.activePlanKind!);
+          }
         } else {
           row.remove();
         }
