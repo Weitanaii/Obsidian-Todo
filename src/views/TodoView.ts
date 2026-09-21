@@ -2066,10 +2066,10 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           const subKind = kind === "year" ? "quarter" : "week";
           const subKeys = getSubPeriodKeysForParent(kind, this.goalPeriodKey!);
           const grouped = new Map<string, { task: Task; completed: boolean }[]>();
-          for (const sk of ["__none__", ...subKeys]) grouped.set(sk, []);
+          for (const sk of subKeys) grouped.set(sk, []);
           for (const c of children) {
-            const key = c.planPeriodKey && grouped.has(c.planPeriodKey) ? c.planPeriodKey : "__none__";
-            grouped.get(key)!.push({ task: c, completed: c.isCompleted });
+            const key = c.planPeriodKey && grouped.has(c.planPeriodKey) ? c.planPeriodKey : null;
+            if (key) grouped.get(key)!.push({ task: c, completed: c.isCompleted });
           }
           let hasAny = false;
           const KR_LIMIT = 50;
@@ -2100,10 +2100,40 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
             });
           };
           for (const [sk, items] of grouped) {
-            if (items.length === 0) continue;
             hasAny = true;
-            const title = sk === "__none__" ? "未分类" : subGroupLabel(subKind, sk);
-            body.createDiv({ cls: "todo-goal-subgroup-title", text: title });
+            const title = subGroupLabel(subKind, sk);
+            const sgHeader = body.createDiv({ cls: "todo-goal-subgroup-title" });
+            sgHeader.createSpan({ text: title });
+            const addBtn = sgHeader.createSpan({ cls: "todo-goal-subgroup-add", text: " ＋" });
+            addBtn.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              if (sgHeader.dataset.addOpen === "1") return;
+              sgHeader.dataset.addOpen = "1";
+              body.createDiv({ cls: "todo-goal-subgroup-inline-input" });
+              const inputWrap = sgHeader.nextElementSibling as HTMLElement;
+              const input = inputWrap.createEl("input", { type: "text", placeholder: "输入KR标题..." });
+              input.focus();
+              let saved = false;
+              const save = async () => {
+                if (saved || !input.value.trim()) { inputWrap.remove(); sgHeader.dataset.addOpen = "0"; return; }
+                saved = true;
+                const newTask = await this.plugin.taskService.create({
+                  title: input.value.trim(),
+                  planKind: subKind,
+                  planPeriodKey: sk,
+                  parentId: goal.id,
+                });
+                inputWrap.remove();
+                sgHeader.dataset.addOpen = "0";
+                renderKRItem(sk, { task: newTask, completed: false }, goal.id, kind);
+                this.refreshGoalCardAndStats(goal.id, kind);
+              };
+              input.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") { e.preventDefault(); void save(); }
+                if (e.key === "Escape") { inputWrap.remove(); sgHeader.dataset.addOpen = "0"; }
+              });
+              input.addEventListener("blur", () => { void save(); });
+            });
             for (const it of items) {
               if (krRendered < KR_LIMIT) { renderKRItem(sk, it, goal.id, kind); krRendered++; }
             }
@@ -2125,12 +2155,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
               moreBtn.remove();
             });
           }
-          if (!hasAny) {
-            const empty = body.createDiv({ cls: "todo-goal-empty" });
-            empty.createSpan({ text: "暂无KR，请在详情栏添加 " });
-            const link = empty.createSpan({ cls: "todo-goal-empty-link", text: "打开详情" });
-            link.addEventListener("click", (ev) => { ev.stopPropagation(); void openGoal(); });
-          }
+
         }
         body.classList.toggle("todo-goal-card-body-collapsed", !collapsed);
         const et = expandBtn.querySelector(".todo-goal-expand-text") as HTMLElement; if (et) et.setText(collapsed ? "收起 ▴" : "展开 ▾");
