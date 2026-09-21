@@ -151,6 +151,16 @@ export class TaskService {
     return task;
   }
 
+  /** Recursively apply tags to a task and all its descendants */
+  private cascadeTags(taskId: string, tags: string[]): void {
+    const children = this.tasks.filter(t => t.parentId === taskId && !t.isDeleted && !t.isRecurrenceTemplate);
+    for (const child of children) {
+      child.tags = [...tags];
+      child.updatedAt = new Date().toISOString();
+      this.cascadeTags(child.id, tags);
+    }
+  }
+
   async update(id: string, changes: Partial<Task>): Promise<Task | null> {
     this.ensureLoaded();
     const index = this.tasks.findIndex((t) => t.id === id);
@@ -179,13 +189,18 @@ export class TaskService {
 
     // 联动更新：父任务标签变更时，同步更新所有子任务
     if (changes.tags !== undefined) {
-      const children = this.tasks.filter(t => t.parentId === id && !t.isDeleted && !t.isRecurrenceTemplate);
-      if (children.length > 0) {
-        const childTags = [...(changes.tags ?? [])];
-        for (const child of children) {
-          child.tags = [...childTags];
-          child.updatedAt = new Date().toISOString();
-        }
+      this.cascadeTags(id, [...(changes.tags ?? [])]);
+      await this.save();
+    }
+
+    // 联动更新：设置父任务时，继承父任务标签并级联到所有后代
+    if (changes.parentId !== undefined) {
+      const parentTask = changes.parentId ? this.tasks.find(t => t.id === changes.parentId && !t.isDeleted) : null;
+      if (parentTask) {
+        const newTags = [...(parentTask.tags || [])];
+        updated.tags = [...newTags];
+        updated.updatedAt = new Date().toISOString();
+        this.cascadeTags(id, newTags);
         await this.save();
       }
     }

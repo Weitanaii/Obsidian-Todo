@@ -1028,16 +1028,12 @@ class ParentPickerModal extends Modal {
     const renderList = (filter: string) => {
       listEl.empty();
       if (!targetKind) { listEl.createDiv({ cls: "todo-parent-picker-empty", text: "\u65e0\u53ef\u9009\u4efb\u52a1" }); return; }
-      const goalLike = this.task.planKind === "year" || this.task.planKind === "month";
       const all = this.ts.getAll().filter((t: any) => {
         if (t.isDeleted || t.isRecurrenceTemplate) return false;
         if (this.excludeIds.includes(t.id)) return false;
-        if (goalLike && this.mode === "parent") {
-          return t.planKind === targetKind;
-        }
         if (t.planKind !== targetKind) return false;
         // Period key matching
-        if (this.mode === "parent" && this.task.planKind) {
+        if (this.mode === "parent" && this.task.planKind && targetKind !== "life") {
           const expectedKey = getParentPeriodKey(this.task.planKind, this.task.planPeriodKey || "");
           return t.planPeriodKey === expectedKey;
         }

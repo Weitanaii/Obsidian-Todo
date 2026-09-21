@@ -3864,7 +3864,12 @@
 .todo-goal-nav-btn{min-width:36px;min-height:36px;border-radius:8px;border:1px solid var(--background-modifier-border);background:var(--background-secondary);color:var(--text-normal);cursor:pointer}
 .todo-goal-nav-btn:hover{background:var(--background-modifier-hover)}
 .todo-goal-nav-label{font-size:14px;font-weight:600;color:var(--text-normal)}
-.todo-goal-nav-back{margin-left:auto}
+.todo-goal-nav-back{font-size:12px}
+.todo-goal-mode-switch{display:flex;border:1px solid var(--background-modifier-border);border-radius:var(--radius-s);overflow:hidden;margin-left:auto}
+.todo-goal-mode-btn{padding:4px 12px;font-size:12px;cursor:pointer;border-right:1px solid var(--background-modifier-border);color:var(--text-muted);background:none}
+.todo-goal-mode-btn:last-child{border-right:none}
+.todo-goal-mode-btn:hover{background:var(--background-modifier-hover)}
+.todo-goal-mode-btn.active{background:var(--interactive-accent);color:var(--text-on-accent)}
 .todo-goal-stats{color:var(--text-muted);font-size:12px;padding-bottom:8px}
 .todo-goal-placeholder{color:var(--text-muted);font-size:12px;padding:8px 0}
 /* ===== Goal Plan Stats Row (step 3) ===== */
@@ -3872,8 +3877,6 @@
 .todo-goal-stat-card{flex:1 1 120px;max-width:180px;padding:10px 12px;border-radius:10px;background:var(--background-secondary);border:1px solid var(--background-modifier-border)}
 .todo-goal-stat-value{font-size:20px;font-weight:700;color:var(--text-normal)}
 .todo-goal-stat-label{font-size:11px;color:var(--text-muted);margin-top:2px}
-.todo-goal-stat-overdue{border-color:var(--text-error);background:color-mix(in srgb, var(--text-error) 8%, var(--background-secondary))}
-.todo-goal-stat-overdue .todo-goal-stat-value{color:var(--text-error)}
 /* ===== Goal Plan Cards (step 4) ===== */
 .todo-goal-cards{display:flex;flex-direction:column;gap:12px;padding:8px 0 16px}
 .todo-goal-card{padding:8px 12px;border-radius:8px;background:var(--background-secondary);border:1px solid var(--background-modifier-border);cursor:pointer;display:flex;flex-direction:column;gap:4px}
@@ -3919,13 +3922,6 @@
 .todo-goal-stat-card{display:flex;flex-direction:column;gap:6px}
 .todo-goal-stat-top{display:flex;align-items:center;gap:8px}
 .todo-goal-stat-icon{color:var(--text-muted)}
-.todo-goal-stat-total .todo-goal-stat-icon{color:var(--interactive-accent)}
-.todo-goal-stat-completed{border-color:color-mix(in srgb, var(--text-success) 35%, var(--background-modifier-border))}
-.todo-goal-stat-completed .todo-goal-stat-icon,.todo-goal-stat-completed .todo-goal-stat-value{color:var(--text-success)}
-.todo-goal-stat-inprogress .todo-goal-stat-icon,.todo-goal-stat-inprogress .todo-goal-stat-value{color:var(--interactive-accent)}
-.todo-goal-stat-overdue-empty .todo-goal-stat-icon{color:var(--text-muted)}
-.todo-goal-stat-overdue .todo-goal-stat-icon,.todo-goal-stat-overdue .todo-goal-stat-value{color:var(--text-error)}
-.todo-goal-stat-rate-full .todo-goal-stat-icon,.todo-goal-stat-rate-full .todo-goal-stat-value{color:var(--text-success)}
 
 .todo-goal-card{display:flex;flex-direction:column;gap:4px}
 .todo-goal-card-row{display:flex;align-items:center;gap:8px}

@@ -1436,7 +1436,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const taskTags = (task.tags || []).map((id) => allTags.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t);
     const parentOf = this.plugin.taskService.getParentOf(task.id);
     if (parentOf) {
-      const parentLabelMap: Record<string, string> = { life: "人生目标", year: "年度目标", quarter: "季度目标" };
+      const parentLabelMap: Record<string, string> = { life: "人生目标", year: "年度目标", quarter: "季度目标", month: "月度目标" };
       const parentLabel = parentLabelMap[parentOf.planKind ?? ""] ?? "上级目标";
       metaRight.createSpan({ cls: "todo-task-tag-label", text: parentLabel + "：" + parentOf.title });
     }
@@ -1950,15 +1950,14 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     });
 
     const modeSwitch = nav.createDiv({ cls: "todo-goal-mode-switch" });
-    const cardModeBtn = modeSwitch.createEl("button", { cls: "todo-goal-mode-btn" + (this.plugin.settings.goalViewMode !== "list" ? " active" : ""), text: "卡片" });
-    const listModeBtn = modeSwitch.createEl("button", { cls: "todo-goal-mode-btn" + (this.plugin.settings.goalViewMode === "list" ? " active" : ""), text: "列表" });
+    const cardModeBtn = modeSwitch.createSpan({ cls: "todo-goal-mode-btn" + (this.plugin.settings.goalViewMode !== "list" ? " active" : ""), text: "卡片" });
+    const listModeBtn = modeSwitch.createSpan({ cls: "todo-goal-mode-btn" + (this.plugin.settings.goalViewMode === "list" ? " active" : ""), text: "列表" });
     cardModeBtn.addEventListener("click", async () => {
       if (this.plugin.settings.goalViewMode !== "card") {
         this.plugin.settings.goalViewMode = "card";
         await this.plugin.saveSettings();
         cardModeBtn.addClass("active"); listModeBtn.removeClass("active");
-        const ca = this.taskListEl.querySelector(".todo-goal-list-content, .todo-goal-cards") as HTMLElement;
-        if (ca) { ca.empty(); ca.className = "todo-goal-cards"; }
+        await this.renderGoalDashboard(kind);
       }
     });
     listModeBtn.addEventListener("click", async () => {
@@ -1966,8 +1965,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         this.plugin.settings.goalViewMode = "list";
         await this.plugin.saveSettings();
         listModeBtn.addClass("active"); cardModeBtn.removeClass("active");
-        const ca = this.taskListEl.querySelector(".todo-goal-list-content, .todo-goal-cards") as HTMLElement;
-        if (ca) { ca.empty(); ca.className = "todo-goal-list-content"; this.renderGoalListContent(kind, ca); }
+        await this.renderGoalDashboard(kind);
       }
     });
 
@@ -2030,7 +2028,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       if (parent || goalTags.length > 0) {
         const right = row1.createDiv({ cls: "todo-goal-card-right" });
         if (parent) {
-          const parentLabelMap: Record<string, string> = { life: "人生目标", year: "年度目标", quarter: "季度目标" };
+          const parentLabelMap: Record<string, string> = { life: "人生目标", year: "年度目标", quarter: "季度目标", month: "月度目标" };
           const parentLabel = parentLabelMap[parent.planKind ?? ""] ?? "上级目标";
           right.createSpan({ cls: "todo-goal-card-parent-label", text: parentLabel + "：" + parent.title });
         }
@@ -2416,11 +2414,11 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         const subTasks = ts.getByPlanKindAndPeriod(subKind, sk);
         const sg = container.createDiv({ cls: "todo-plan-subgroup" });
         const sh = sg.createDiv({ cls: "todo-plan-subgroup-header" });
-        const sa = sh.createSpan({ cls: "todo-plan-group-arrow collapsed", text: "▼" });
+        const sa = sh.createSpan({ cls: "todo-plan-group-arrow", text: "▼" });
         sh.createSpan({ cls: "todo-plan-subgroup-label", text: subGroupLabel(subKind, sk) });
         sh.createSpan({ cls: "todo-plan-group-count", text: String(subTasks.length) });
         const sab = sh.createSpan({ cls: "todo-plan-add-btn", text: "+" }); sab.title = "新建任务";
-        const sb = sg.createDiv({ cls: "todo-plan-group-body" }); sb.dataset.periodKey = sk; sb.style.display = "none";
+        const sb = sg.createDiv({ cls: "todo-plan-group-body" }); sb.dataset.periodKey = sk;
         for (const task of subTasks) { this.renderTaskRow(sb, task, "plan"); }
         this.setupPlanAddButton(sab, sb, subKind, sk);
         sh.addEventListener("click", (ev) => {
