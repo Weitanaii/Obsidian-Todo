@@ -3876,7 +3876,7 @@
 .todo-goal-stat-overdue .todo-goal-stat-value{color:var(--text-error)}
 /* ===== Goal Plan Cards (step 4) ===== */
 .todo-goal-cards{display:flex;flex-direction:column;gap:12px;padding:8px 0 16px}
-.todo-goal-card{padding:14px 16px;border-radius:12px;background:var(--background-secondary);border:1px solid var(--background-modifier-border);cursor:pointer}
+.todo-goal-card{padding:8px 12px;border-radius:8px;background:var(--background-secondary);border:1px solid var(--background-modifier-border);cursor:pointer;display:flex;flex-direction:column;gap:4px}
 .todo-goal-card:hover{background:var(--background-modifier-hover)}
 .todo-goal-card-overdue{border-color:var(--text-error)}
 .todo-goal-card-row{display:flex;align-items:center;gap:8px}
@@ -3902,7 +3902,7 @@
 .todo-goal-add-input input{width:100%;padding:10px 12px;border:1px solid var(--background-modifier-border);border-radius:10px;background:transparent;color:var(--text-normal);font-size:var(--font-ui-normal)}
 .todo-goal-add-input input::placeholder{color:var(--text-faint)}
 /* ===== Goal Plan Card Body / Expand (step 7) ===== */
-.todo-goal-card-body{padding:8px 0 4px;overflow:hidden;transition:max-height 0.25s ease, opacity 0.2s ease;opacity:1}
+.todo-goal-card-body{display:block;padding:8px 0 4px;overflow:hidden;transition:max-height 0.25s ease, opacity 0.2s ease;opacity:1}
 .todo-goal-card-body-collapsed{max-height:0!important;opacity:0;padding:0}
 .todo-goal-subgroup-title{font-size:11px;color:var(--text-muted);padding:8px 0 4px;border-top:1px dashed var(--background-modifier-border)}
 .todo-goal-kr-item{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;color:var(--text-normal)}
@@ -3942,7 +3942,7 @@
 .todo-goal-stat-overdue .todo-goal-stat-icon,.todo-goal-stat-overdue .todo-goal-stat-value{color:var(--text-error)}
 .todo-goal-stat-rate-full .todo-goal-stat-icon,.todo-goal-stat-rate-full .todo-goal-stat-value{color:var(--text-success)}
 
-.todo-goal-card{display:flex;flex-direction:column;gap:8px}
+.todo-goal-card{display:flex;flex-direction:column;gap:4px}
 .todo-goal-card-row{display:flex;align-items:center;gap:8px}
 .todo-goal-star svg{width:14px;height:14px;color:var(--text-muted)}
 .todo-goal-star.is-important svg{color:var(--text-warning)}
@@ -3960,7 +3960,7 @@
 .todo-goal-guide-hint{padding-top:6px;color:var(--text-muted)}
 .todo-goal-guide-btn{color:var(--interactive-accent);font-weight:600}
 
-.todo-goal-card-body{padding:8px 0 4px;overflow:hidden;transition:max-height 0.25s ease, opacity 0.2s ease;opacity:1;max-height:420px}
+.todo-goal-card-body{display:block;padding:8px 0 4px;overflow:hidden;transition:max-height 0.25s ease, opacity 0.2s ease;opacity:1;max-height:420px}
 .todo-goal-card-body-collapsed{max-height:0!important;opacity:0;padding:0}
 .todo-goal-subgroup-title{font-size:11px;color:var(--text-muted);padding:8px 0 4px;border-top:1px dashed var(--background-modifier-border)}
 .todo-goal-kr-item{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;color:var(--text-normal)}
@@ -3997,3 +3997,19 @@
 .todo-task-status-icon svg{width:14px;height:14px;color:var(--text-muted)}
 .todo-task-shelved .todo-task-title{color:var(--text-muted)}
 .todo-task-abandoned .todo-task-title{text-decoration:line-through;color:var(--text-muted)}
+/* Subgroup [+] inline creation */
+.todo-goal-subgroup-add{cursor:pointer;color:var(--text-muted);font-size:12px;margin-left:6px}
+.todo-goal-subgroup-add:hover{color:var(--interactive-accent)}
+.todo-goal-subgroup-inline-input{padding:4px 0 8px 16px}
+.todo-goal-subgroup-inline-input input{width:100%;padding:6px 10px;border:1px solid var(--background-modifier-border);border-radius:8px;background:transparent;color:var(--text-normal);font-size:12px}
+.todo-goal-subgroup-inline-input input::placeholder{color:var(--text-faint)}
+
+/* Goal card note summary */
+.todo-goal-card-note{font-size:11px;color:var(--text-muted);padding:4px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-height:16px}
+/* Goal card: compact 3-row layout */
+.todo-goal-card-right{display:flex;align-items:center;gap:4px;margin-left:auto;overflow:hidden;flex-shrink:1;min-width:0}
+.todo-goal-card-parent-label{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+.todo-goal-card-dot{font-size:10px;color:var(--text-faint);flex-shrink:0}
+.todo-goal-card-tag{font-size:11px;white-space:nowrap}
+.todo-goal-expand-btn{display:flex;justify-content:center;align-items:center;width:100%;padding:4px 0;cursor:pointer;border-radius:6px;color:var(--text-muted);font-size:12px}
+.todo-goal-expand-btn:hover{background:var(--background-modifier-hover);color:var(--text-normal)}

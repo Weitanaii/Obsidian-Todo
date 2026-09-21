@@ -1993,7 +1993,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           const check = header.createSpan({ cls: "todo-goal-star", text: goal.isCompleted ? "☑" : "☐" });
           check.addEventListener("click", async (ev) => {
             ev.stopPropagation();
-            if (goal.isCompleted) { await this.plugin.taskService.uncomplete(goal.id); } else { await this.plugin.taskService.complete(goal.id); }
+            const cur = this.plugin.taskService.getAll().find((t) => t.id === goal.id); if (cur && cur.isCompleted) { await this.plugin.taskService.uncomplete(goal.id); } else { await this.plugin.taskService.complete(goal.id); }
             await this.renderGoalDashboard(kind);
           });
           const star = header.createSpan({ cls: "todo-goal-star" });
@@ -2043,53 +2043,52 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       card.tabIndex = 0;
       card.setAttribute("role", "button");
 
-      // row1: check + star + title + arrow
+            // row1: checkbox + title + right-aligned parent/tags
       const row1 = card.createDiv({ cls: "todo-goal-card-row" });
-      const check = row1.createSpan({ cls: "todo-goal-card-check", text: goal.isCompleted ? "☑" : "☐" });
-      check.addEventListener("click", async (ev) => {
+      const checkbox = row1.createDiv({ cls: "todo-checkbox" + (goal.isCompleted ? " checked" : ""), text: goal.isCompleted ? "✓" : "" });
+      checkbox.addEventListener("click", async (ev) => {
         ev.stopPropagation();
         if (goal.isCompleted) { await this.plugin.taskService.uncomplete(goal.id); }
         else { await this.plugin.taskService.complete(goal.id); }
         this.refreshGoalCardAndStats(goal.id, kind);
       });
-      const star = row1.createSpan({ cls: "todo-goal-star" });
-      setIcon(star, "star");
-      if (goal.isImportant) star.addClass("is-important");
       row1.createSpan({ cls: "todo-goal-card-title", text: goal.title });
-      const arrow = row1.createSpan({ cls: "todo-goal-card-arrow", text: "▾" });
+      if (parent || goalTags.length > 0) {
+        const right = row1.createDiv({ cls: "todo-goal-card-right" });
+        if (parent) {
+          const parentLabel = parent.planKind === "life" ? "人生目标" : "年度目标";
+          right.createSpan({ cls: "todo-goal-card-parent-label", text: parentLabel + "：" + parent.title });
+        }
+        if (goalTags.length > 0) {
+          goalTags.forEach((tag, i) => {
+            if (parent && i === 0) {
+              right.createSpan({ cls: "todo-goal-card-dot", text: " · " });
+            } else if (i > 0) {
+              right.createSpan({ cls: "todo-goal-card-dot", text: " · " });
+            }
+            const tagSpan = right.createSpan({ cls: "todo-goal-card-tag", text: tag.name });
+            tagSpan.style.color = tag.color;
+          });
+        }
+      }
 
-      // row2: metrics
+      // row2: progress bar + KR count
       const row2 = card.createDiv({ cls: "todo-goal-card-metrics" });
-      if (goal.dueDate) row2.createSpan({ cls: "todo-goal-metric-item", text: "截止 " + extractLocalDate(goal.dueDate) });
-      row2.createSpan({ cls: "todo-goal-metric-item", text: total === 0 ? "KR 0/0" : "KR " + done + "/" + total });
-      if (rate === null) {
-        row2.createSpan({ cls: "todo-goal-metric-item todo-goal-unset", text: "未设定目标" });
-      } else {
+      if (rate !== null) {
         const pct = Math.round(rate * 100);
         const barWrap = row2.createDiv({ cls: "todo-goal-progress" });
         const barFill = barWrap.createDiv({ cls: "todo-goal-progress-fill" });
         barFill.style.width = pct + "%";
         barWrap.createSpan({ cls: "todo-goal-progress-text", text: pct + "%" });
       }
+      row2.createSpan({ cls: "todo-goal-metric-item", text: total === 0 ? "KR 0/0" : "KR " + done + "/" + total });
       if (overdue) row2.createSpan({ cls: "todo-goal-overdue-badge", text: "逾期" });
 
-      // row3: parent + tags
-      const row3 = card.createDiv({ cls: "todo-goal-card-context" });
-      if (parent) {
-        const parentLabel = parent.planKind === "life" ? "人生目标" : "年度目标";
-        row3.createSpan({ cls: "todo-goal-parent", text: parentLabel + " → " + parent.title });
-      }
-      if (goalTags.length > 0) {
-        const tagsWrap = row3.createDiv({ cls: "todo-goal-tags" });
-        goalTags.forEach((tag) => {
-          const pill = tagsWrap.createSpan({ cls: "todo-goal-tag-pill" });
-          pill.style.borderColor = tag.color;
-          pill.style.color = tag.color;
-          pill.createSpan({ text: "#" + tag.name });
-        });
-      }
+      // expand button (centered, full width)
+      const expandBtn = card.createDiv({ cls: "todo-goal-expand-btn" });
+      expandBtn.createSpan({ cls: "todo-goal-expand-text", text: "展开 ▾" });
 
-      // expand body
+      // expand body// expand body
       const body = card.createDiv({ cls: "todo-goal-card-body todo-goal-card-body-collapsed" });
       let bodyRendered = false;
       const openGoal = async () => {
@@ -2102,7 +2101,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         if (layout) layout.addClass("todo-layout-detail-open");
       };
       card.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); void openGoal(); } });
-      arrow.addEventListener("click", (ev) => {
+      expandBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         const collapsed = body.classList.contains("todo-goal-card-body-collapsed");
         if (collapsed && !bodyRendered) {
@@ -2171,7 +2170,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           }
         }
         body.classList.toggle("todo-goal-card-body-collapsed", !collapsed);
-        arrow.setText(collapsed ? "▴" : "▾");
+        const et = expandBtn.querySelector(".todo-goal-expand-text") as HTMLElement; if (et) et.setText(collapsed ? "收起 ▴" : "展开 ▾");
       });
       card.addEventListener("contextmenu", (ev) => {
         ev.preventDefault();
