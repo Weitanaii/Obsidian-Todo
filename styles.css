@@ -3896,9 +3896,6 @@
 .todo-goal-kr-item{display:flex;align-items:center;gap:8px;padding:4px 6px;font-size:12px;color:var(--text-normal);cursor:pointer;border-radius:6px}
 .todo-goal-kr-item:hover{background:var(--background-modifier-hover)}
 .todo-goal-kr-done .todo-goal-kr-title{text-decoration:line-through;color:var(--text-muted)}
-.todo-goal-kr-check{width:14px;height:14px;border:1.5px solid var(--text-muted);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:transparent;flex-shrink:0;cursor:pointer;transition:background 0.12s ease, border-color 0.12s ease, color 0.12s ease}
-.todo-goal-kr-check:hover{border-color:var(--text-normal)}
-.todo-goal-kr-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .todo-goal-kr-due{color:var(--text-faint);white-space:nowrap}
 .todo-goal-empty{color:var(--text-faint);font-size:12px;padding:6px 0}
 
@@ -3984,4 +3981,4 @@
 .todo-goal-card-tag{font-size:11px;white-space:nowrap}
 .todo-goal-expand-btn{display:flex;justify-content:center;align-items:center;width:100%;padding:4px 0;cursor:pointer;border-radius:6px;color:var(--text-muted);font-size:12px}
 .todo-goal-expand-btn:hover{background:var(--background-modifier-hover);color:var(--text-normal)}
-.todo-goal-kr-checkbox{width:14px;height:14px;font-size:9px}
+.todo-goal-kr-item .todo-checkbox{width:14px;height:14px;font-size:9px}

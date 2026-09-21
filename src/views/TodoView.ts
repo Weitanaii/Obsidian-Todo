@@ -2077,13 +2077,13 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           const renderKRItem = (sk: string, it: { task: Task; completed: boolean }, goalId: string, k: "year" | "month") => {
             const krOverdue = !it.completed && !!it.task.dueDate && extractLocalDate(it.task.dueDate!) < todayStr;
             const row = body.createDiv({ cls: "todo-goal-kr-item" + (it.completed ? " todo-goal-kr-done" : "") + (krOverdue ? " todo-goal-kr-overdue" : "") });
-            const krCheck = row.createSpan({ cls: "todo-goal-kr-check", text: it.completed ? "☑" : "☐" });
+            const krCheck = row.createDiv({ cls: "todo-checkbox" + (it.completed ? " checked" : ""), text: it.completed ? "✓" : "" });
             krCheck.addEventListener("click", async (ev) => {
               ev.stopPropagation();
               if (it.completed) { await this.plugin.taskService.uncomplete(it.task.id); }
               else { await this.plugin.taskService.complete(it.task.id); }
               it.completed = !it.completed;
-              krCheck.setText(it.completed ? "☑" : "☐");
+              krCheck.setText(it.completed ? "✓" : ""); krCheck.toggleClass("checked", it.completed);
               row.toggleClass("todo-goal-kr-done", it.completed);
               this.refreshGoalCardAndStats(goalId, k);
             });
@@ -2109,8 +2109,9 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
               ev.stopPropagation();
               if (sgHeader.dataset.addOpen === "1") return;
               sgHeader.dataset.addOpen = "1";
-              body.createDiv({ cls: "todo-goal-subgroup-inline-input" });
-              const inputWrap = sgHeader.nextElementSibling as HTMLElement;
+              const inputWrap = document.createElement("div");
+              inputWrap.className = "todo-goal-subgroup-inline-input";
+              sgHeader.after(inputWrap);
               const input = inputWrap.createEl("input", { type: "text", placeholder: "输入KR标题..." });
               input.focus();
               let saved = false;
