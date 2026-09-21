@@ -22,6 +22,8 @@ export interface ObsidianTodoSettings {
   quadrantGroupCollapsed: boolean;
   activeScheduleMode: "day" | "week" | "month";
   activeReviewMode: "day" | "week" | "month" | "year";
+  taskFilterStatus: "all" | "active" | "shelved" | "abandoned" | "completed";
+  goalViewMode: "card" | "list";
 }
 
 export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
@@ -44,6 +46,8 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
   quadrantGroupCollapsed: true,
   activeScheduleMode: "month",
   activeReviewMode: "day",
+  taskFilterStatus: "active",
+  goalViewMode: "card",
 };
 
 const ICON_OPTIONS = [

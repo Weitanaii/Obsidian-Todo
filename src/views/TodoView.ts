@@ -1131,9 +1131,40 @@ private async activateNav(nav: ViewNav): Promise<void> {
       return;
     }
 
+    // Status filter bar (not for myday)
+    const filterStatus = this.plugin.settings.taskFilterStatus;
+    const filterBar = this.taskListEl.createDiv({ cls: "todo-status-filter" });
+    const filterOptions: { key: string; label: string }[] = [
+      { key: "all", label: "全部" },
+      { key: "active", label: "进行中" },
+      { key: "shelved", label: "搁置" },
+      { key: "abandoned", label: "放弃" },
+      { key: "completed", label: "已完成" },
+    ];
+    for (const opt of filterOptions) {
+      const btn = filterBar.createSpan({
+        cls: "todo-status-filter-btn" + (opt.key === filterStatus ? " active" : ""),
+        text: opt.label,
+      });
+      btn.addEventListener("click", async () => {
+        this.plugin.settings.taskFilterStatus = opt.key as any;
+        await this.plugin.saveSettings();
+        filterBar.querySelectorAll(".todo-status-filter-btn").forEach((el) => el.removeClass("active"));
+        btn.addClass("active");
+        await this.renderTasks(view);
+      });
+    }
 
-
-
+    // Apply status filter
+    if (filterStatus !== "all") {
+      if (filterStatus === "completed") {
+        tasks = tasks.filter((t) => t.isCompleted);
+      } else if (filterStatus === "active") {
+        tasks = tasks.filter((t) => !t.isCompleted && (t.status || "active") === "active");
+      } else {
+        tasks = tasks.filter((t) => (t.status || "active") === filterStatus);
+      }
+    }
 
     // Apply review filter if active
     if (this.reviewFilter && view === "all") {
@@ -1335,7 +1366,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
   private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" | "review"): void {
     const row = container.createDiv({
-      cls: `todo-task-item${task.isCompleted ? " completed" : ""}${task.isImportant ? " important-row" : ""}${this.plugin.settings.selectedTaskId === task.id ? " todo-task-selected" : ""}`,
+      cls: `todo-task-item${task.isCompleted ? " completed" : ""}${task.isImportant ? " important-row" : ""}${task.status === "shelved" ? " todo-task-shelved" : ""}${task.status === "abandoned" ? " todo-task-abandoned" : ""}${this.plugin.settings.selectedTaskId === task.id ? " todo-task-selected" : ""}`,
     });
     row.dataset.taskId = task.id;
 
@@ -1345,6 +1376,13 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     });
 
     const content = row.createDiv({ cls: "todo-task-content" });
+        if (task.status === "shelved") {
+      const statusIcon = content.createSpan({ cls: "todo-task-status-icon" });
+      setIcon(statusIcon, "pause-circle");
+    } else if (task.status === "abandoned") {
+      const statusIcon = content.createSpan({ cls: "todo-task-status-icon" });
+      setIcon(statusIcon, "x-circle");
+    }
     const title = content.createDiv({ cls: "todo-task-title", text: task.title || "未命名任务" });
     title.toggleClass("todo-task-muted", task.isCompleted);
 
@@ -1904,11 +1942,81 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       input.addEventListener("blur", async () => { await save(); });
     });
 
+    const modeSwitch = nav.createDiv({ cls: "todo-goal-mode-switch" });
+    const cardModeBtn = modeSwitch.createEl("button", { cls: "todo-goal-mode-btn" + (this.plugin.settings.goalViewMode !== "list" ? " active" : ""), text: "卡片" });
+    const listModeBtn = modeSwitch.createEl("button", { cls: "todo-goal-mode-btn" + (this.plugin.settings.goalViewMode === "list" ? " active" : ""), text: "列表" });
+    cardModeBtn.addEventListener("click", async () => {
+      if (this.plugin.settings.goalViewMode !== "card") {
+        this.plugin.settings.goalViewMode = "card";
+        await this.plugin.saveSettings();
+        await this.renderGoalDashboard(kind);
+      }
+    });
+    listModeBtn.addEventListener("click", async () => {
+      if (this.plugin.settings.goalViewMode !== "list") {
+        this.plugin.settings.goalViewMode = "list";
+        await this.plugin.saveSettings();
+        await this.renderGoalDashboard(kind);
+      }
+    });
+
+    const goalAllTags = this.plugin.tagService.getAll();
+    const sorted = periodTasks.slice().sort((a, b) => (b.isImportant ? 1 : 0) - (a.isImportant ? 1 : 0));
+
+    if (this.plugin.settings.goalViewMode === "list") {
+      const goalList = this.taskListEl.createDiv({ cls: "todo-goal-cards" });
+      if (sorted.length === 0) {
+        const guide = goalList.createDiv({ cls: "todo-goal-guide" });
+        guide.createDiv({ text: "还没有目标，先创建一个年度目标，再拆解到月度与KR。" });
+        const hint = guide.createDiv({ cls: "todo-goal-guide-hint" });
+        hint.createSpan({ text: "点击上方「" });
+        hint.createSpan({ cls: "todo-goal-guide-btn", text: kind === "year" ? "＋ 新建年度目标" : "＋ 新建月度目标" });
+        hint.createSpan({ text: "」开始。" });
+      } else {
+        for (const goal of sorted) {
+          const children = this.plugin.taskService.getChildrenOf(goal.id);
+          const done = children.filter((c) => c.isCompleted).length;
+          const overdue = !goal.isCompleted && !!goal.dueDate && extractLocalDate(goal.dueDate!) < todayStr;
+          const openGoal = async () => {
+            this.detailView.clearHistory();
+            this.plugin.settings.selectedTaskId = goal.id;
+            await this.plugin.saveSettings();
+            this.detailView.open(goal.id);
+            this.highlightSelectedTask(goal.id);
+            const layout = this.containerEl.querySelector(".todo-layout");
+            if (layout) layout.addClass("todo-layout-detail-open");
+          };
+          const row = goalList.createDiv({ cls: "todo-goal-card" + (overdue ? " todo-goal-card-overdue" : "") });
+          row.tabIndex = 0;
+          row.setAttribute("role", "button");
+          const header = row.createDiv({ cls: "todo-goal-card-row" });
+          const check = header.createSpan({ cls: "todo-goal-star", text: goal.isCompleted ? "☑" : "☐" });
+          check.addEventListener("click", async (ev) => {
+            ev.stopPropagation();
+            if (goal.isCompleted) { await this.plugin.taskService.uncomplete(goal.id); } else { await this.plugin.taskService.complete(goal.id); }
+            await this.renderGoalDashboard(kind);
+          });
+          const star = header.createSpan({ cls: "todo-goal-star" });
+          setIcon(star, "star");
+          if (goal.isImportant) star.addClass("is-important");
+          star.addEventListener("click", async (ev) => {
+            ev.stopPropagation();
+            await this.plugin.taskService.update(goal.id, { isImportant: !goal.isImportant });
+            await this.renderGoalDashboard(kind);
+          });
+          const title = header.createSpan({ cls: "todo-goal-card-title" + (goal.isCompleted ? " completed" : ""), text: goal.title });
+          title.addEventListener("click", (ev) => { ev.stopPropagation(); void openGoal(); });
+          const meta = row.createDiv({ cls: "todo-goal-card-metrics" });
+          if (goal.dueDate) meta.createSpan({ cls: "todo-goal-metric-item", text: "截止 " + extractLocalDate(goal.dueDate) });
+          meta.createSpan({ cls: "todo-goal-metric-item", text: children.length === 0 ? "KR 0/0" : "KR " + done + "/" + children.length });
+          if (overdue) meta.createSpan({ cls: "todo-goal-overdue-badge", text: "逾期" });
+          row.addEventListener("click", () => { void openGoal(); });
+        }
+      }
+    } else {
     const cards = this.taskListEl.createDiv({ cls: "todo-goal-cards" });
     const goalScrollTarget = cards.createDiv({ cls: "todo-goal-scroll-target" });
     goalScrollTarget.style.height = "0px";
-    const goalAllTags = this.plugin.tagService.getAll();
-    const sorted = periodTasks.slice().sort((a, b) => (b.isImportant ? 1 : 0) - (a.isImportant ? 1 : 0));
 
     if (sorted.length === 0) {
       const guide = cards.createDiv({ cls: "todo-goal-guide" });
@@ -1926,16 +2034,24 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const total = children.length;
       const done = children.filter((c) => c.isCompleted).length;
       const rate = total === 0 ? null : done / total;
-      const overdue = !goal.isCompleted && goal.dueDate && extractLocalDate(goal.dueDate) < todayStr;
+      const overdue = !goal.isCompleted && !!goal.dueDate && extractLocalDate(goal.dueDate!) < todayStr;
       const parent = this.plugin.taskService.getParentOf(goal.id);
       const goalTags = (goal.tags || []).map((id) => goalAllTags.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t);
 
       const card = cards.createDiv({ cls: "todo-goal-card" + (overdue ? " todo-goal-card-overdue" : "") });
+      card.setAttribute("data-goal-id", goal.id);
       card.tabIndex = 0;
       card.setAttribute("role", "button");
 
-      // row1: star + title + arrow
+      // row1: check + star + title + arrow
       const row1 = card.createDiv({ cls: "todo-goal-card-row" });
+      const check = row1.createSpan({ cls: "todo-goal-card-check", text: goal.isCompleted ? "☑" : "☐" });
+      check.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        if (goal.isCompleted) { await this.plugin.taskService.uncomplete(goal.id); }
+        else { await this.plugin.taskService.complete(goal.id); }
+        this.refreshGoalCardAndStats(goal.id, kind);
+      });
       const star = row1.createSpan({ cls: "todo-goal-star" });
       setIcon(star, "star");
       if (goal.isImportant) star.addClass("is-important");
@@ -2002,10 +2118,19 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           let hasAny = false;
           const KR_LIMIT = 50;
           let krRendered = 0;
-          const renderKRItem = (sk: string, it: { task: Task; completed: boolean }) => {
-            const krOverdue = !it.completed && it.task.dueDate && extractLocalDate(it.task.dueDate) < todayStr;
+          const renderKRItem = (sk: string, it: { task: Task; completed: boolean }, goalId: string, k: "year" | "month") => {
+            const krOverdue = !it.completed && !!it.task.dueDate && extractLocalDate(it.task.dueDate!) < todayStr;
             const row = body.createDiv({ cls: "todo-goal-kr-item" + (it.completed ? " todo-goal-kr-done" : "") + (krOverdue ? " todo-goal-kr-overdue" : "") });
-            row.createSpan({ cls: "todo-goal-kr-check", text: it.completed ? "☑" : "☐" });
+            const krCheck = row.createSpan({ cls: "todo-goal-kr-check", text: it.completed ? "☑" : "☐" });
+            krCheck.addEventListener("click", async (ev) => {
+              ev.stopPropagation();
+              if (it.completed) { await this.plugin.taskService.uncomplete(it.task.id); }
+              else { await this.plugin.taskService.complete(it.task.id); }
+              it.completed = !it.completed;
+              krCheck.setText(it.completed ? "☑" : "☐");
+              row.toggleClass("todo-goal-kr-done", it.completed);
+              this.refreshGoalCardAndStats(goalId, k);
+            });
             row.createSpan({ cls: "todo-goal-kr-title", text: it.task.title });
             if (sk !== "__none__") row.createSpan({ cls: "todo-goal-kr-sub", text: sk });
             if (it.task.dueDate) row.createSpan({ cls: "todo-goal-kr-due", text: extractLocalDate(it.task.dueDate) });
@@ -2018,7 +2143,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
             const title = sk === "__none__" ? "未分类" : subGroupLabel(subKind, sk);
             body.createDiv({ cls: "todo-goal-subgroup-title", text: title });
             for (const it of items) {
-              if (krRendered < KR_LIMIT) { renderKRItem(sk, it); krRendered++; }
+              if (krRendered < KR_LIMIT) { renderKRItem(sk, it, goal.id, kind); krRendered++; }
             }
           }
           const remaining = children.length - krRendered;
@@ -2030,7 +2155,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
               for (const [sk, items] of grouped) {
                 for (const it of items) {
                   if (left <= 0) break;
-                  renderKRItem(sk, it);
+                  renderKRItem(sk, it, goal.id, kind);
                   left--;
                 }
                 if (left <= 0) break;
@@ -2047,6 +2172,95 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         }
         body.classList.toggle("todo-goal-card-body-collapsed", !collapsed);
         arrow.setText(collapsed ? "▴" : "▾");
+      });
+      card.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const menu = new Menu();
+
+        // Toggle complete
+        menu.addItem((item) =>
+          item
+            .setTitle(goal.isCompleted ? "\u6807\u8BB0\u4E3A\u672A\u5B8C\u6210" : "\u6807\u8BB0\u4E3A\u5DF2\u5B8C\u6210")
+            .setIcon(goal.isCompleted ? "circle" : "check-circle")
+            .onClick(async () => {
+              if (goal.isCompleted) { await this.plugin.taskService.uncomplete(goal.id); }
+              else { await this.plugin.taskService.complete(goal.id); }
+              this.refreshGoalCardAndStats(goal.id, kind);
+            }),
+        );
+
+        // Add / remove from My Day
+        menu.addItem((item) =>
+          item
+            .setTitle(goal.myDayDate ? "\u4ECE\u201C\u6211\u7684\u4E00\u5929\u201D\u79FB\u9664" : "\u6DFB\u52A0\u5230\u201C\u6211\u7684\u4E00\u5929\u201D")
+            .setIcon(goal.myDayDate ? "calendar-minus" : "calendar-plus")
+            .onClick(async () => {
+              if (goal.myDayDate) {
+                await this.plugin.taskService.update(goal.id, { myDayDate: null });
+              } else {
+                const today = localTodayStr();
+                await this.plugin.taskService.update(goal.id, { myDayDate: today, startDate: today + "T07:00:00", dueDate: today + "T23:30:00" });
+              }
+              this.refreshGoalCardAndStats(goal.id, kind);
+            }),
+        );
+
+        menu.addSeparator();
+
+        // Status: shelved
+        if (goal.status !== "shelved") {
+          menu.addItem((item) =>
+            item
+              .setTitle("\u6401\u7F6E\u76EE\u6807")
+              .setIcon("pause-circle")
+              .onClick(async () => {
+                await this.plugin.taskService.update(goal.id, { status: "shelved" });
+                this.refreshGoalCardAndStats(goal.id, kind);
+              }),
+          );
+        }
+
+        // Status: abandoned
+        if (goal.status !== "abandoned") {
+          menu.addItem((item) =>
+            item
+              .setTitle("\u653E\u5F03\u76EE\u6807")
+              .setIcon("x-circle")
+              .onClick(async () => {
+                await this.plugin.taskService.update(goal.id, { status: "abandoned" });
+                this.refreshGoalCardAndStats(goal.id, kind);
+              }),
+          );
+        }
+
+        // Restore to active
+        if (goal.status === "shelved" || goal.status === "abandoned") {
+          menu.addItem((item) =>
+            item
+              .setTitle("\u6062\u590D\u4E3A\u8FDB\u884C\u4E2D")
+              .setIcon("play-circle")
+              .onClick(async () => {
+                await this.plugin.taskService.update(goal.id, { status: "active" });
+                this.refreshGoalCardAndStats(goal.id, kind);
+              }),
+          );
+        }
+
+        menu.addSeparator();
+
+        // Delete
+        menu.addItem((item) =>
+          item
+            .setTitle("\u5220\u9664\u76EE\u6807")
+            .setIcon("trash")
+            .onClick(async () => {
+              await this.plugin.taskService.delete(goal.id);
+              this.renderGoalDashboard(kind);
+            }),
+        );
+
+        menu.showAtPosition({ x: ev.clientX, y: ev.clientY });
       });
       card.addEventListener("click", () => { void openGoal(); });
     };
@@ -2074,6 +2288,85 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     }
   }
 
+  private refreshGoalCardAndStats(goalId: string, kind: "year" | "month"): void {
+    const card = this.taskListEl.querySelector(`[data-goal-id="${goalId}"]`) as HTMLElement | null;
+    if (!card) return;
+    const goal = this.plugin.taskService.getAll().find((t) => t.id === goalId);
+    if (!goal) return;
+
+    // update check symbol
+    const checkEl = card.querySelector(".todo-goal-card-check") as HTMLElement | null;
+    if (checkEl) checkEl.setText(goal.isCompleted ? "\u2611" : "\u2610");
+
+    // update title completed style
+    const titleEl = card.querySelector(".todo-goal-card-title") as HTMLElement | null;
+    if (titleEl) titleEl.toggleClass("completed", goal.isCompleted);
+
+    // recalculate KR progress
+    const children = this.plugin.taskService.getChildrenOf(goalId);
+    const total = children.length;
+    const done = children.filter((c) => c.isCompleted).length;
+    const rate = total === 0 ? null : done / total;
+
+    // update KR label (second metric-item)
+    const metricsRow = card.querySelector(".todo-goal-card-metrics");
+    if (metricsRow) {
+      const items = metricsRow.querySelectorAll(".todo-goal-metric-item");
+      for (const el of Array.from(items)) {
+        if (el.textContent && el.textContent.startsWith("KR")) {
+          (el as HTMLElement).setText(total === 0 ? "KR 0/0" : "KR " + done + "/" + total);
+        }
+      }
+    }
+
+    // update progress bar
+    const barFill = card.querySelector(".todo-goal-progress-fill") as HTMLElement | null;
+    const barText = card.querySelector(".todo-goal-progress-text") as HTMLElement | null;
+    if (rate !== null) {
+      const pct = Math.round(rate * 100);
+      if (barFill) barFill.style.width = pct + "%";
+      if (barText) barText.setText(pct + "%");
+    }
+
+    // update overdue state
+    const todayStr = localTodayStr();
+    const overdue = !goal.isCompleted && !!goal.dueDate && extractLocalDate(goal.dueDate!) < todayStr;
+    card.toggleClass("todo-goal-card-overdue", overdue);
+    let overdueBadge = card.querySelector(".todo-goal-overdue-badge") as HTMLElement | null;
+    if (overdue && !overdueBadge) {
+      const r2 = card.querySelector(".todo-goal-card-metrics");
+      if (r2) r2.createSpan({ cls: "todo-goal-overdue-badge", text: "\u903E\u671F" });
+    } else if (!overdue && overdueBadge) {
+      overdueBadge.remove();
+    }
+
+    // update stats row
+    const goalAllTasks = this.plugin.taskService.getAll();
+    const periodTasks = goalAllTasks.filter((t) => t.planKind === kind && t.planPeriodKey === this.goalPeriodKey && !t.isDeleted && !t.isRecurrenceTemplate);
+    const totalCount = periodTasks.length;
+    const completedCount = periodTasks.filter((t) => t.isCompleted).length;
+    const inProgressCount = totalCount - completedCount;
+    const overdueCount = periodTasks.filter((t) => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < todayStr).length;
+    const completionRate = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
+
+    const statsRow = this.taskListEl.querySelector(".todo-goal-stats-row") as HTMLElement | null;
+    if (statsRow) {
+      const values = statsRow.querySelectorAll(".todo-goal-stat-value");
+      if (values[0]) values[0].setText(String(totalCount));
+      if (values[1]) values[1].setText(String(completedCount));
+      if (values[2]) values[2].setText(String(inProgressCount));
+      if (values[3]) {
+        values[3].setText(String(overdueCount));
+        const oc = values[3].closest(".todo-goal-stat-card") as HTMLElement | null;
+        if (oc) { oc.removeClass("todo-goal-stat-overdue"); oc.removeClass("todo-goal-stat-overdue-empty"); oc.addClass(overdueCount > 0 ? "todo-goal-stat-overdue" : "todo-goal-stat-overdue-empty"); }
+      }
+      if (values[4]) {
+        values[4].setText(completionRate + "%");
+        const rc = values[4].closest(".todo-goal-stat-card") as HTMLElement | null;
+        if (rc) { rc.removeClass("todo-goal-stat-rate-full"); if (completionRate >= 100) rc.addClass("todo-goal-stat-rate-full"); }
+      }
+    }
+  }
   private async renderLifePlanView(): Promise<void> {
     this.taskListEl.empty();
     const birthday = this.plugin.settings.birthday;
@@ -3237,20 +3530,22 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         }),
     );
 
-    menu.addItem((item) =>
-      item
-        .setTitle(task.myDayDate ? "从“我的一天”移除" : "添加到“我的一天”")
-        .setIcon(task.myDayDate ? "calendar-minus" : "calendar-plus")
-        .onClick(async () => {
-          const todayStr = localTodayStr();
-          if (task.myDayDate) {
-            await this.plugin.taskService.update(task.id, { myDayDate: null });
-          } else {
-            await this.plugin.taskService.update(task.id, { myDayDate: todayStr, startDate: todayStr + "T07:00:00", dueDate: todayStr + "T23:30:00" });
-          }
-          await this.renderTasks(currentView);
-        }),
-    );
+    if (currentView !== 'plan') {
+      menu.addItem((item) =>
+        item
+          .setTitle(task.myDayDate ? "从“我的一天”移除" : "添加到“我的一天”")
+          .setIcon(task.myDayDate ? "calendar-minus" : "calendar-plus")
+          .onClick(async () => {
+            const todayStr = localTodayStr();
+            if (task.myDayDate) {
+              await this.plugin.taskService.update(task.id, { myDayDate: null });
+            } else {
+              await this.plugin.taskService.update(task.id, { myDayDate: todayStr, startDate: todayStr + "T07:00:00", dueDate: todayStr + "T23:30:00" });
+            }
+            await this.renderTasks(currentView);
+          }),
+      );
+    }
 
     // Postpone options
     if (!task.isCompleted && task.dueDate) {

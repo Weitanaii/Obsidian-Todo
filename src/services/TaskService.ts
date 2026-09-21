@@ -1,5 +1,5 @@
 import { Vault } from "obsidian";
-import { Task, PlanKind, createTask } from "../models/Task";
+import { Task, PlanKind, TaskStatus, createTask } from "../models/Task";
 import { StorageService } from "./StorageService";
 import { logger } from "../utils/logger";
 import { localTodayStr } from "../utils/period";
@@ -45,6 +45,11 @@ export class TaskService {
         isRecurrenceTemplate: t.isRecurrenceTemplate ?? false,
         isRecurrenceSource: t.isRecurrenceSource ?? false,
         recurrenceEndDate: t.recurrenceEndDate ?? null,
+      }));
+      // 数据迁移：为旧数据添加 status 字段
+      this.tasks = this.tasks.map(t => ({
+        ...t,
+        status: (t as any).status ?? "active",
       }));
 
       // 数据迁移：仅修复 startDate 完全等于 dueDate 的旧 bug（startDate 被设为 dueDate 的情况）

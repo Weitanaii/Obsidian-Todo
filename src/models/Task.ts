@@ -2,6 +2,8 @@ export type MyDayGroup = "allday" | "morning" | "noon" | "afternoon" | "evening"
 
 export type PlanKind = "life" | "year" | "quarter" | "month" | "week";
 
+export type TaskStatus = "active" | "shelved" | "abandoned";
+
 export interface Task {
   id: string;
   title: string;
@@ -23,6 +25,7 @@ export interface Task {
   parentId?: string;
   planKind?: PlanKind;
   planPeriodKey?: string;
+  status: TaskStatus;
 
   // 软删除字段
   isDeleted: boolean;
@@ -61,6 +64,7 @@ export function createTask(overrides: Partial<Task> = {}): Task {
     isRecurrenceTemplate: false,
     isRecurrenceSource: false,
     recurrenceEndDate: null,
+    status: "active" as TaskStatus,
     ...overrides,
   };
 }

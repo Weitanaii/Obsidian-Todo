@@ -3907,7 +3907,8 @@
 .todo-goal-subgroup-title{font-size:11px;color:var(--text-muted);padding:8px 0 4px;border-top:1px dashed var(--background-modifier-border)}
 .todo-goal-kr-item{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;color:var(--text-normal)}
 .todo-goal-kr-done .todo-goal-kr-title{text-decoration:line-through;color:var(--text-muted)}
-.todo-goal-kr-check{font-size:12px;color:var(--text-muted)}
+.todo-goal-kr-check{font-size:12px;color:var(--text-muted);cursor:pointer}
+.todo-goal-kr-check:hover{color:var(--text-normal)}
 .todo-goal-kr-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .todo-goal-kr-due{color:var(--text-faint);white-space:nowrap}
 .todo-goal-empty{color:var(--text-faint);font-size:12px;padding:6px 0}
@@ -3965,7 +3966,9 @@
 .todo-goal-kr-item{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;color:var(--text-normal)}
 .todo-goal-kr-done .todo-goal-kr-title{text-decoration:line-through;color:var(--text-muted)}
 .todo-goal-kr-overdue .todo-goal-kr-title{color:var(--text-error)}
-.todo-goal-kr-check{font-size:12px;color:var(--text-muted)}
+.todo-goal-kr-check{font-size:12px;color:var(--text-muted);cursor:pointer}
+.todo-goal-kr-check:hover{color:var(--text-normal)}
+.todo-goal-kr-check-on{color:var(--text-success)}
 .todo-goal-kr-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .todo-goal-kr-sub{padding:1px 6px;border-radius:999px;background:var(--background-modifier-hover);color:var(--text-muted);font-size:10px}
 .todo-goal-kr-due{color:var(--text-faint);white-space:nowrap}
@@ -3977,3 +3980,20 @@
 .todo-goal-sentinel{height:1px}
 .todo-goal-kr-more{width:100%;margin-top:6px;padding:8px 10px;border:1px dashed var(--background-modifier-border);border-radius:10px;background:transparent;color:var(--text-muted);cursor:pointer;font-size:12px}
 .todo-goal-kr-more:hover{color:var(--text-normal);background:var(--background-modifier-hover)}
+/* Goal card checkbox */
+.todo-goal-card-check{cursor:pointer;font-size:16px;line-height:1;margin-right:4px;opacity:0.7;user-select:none}
+.todo-goal-card-check:hover{opacity:1}
+.todo-goal-card-title.completed{text-decoration:line-through;color:var(--text-muted)}
+.todo-goal-card-check.completed{color:var(--text-success);opacity:1}
+/* Status filter bar */
+.todo-status-filter{display:flex;justify-content:flex-end;gap:0;padding:4px 0 8px;flex-shrink:0}
+.todo-status-filter-btn{padding:4px 12px;font-size:12px;cursor:pointer;border:1px solid var(--background-modifier-border);border-right:none;color:var(--text-muted);background:none}
+.todo-status-filter-btn:first-child{border-radius:var(--radius-s) 0 0 var(--radius-s)}
+.todo-status-filter-btn:last-child{border-right:1px solid var(--background-modifier-border);border-radius:0 var(--radius-s) var(--radius-s) 0}
+.todo-status-filter-btn:hover{background:var(--background-modifier-hover)}
+.todo-status-filter-btn.active{background:var(--interactive-accent);color:var(--text-on-accent)}
+/* Task status: shelved / abandoned */
+.todo-task-status-icon{display:inline-flex;align-items:center;margin-right:4px;flex-shrink:0}
+.todo-task-status-icon svg{width:14px;height:14px;color:var(--text-muted)}
+.todo-task-shelved .todo-task-title{color:var(--text-muted)}
+.todo-task-abandoned .todo-task-title{text-decoration:line-through;color:var(--text-muted)}
