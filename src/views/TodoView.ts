@@ -219,6 +219,7 @@ export class TodoView extends ItemView {
   private quadrantGroupEl!: HTMLDivElement;
   private activePlanKind: PlanKind | null = null;
   private goalPeriodKey: string | null = null;
+  private expandedGoalIds = new Set<string>();
   private goalKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private scheduleMode: "day" | "week" | "month" = "month";
   private scheduleYear!: number;
@@ -2116,20 +2117,24 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
               input.focus();
               let saved = false;
               const save = async () => {
-                if (saved || !input.value.trim()) { inputWrap.remove(); sgHeader.dataset.addOpen = "0"; return; }
+                if (saved || !input.value.trim()) { if (inputWrap.isConnected) inputWrap.remove(); sgHeader.dataset.addOpen = "0"; return; }
                 saved = true;
-                const newTask = await this.plugin.taskService.create({
-                  title: input.value.trim(),
-                  planKind: subKind,
-                  planPeriodKey: sk,
-                  parentId: goal.id,
-                });
-                inputWrap.remove();
-                sgHeader.dataset.addOpen = "0";
-                renderKRItem(sk, { task: newTask, completed: false }, goal.id, kind);
-                this.refreshGoalCardAndStats(goal.id, kind);
+                try {
+                  const newTask = await this.plugin.taskService.create({
+                    title: input.value.trim(),
+                    planKind: subKind,
+                    planPeriodKey: sk,
+                    parentId: goal.id,
+                    tags: goal.tags ? [...goal.tags] : [],
+                  });
+                  // Re-render the dashboard (preserves expanded state via expandedGoalIds)
+                  window.setTimeout(() => { void this.renderGoalDashboard(kind); }, 0);
+                } catch (e) {
+                  console.error("[ObsidianTodo] Failed to create KR:", e);
+                }
               };
               input.addEventListener("keydown", (e) => {
+                e.stopPropagation();
                 if (e.key === "Enter") { e.preventDefault(); void save(); }
                 if (e.key === "Escape") { inputWrap.remove(); sgHeader.dataset.addOpen = "0"; }
               });
@@ -2159,8 +2164,13 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
         }
         body.classList.toggle("todo-goal-card-body-collapsed", !collapsed);
+        if (collapsed) this.expandedGoalIds.add(goal.id); else this.expandedGoalIds.delete(goal.id);
         const et = expandBtn.querySelector(".todo-goal-expand-text") as HTMLElement; if (et) et.setText(collapsed ? "收起 ▴" : "展开 ▾");
       });
+
+      // Auto-expand previously expanded cards
+      if (this.expandedGoalIds.has(goal.id)) expandBtn.click();
+
       card.addEventListener("contextmenu", (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
@@ -2307,9 +2317,14 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       }
     }
 
-    // update progress bar
-    const barFill = card.querySelector(".todo-goal-progress-fill") as HTMLElement | null;
-    const barText = card.querySelector(".todo-goal-progress-text") as HTMLElement | null;
+    // update progress bar (create if missing)
+    let barFill = card.querySelector(".todo-goal-progress-fill") as HTMLElement | null;
+    let barText = card.querySelector(".todo-goal-progress-text") as HTMLElement | null;
+    if (rate !== null && !barFill && metricsRow) {
+      const barWrap = metricsRow.createDiv({ cls: "todo-goal-progress" });
+      barFill = barWrap.createDiv({ cls: "todo-goal-progress-fill" });
+      barText = barWrap.createSpan({ cls: "todo-goal-progress-text" });
+    }
     if (rate !== null) {
       const pct = Math.round(rate * 100);
       if (barFill) barFill.style.width = pct + "%";

@@ -177,6 +177,19 @@ export class TaskService {
       await this.generateRecurrenceInstances(updated);
     }
 
+    // 联动更新：父任务标签变更时，同步更新所有子任务
+    if (changes.tags !== undefined) {
+      const children = this.tasks.filter(t => t.parentId === id && !t.isDeleted && !t.isRecurrenceTemplate);
+      if (children.length > 0) {
+        const childTags = [...(changes.tags ?? [])];
+        for (const child of children) {
+          child.tags = [...childTags];
+          child.updatedAt = new Date().toISOString();
+        }
+        await this.save();
+      }
+    }
+
     return this.tasks[index];
   }
 
