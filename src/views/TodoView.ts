@@ -2005,7 +2005,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const checkbox = row1.createDiv({ cls: "todo-checkbox" + (goal.isCompleted ? " checked" : ""), text: goal.isCompleted ? "✓" : "" });
       checkbox.addEventListener("click", async (ev) => {
         ev.stopPropagation();
-        if (goal.isCompleted) { await this.plugin.taskService.uncomplete(goal.id); }
+        const cur = this.plugin.taskService.getAll().find((t) => t.id === goal.id); if (cur && cur.isCompleted) { await this.plugin.taskService.uncomplete(goal.id); }
         else { await this.plugin.taskService.complete(goal.id); }
         this.refreshGoalCardAndStats(goal.id, kind);
       });
@@ -2045,7 +2045,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const expandBtn = card.createDiv({ cls: "todo-goal-expand-btn" });
       expandBtn.createSpan({ cls: "todo-goal-expand-text", text: "展开 ▾" });
 
-      // expand body// expand body
+      // expand body
       const body = card.createDiv({ cls: "todo-goal-card-body todo-goal-card-body-collapsed" });
       let bodyRendered = false;
       const openGoal = async () => {
@@ -2282,8 +2282,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     if (!goal) return;
 
     // update check symbol
-    const checkEl = card.querySelector(".todo-goal-card-check") as HTMLElement | null;
-    if (checkEl) checkEl.setText(goal.isCompleted ? "\u2611" : "\u2610");
+    const checkEl = card.querySelector(".todo-checkbox") as HTMLElement | null;
+    if (checkEl) { checkEl.setText(goal.isCompleted ? "✓" : ""); checkEl.toggleClass("checked", goal.isCompleted); }
 
     // update title completed style
     const titleEl = card.querySelector(".todo-goal-card-title") as HTMLElement | null;
