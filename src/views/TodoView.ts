@@ -233,6 +233,7 @@ export class TodoView extends ItemView {
   private reviewMonth!: number;
   private reviewDate!: number;
   private reviewFilter: { type: "date" | "overdue" | "tag"; value: string; label: string; dateField?: "dueDate" | "completedAt" } | null = null;
+  private myDayViewDate: string | null = null;
   private timeLineTimer: number | null = null;
   private dragState: {
     type: "move" | "resize";
@@ -561,7 +562,12 @@ export class TodoView extends ItemView {
       switch (activeViewNav) {
         case "myday":
           icon = "sun";
-          title = "我的一天";
+          if (this.myDayViewDate) {
+            const parts = this.myDayViewDate.split("-");
+            title = "我的一天 · " + (+parts[1]) + "月" + (+parts[2]) + "日";
+          } else {
+            title = "我的一天";
+          }
           break;
         case "all":
           icon = "list-checks";
@@ -621,22 +627,17 @@ export class TodoView extends ItemView {
       };
     }
 
-    // Update subtitle (lunar date for myday)
+    // Update subtitle
     if (this.headerSubEl) {
-      if (activeViewNav === "myday" && !selectedListId && this.plugin.settings.showLunarCalendar) {
-        const now = new Date();
-        this.headerSubEl.textContent = getLunarDisplayText(now.getFullYear(), now.getMonth() + 1, now.getDate());
-        this.headerSubEl.style.display = "";
-      } else {
-        this.headerSubEl.textContent = "";
-        this.headerSubEl.style.display = "none";
-      }
+      this.headerSubEl.textContent = "";
+      this.headerSubEl.style.display = "none";
     }
   }
 
 private async activateNav(nav: ViewNav): Promise<void> {
     this.closeDetail();
     if (nav !== "all") this.reviewFilter = null;
+    this.myDayViewDate = null;
     this.plugin.settings.activeViewNav = nav;
     this.plugin.settings.selectedListId = null;
     if (nav === "review") {
@@ -1130,7 +1131,8 @@ private async activateNav(nav: ViewNav): Promise<void> {
     let tasks: Task[] = [];
 
     if (view === "myday" && !this.plugin.settings.selectedListId) {
-      tasks = this.plugin.taskService.getMyDay();
+      const viewDate = this.myDayViewDate || localTodayStr();
+      tasks = this.plugin.taskService.getAll().filter((t) => t.myDayDate === viewDate && !t.isDeleted && !t.isRecurrenceTemplate);
     } else if (view === "all") {
       tasks = this.plugin.taskService.getAll().filter((t) => !t.planKind);
     } else if (view === "inbox") {
@@ -1319,6 +1321,47 @@ private async activateNav(nav: ViewNav): Promise<void> {
   }
 
 private async renderMyDayGroups(tasks: Task[]): Promise<void> {
+
+    // My Day navigation header
+    const viewDate = this.myDayViewDate || localTodayStr();
+    const navHeader = this.taskListEl.createDiv({ cls: "todo-myday-nav" });
+    const prevBtn = navHeader.createEl("button", { cls: "todo-myday-nav-btn", text: "\u25c0" });
+    const dateLabel = navHeader.createSpan({ cls: "todo-myday-nav-title" });
+    const nextBtn = navHeader.createEl("button", { cls: "todo-myday-nav-btn", text: "\u25b6" });
+    const todayBtn = navHeader.createEl("button", { cls: "todo-myday-nav-today", text: "\u4eca\u5929" });
+
+    const updateMyDayTitle = () => {
+      const d = this.myDayViewDate || localTodayStr();
+      const parts = d.split("-");
+      const dowNames = ["\u5468\u65e5", "\u5468\u4e00", "\u5468\u4e8c", "\u5468\u4e09", "\u5468\u56db", "\u5468\u4e94", "\u5468\u516d"];
+      const dt = new Date(+parts[0], +parts[1] - 1, +parts[2]);
+      const isToday = d === localTodayStr();
+      dateLabel.textContent = (+parts[1]) + "\u6708" + (+parts[2]) + "\u65e5 " + dowNames[dt.getDay()] + (isToday ? " (\u4eca\u5929)" : "");
+    };
+    updateMyDayTitle();
+
+    const refreshMyDay = async () => {
+      this.taskListEl.empty();
+      const newTasks = this.plugin.taskService.getAll().filter((t) => t.myDayDate === (this.myDayViewDate || localTodayStr()) && !t.isDeleted && !t.isRecurrenceTemplate);
+      await this.renderMyDayGroups(newTasks);
+    };
+
+    prevBtn.addEventListener("click", async () => {
+      const d = new Date(+viewDate.split("-")[0], +viewDate.split("-")[1] - 1, +viewDate.split("-")[2]);
+      d.setDate(d.getDate() - 1);
+      this.myDayViewDate = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      await refreshMyDay();
+    });
+    nextBtn.addEventListener("click", async () => {
+      const d = new Date(+viewDate.split("-")[0], +viewDate.split("-")[1] - 1, +viewDate.split("-")[2]);
+      d.setDate(d.getDate() + 1);
+      this.myDayViewDate = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      await refreshMyDay();
+    });
+    todayBtn.addEventListener("click", async () => {
+      this.myDayViewDate = null;
+      await refreshMyDay();
+    });
 
     // Auto-update myDayGroup based on time for tasks with dates
     for (const t of tasks) {

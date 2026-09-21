@@ -4000,3 +4000,11 @@
 .todo-dp-lunar{font-size:8px;color:var(--text-faint);line-height:1.2}
 .todo-dp-day.todo-lunar-festival .todo-dp-lunar{color:var(--text-accent)}
 .todo-dp-day.is-selected .todo-dp-lunar{color:var(--text-on-accent);opacity:.8}
+
+/* === My Day Navigation === */
+.todo-myday-nav{display:flex;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid var(--background-modifier-border)}
+.todo-myday-nav-btn{background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:12px;padding:2px 6px;border-radius:var(--radius-s)}
+.todo-myday-nav-btn:hover{background:var(--background-modifier-hover);color:var(--text-normal)}
+.todo-myday-nav-title{font-size:13px;font-weight:600;color:var(--text-normal);flex:1;text-align:center}
+.todo-myday-nav-today{background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:11px;padding:2px 8px;border-radius:var(--radius-s)}
+.todo-myday-nav-today:hover{background:var(--background-modifier-hover);color:var(--text-normal)}
