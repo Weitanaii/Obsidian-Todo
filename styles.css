@@ -3905,10 +3905,11 @@
 .todo-goal-card-body{display:block;padding:8px 0 4px;overflow:hidden;transition:max-height 0.25s ease, opacity 0.2s ease;opacity:1}
 .todo-goal-card-body-collapsed{max-height:0!important;opacity:0;padding:0}
 .todo-goal-subgroup-title{font-size:11px;color:var(--text-muted);padding:8px 0 4px;border-top:1px dashed var(--background-modifier-border)}
-.todo-goal-kr-item{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;color:var(--text-normal)}
+.todo-goal-kr-item{display:flex;align-items:center;gap:8px;padding:4px 6px;font-size:12px;color:var(--text-normal);cursor:pointer;border-radius:6px}
+.todo-goal-kr-item:hover{background:var(--background-modifier-hover)}
 .todo-goal-kr-done .todo-goal-kr-title{text-decoration:line-through;color:var(--text-muted)}
-.todo-goal-kr-check{font-size:12px;color:var(--text-muted);cursor:pointer}
-.todo-goal-kr-check:hover{color:var(--text-normal)}
+.todo-goal-kr-check{width:14px;height:14px;border:1.5px solid var(--text-muted);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:9px;color:transparent;flex-shrink:0;cursor:pointer;transition:background 0.12s ease, border-color 0.12s ease, color 0.12s ease}
+.todo-goal-kr-check:hover{border-color:var(--text-normal)}
 .todo-goal-kr-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .todo-goal-kr-due{color:var(--text-faint);white-space:nowrap}
 .todo-goal-empty{color:var(--text-faint);font-size:12px;padding:6px 0}
@@ -3963,7 +3964,7 @@
 .todo-goal-card-body{display:block;padding:8px 0 4px;overflow:hidden;transition:max-height 0.25s ease, opacity 0.2s ease;opacity:1;max-height:420px}
 .todo-goal-card-body-collapsed{max-height:0!important;opacity:0;padding:0}
 .todo-goal-subgroup-title{font-size:11px;color:var(--text-muted);padding:8px 0 4px;border-top:1px dashed var(--background-modifier-border)}
-.todo-goal-kr-item{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;color:var(--text-normal)}
+.todo-goal-kr-item{display:flex;align-items:center;gap:8px;padding:4px 6px;font-size:12px;color:var(--text-normal);cursor:pointer;border-radius:6px}
 .todo-goal-kr-done .todo-goal-kr-title{text-decoration:line-through;color:var(--text-muted)}
 .todo-goal-kr-overdue .todo-goal-kr-title{color:var(--text-error)}
 .todo-goal-kr-check{font-size:12px;color:var(--text-muted);cursor:pointer}
@@ -3999,9 +4000,9 @@
 .todo-task-abandoned .todo-task-title{text-decoration:line-through;color:var(--text-muted)}
 /* Subgroup [+] inline creation */
 .todo-goal-subgroup-add{cursor:pointer;color:var(--text-muted);font-size:12px;margin-left:6px}
-.todo-goal-subgroup-add:hover{color:var(--interactive-accent)}
-.todo-goal-subgroup-inline-input{padding:4px 0 8px 16px}
-.todo-goal-subgroup-inline-input input{width:100%;padding:6px 10px;border:1px solid var(--background-modifier-border);border-radius:8px;background:transparent;color:var(--text-normal);font-size:12px}
+.todo-goal-subgroup-add:hover{color:var(--interactive-accent);background:var(--background-modifier-hover);border-radius:6px;padding:2px 6px;margin-left:2px}
+.todo-goal-subgroup-inline-input{padding:4px 12px 4px 16px}
+.todo-goal-card-body .todo-goal-subgroup-inline-input input{width:100%;background:transparent;border:none!important;border-width:0!important;border-bottom:1px solid var(--background-modifier-border)!important;border-bottom-width:1px!important;outline:none!important;box-shadow:none!important;font-size:var(--font-ui-normal);padding:6px 0;color:var(--text-normal);border-radius:0!important}
 .todo-goal-subgroup-inline-input input::placeholder{color:var(--text-faint)}
 
 /* Goal card note summary */
@@ -4013,3 +4014,4 @@
 .todo-goal-card-tag{font-size:11px;white-space:nowrap}
 .todo-goal-expand-btn{display:flex;justify-content:center;align-items:center;width:100%;padding:4px 0;cursor:pointer;border-radius:6px;color:var(--text-muted);font-size:12px}
 .todo-goal-expand-btn:hover{background:var(--background-modifier-hover);color:var(--text-normal)}
+.todo-goal-kr-checkbox{width:14px;height:14px;font-size:9px}

@@ -1949,14 +1949,18 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       if (this.plugin.settings.goalViewMode !== "card") {
         this.plugin.settings.goalViewMode = "card";
         await this.plugin.saveSettings();
-        await this.renderGoalDashboard(kind);
+        cardModeBtn.addClass("active"); listModeBtn.removeClass("active");
+        const ca = this.taskListEl.querySelector(".todo-goal-list-content, .todo-goal-cards") as HTMLElement;
+        if (ca) { ca.empty(); ca.className = "todo-goal-cards"; }
       }
     });
     listModeBtn.addEventListener("click", async () => {
       if (this.plugin.settings.goalViewMode !== "list") {
         this.plugin.settings.goalViewMode = "list";
         await this.plugin.saveSettings();
-        await this.renderGoalDashboard(kind);
+        listModeBtn.addClass("active"); cardModeBtn.removeClass("active");
+        const ca = this.taskListEl.querySelector(".todo-goal-list-content, .todo-goal-cards") as HTMLElement;
+        if (ca) { ca.empty(); ca.className = "todo-goal-list-content"; this.renderGoalListContent(kind, ca); }
       }
     });
 
@@ -1964,55 +1968,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const sorted = periodTasks.slice().sort((a, b) => (b.isImportant ? 1 : 0) - (a.isImportant ? 1 : 0));
 
     if (this.plugin.settings.goalViewMode === "list") {
-      const goalList = this.taskListEl.createDiv({ cls: "todo-goal-cards" });
-      if (sorted.length === 0) {
-        const guide = goalList.createDiv({ cls: "todo-goal-guide" });
-        guide.createDiv({ text: "还没有目标，先创建一个年度目标，再拆解到月度与KR。" });
-        const hint = guide.createDiv({ cls: "todo-goal-guide-hint" });
-        hint.createSpan({ text: "点击上方「" });
-        hint.createSpan({ cls: "todo-goal-guide-btn", text: kind === "year" ? "＋ 新建年度目标" : "＋ 新建月度目标" });
-        hint.createSpan({ text: "」开始。" });
-      } else {
-        for (const goal of sorted) {
-          const children = this.plugin.taskService.getChildrenOf(goal.id);
-          const done = children.filter((c) => c.isCompleted).length;
-          const overdue = !goal.isCompleted && !!goal.dueDate && extractLocalDate(goal.dueDate!) < todayStr;
-          const openGoal = async () => {
-            this.detailView.clearHistory();
-            this.plugin.settings.selectedTaskId = goal.id;
-            await this.plugin.saveSettings();
-            this.detailView.open(goal.id);
-            this.highlightSelectedTask(goal.id);
-            const layout = this.containerEl.querySelector(".todo-layout");
-            if (layout) layout.addClass("todo-layout-detail-open");
-          };
-          const row = goalList.createDiv({ cls: "todo-goal-card" + (overdue ? " todo-goal-card-overdue" : "") });
-          row.tabIndex = 0;
-          row.setAttribute("role", "button");
-          const header = row.createDiv({ cls: "todo-goal-card-row" });
-          const check = header.createSpan({ cls: "todo-goal-star", text: goal.isCompleted ? "☑" : "☐" });
-          check.addEventListener("click", async (ev) => {
-            ev.stopPropagation();
-            const cur = this.plugin.taskService.getAll().find((t) => t.id === goal.id); if (cur && cur.isCompleted) { await this.plugin.taskService.uncomplete(goal.id); } else { await this.plugin.taskService.complete(goal.id); }
-            await this.renderGoalDashboard(kind);
-          });
-          const star = header.createSpan({ cls: "todo-goal-star" });
-          setIcon(star, "star");
-          if (goal.isImportant) star.addClass("is-important");
-          star.addEventListener("click", async (ev) => {
-            ev.stopPropagation();
-            await this.plugin.taskService.update(goal.id, { isImportant: !goal.isImportant });
-            await this.renderGoalDashboard(kind);
-          });
-          const title = header.createSpan({ cls: "todo-goal-card-title" + (goal.isCompleted ? " completed" : ""), text: goal.title });
-          title.addEventListener("click", (ev) => { ev.stopPropagation(); void openGoal(); });
-          const meta = row.createDiv({ cls: "todo-goal-card-metrics" });
-          if (goal.dueDate) meta.createSpan({ cls: "todo-goal-metric-item", text: "截止 " + extractLocalDate(goal.dueDate) });
-          meta.createSpan({ cls: "todo-goal-metric-item", text: children.length === 0 ? "KR 0/0" : "KR " + done + "/" + children.length });
-          if (overdue) meta.createSpan({ cls: "todo-goal-overdue-badge", text: "逾期" });
-          row.addEventListener("click", () => { void openGoal(); });
-        }
-      }
+      const contentEl = this.taskListEl.createDiv({ cls: "todo-goal-list-content" });
+      this.renderGoalListContent(kind, contentEl);
     } else {
     const cards = this.taskListEl.createDiv({ cls: "todo-goal-cards" });
     const goalScrollTarget = cards.createDiv({ cls: "todo-goal-scroll-target" });
@@ -2131,10 +2088,16 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
               this.refreshGoalCardAndStats(goalId, k);
             });
             row.createSpan({ cls: "todo-goal-kr-title", text: it.task.title });
-            if (sk !== "__none__") row.createSpan({ cls: "todo-goal-kr-sub", text: sk });
-            if (it.task.dueDate) row.createSpan({ cls: "todo-goal-kr-due", text: extractLocalDate(it.task.dueDate) });
-            const openBtn = row.createSpan({ cls: "todo-goal-kr-open", text: "打开详情" });
-            openBtn.addEventListener("click", (ev) => { ev.stopPropagation(); void openGoal(); });
+            row.addEventListener("click", async (ev) => {
+              ev.stopPropagation();
+              this.detailView.clearHistory();
+              this.plugin.settings.selectedTaskId = it.task.id;
+              await this.plugin.saveSettings();
+              this.detailView.open(it.task.id);
+              this.highlightSelectedTask(it.task.id);
+              const lyt = this.containerEl.querySelector(".todo-layout");
+              if (lyt) lyt.addClass("todo-layout-detail-open");
+            });
           };
           for (const [sk, items] of grouped) {
             if (items.length === 0) continue;
@@ -2363,6 +2326,47 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         values[4].setText(completionRate + "%");
         const rc = values[4].closest(".todo-goal-stat-card") as HTMLElement | null;
         if (rc) { rc.removeClass("todo-goal-stat-rate-full"); if (completionRate >= 100) rc.addClass("todo-goal-stat-rate-full"); }
+      }
+    }
+  }
+
+  private renderGoalListContent(kind: "year" | "month", container: HTMLElement): void {
+    const ts = this.plugin.taskService;
+    const subKind: PlanKind | null = kind === "year" ? "quarter" : kind === "month" ? "week" : null;
+    const pk = this.goalPeriodKey!;
+    const parentTasks = ts.getByPlanKindAndPeriod(kind, pk);
+    const groupEl = container.createDiv({ cls: "todo-plan-group" });
+    const headerEl = groupEl.createDiv({ cls: "todo-plan-group-header" });
+    const arrow = headerEl.createSpan({ cls: "todo-plan-group-arrow", text: "▼" });
+    headerEl.createSpan({ cls: "todo-plan-group-label", text: periodLabel(kind, pk) });
+    headerEl.createSpan({ cls: "todo-plan-group-count", text: String(parentTasks.length) });
+    const addBtn = headerEl.createSpan({ cls: "todo-plan-add-btn", text: "+" });
+    addBtn.title = "新建任务";
+    const bodyEl = groupEl.createDiv({ cls: "todo-plan-group-body" });
+    bodyEl.dataset.periodKey = pk;
+    for (const task of parentTasks) { this.renderTaskRow(bodyEl, task, "plan"); }
+    this.setupPlanAddButton(addBtn, bodyEl, kind, pk);
+    headerEl.addEventListener("click", (ev) => {
+      if ((ev.target as HTMLElement).closest(".todo-plan-add-btn")) return;
+      const c2 = bodyEl.style.display === "none"; bodyEl.style.display = c2 ? "" : "none"; arrow.toggleClass("collapsed", !c2);
+    });
+    if (subKind) {
+      const subKeys = getSubPeriodKeysForParent(kind, pk);
+      for (const sk of periodKeySort(subKind, subKeys)) {
+        const subTasks = ts.getByPlanKindAndPeriod(subKind, sk);
+        const sg = container.createDiv({ cls: "todo-plan-subgroup" });
+        const sh = sg.createDiv({ cls: "todo-plan-subgroup-header" });
+        const sa = sh.createSpan({ cls: "todo-plan-group-arrow collapsed", text: "▼" });
+        sh.createSpan({ cls: "todo-plan-subgroup-label", text: subGroupLabel(subKind, sk) });
+        sh.createSpan({ cls: "todo-plan-group-count", text: String(subTasks.length) });
+        const sab = sh.createSpan({ cls: "todo-plan-add-btn", text: "+" }); sab.title = "新建任务";
+        const sb = sg.createDiv({ cls: "todo-plan-group-body" }); sb.dataset.periodKey = sk; sb.style.display = "none";
+        for (const task of subTasks) { this.renderTaskRow(sb, task, "plan"); }
+        this.setupPlanAddButton(sab, sb, subKind, sk);
+        sh.addEventListener("click", (ev) => {
+          if ((ev.target as HTMLElement).closest(".todo-plan-add-btn")) return;
+          const c2 = sb.style.display === "none"; sb.style.display = c2 ? "" : "none"; sa.toggleClass("collapsed", !c2);
+        });
       }
     }
   }
