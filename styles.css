@@ -3988,3 +3988,15 @@
 .todo-goal-expand-btn{display:flex;justify-content:center;align-items:center;width:100%;padding:4px 0;cursor:pointer;border-radius:6px;color:var(--text-muted);font-size:12px}
 .todo-goal-expand-btn:hover{background:var(--background-modifier-hover);color:var(--text-normal)}
 .todo-goal-kr-item .todo-checkbox{width:14px;height:14px;font-size:9px}
+
+/* === Lunar Calendar Styles === */
+.todo-schedule-cell-lunar{font-size:9px;color:var(--text-faint);line-height:1.2;margin-top:1px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.todo-lunar-festival{color:var(--text-accent)}
+.todo-week-lunar{font-size:9px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40px;text-align:center}
+.todo-week-lunar.todo-lunar-festival{color:var(--text-accent)}
+.todo-header-sub{font-size:11px;color:var(--text-muted);white-space:nowrap}
+.todo-dp-day{flex-direction:column;gap:1px;height:auto;min-height:36px;padding:2px 0}
+.todo-dp-day-num{font-size:var(--font-ui-small);line-height:1.4}
+.todo-dp-lunar{font-size:8px;color:var(--text-faint);line-height:1.2}
+.todo-dp-day.todo-lunar-festival .todo-dp-lunar{color:var(--text-accent)}
+.todo-dp-day.is-selected .todo-dp-lunar{color:var(--text-on-accent);opacity:.8}

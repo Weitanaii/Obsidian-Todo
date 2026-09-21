@@ -597,19 +597,10 @@ export class TaskService {
     const now = new Date().toISOString();
     let deletedCount = 0;
 
-    // 找到点击的任务，确定截止日期
-    const fromTask = fromTaskId ? this.tasks.find(t => t.id === fromTaskId) : null;
-    const fromDateStr = fromTask && fromTask.dueDate ? extractLocalDate(fromTask.dueDate) : null;
-
-    // 从该任务之后开始，硬删除更晚的未完成实例（保留当前任务）
+    // 硬删除同组中未完成、未删除、非源头的实例
     const deletedIds = new Set<string>();
     for (const t of this.tasks) {
-      if (t.recurrenceGroupId !== groupId || t.isCompleted || t.isDeleted) continue;
-      // 如果有 fromDate，只删除 dueDate >= fromDate 的实例
-      if (fromDateStr && t.dueDate) {
-        const instDate = extractLocalDate(t.dueDate);
-        if (instDate <= fromDateStr) continue;
-      }
+      if (t.recurrenceGroupId !== groupId || t.isRecurrenceSource || t.isCompleted || t.isDeleted) continue;
       deletedIds.add(t.id);
       deletedCount++;
     }

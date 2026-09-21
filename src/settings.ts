@@ -24,6 +24,7 @@ export interface ObsidianTodoSettings {
   activeReviewMode: "day" | "week" | "month" | "year";
   taskFilterStatus: "all" | "active" | "shelved" | "abandoned" | "completed";
   goalViewMode: "card" | "list";
+  showLunarCalendar: boolean;
 }
 
 export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
@@ -48,6 +49,7 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
   activeReviewMode: "day",
   taskFilterStatus: "active",
   goalViewMode: "card",
+  showLunarCalendar: true,
 };
 
 const ICON_OPTIONS = [
@@ -122,6 +124,21 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
         this.plugin.settings.birthday = birthdayInput.value;
         await this.plugin.saveSettings();
       });
+    });
+
+    // --- Display Settings ---
+    this.settingGroup(containerEl, "显示设置", "界面显示选项", (group) => {
+      new Setting(group)
+        .setName("显示农历")
+        .setDesc("在日历、日程视图和日期选择器中显示农历日期、节日和节气")
+        .addToggle((toggle) =>
+          toggle
+            .setValue(this.plugin.settings.showLunarCalendar)
+            .onChange(async (value) => {
+              this.plugin.settings.showLunarCalendar = value;
+              await this.plugin.saveSettings();
+            })
+        );
     });
 
     // --- Tag Management ---

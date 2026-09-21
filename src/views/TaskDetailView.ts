@@ -5,6 +5,7 @@ import type { DomainTag } from "../models/Tag";
 import { ResourceSuggestModal } from "../ui/ResourceSuggestModal";
 import { formatRecurrenceDisplay } from "../utils/recurrence";
 import { localTodayStr, getPeriodKeyForDate, getParentPeriodKey, ageFromDueDate, currentAge } from "../utils/period";
+import { getLunarDisplayText, isLunarSpecialDay } from "../utils/lunar";
 
 export class TaskDetailView {
   private app: App;
@@ -241,7 +242,7 @@ export class TaskDetailView {
       unsetText: "添加截止时间",
       isSet: hasDue,
       displayText: display,
-      onClick: () => { new DatePickerModal(this.app, task.dueDate, "end", (date) => { void this.saveChanges({ dueDate: date }); }).open(); },
+      onClick: () => { new DatePickerModal(this.app, task.dueDate, "end", (date) => { void this.saveChanges({ dueDate: date }); }, undefined, this.plugin.settings.showLunarCalendar).open(); },
       onClear: () => { void this.saveChanges({ dueDate: null }); },
     });
   }
@@ -277,7 +278,7 @@ export class TaskDetailView {
       unsetText: "添加开始时间",
       isSet: hasStart,
       displayText: display,
-      onClick: () => { new DatePickerModal(this.app, task.startDate, "start", (date) => { void this.saveChanges({ startDate: date }); }, (startIso, endIso) => { void this.saveChanges({ startDate: startIso, dueDate: endIso }); }).open(); },
+      onClick: () => { new DatePickerModal(this.app, task.startDate, "start", (date) => { void this.saveChanges({ startDate: date }); }, (startIso, endIso) => { void this.saveChanges({ startDate: startIso, dueDate: endIso }); }, this.plugin.settings.showLunarCalendar).open(); },
       onClear: () => { void this.saveChanges({ startDate: null }); },
     });
   }
@@ -660,18 +661,21 @@ class DatePickerModal extends Modal {
   private mode: "start" | "end";
   private selectedHour: number;
   private selectedMinute: number;
+  private showLunar: boolean;
 
   constructor(
     app: App,
     currentIsoDate: string | null,
     mode: "start" | "end",
     onSelect: (isoDate: string | null) => void,
-    onLinkedUpdate?: (startIso: string, endIso: string) => void
+    onLinkedUpdate?: (startIso: string, endIso: string) => void,
+    showLunar?: boolean
   ) {
     super(app);
     this.mode = mode;
     this.onSelect = onSelect;
     this.onLinkedUpdate = onLinkedUpdate;
+    this.showLunar = showLunar ?? false;
     const d = currentIsoDate ? new Date(currentIsoDate) : new Date();
     this.currentDate = Number.isNaN(d.getTime()) ? new Date() : d;
     this.selectedHour = this.currentDate.getHours();
@@ -717,7 +721,13 @@ class DatePickerModal extends Modal {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     for (let i = 0; i < offset; i++) { grid.createDiv({ cls: "todo-dp-day todo-dp-day-empty" }); }
     for (let day = 1; day <= daysInMonth; day++) {
-      const dayEl = grid.createDiv({ cls: "todo-dp-day", text: String(day) });
+      const dayEl = grid.createDiv({ cls: "todo-dp-day" });
+      dayEl.createSpan({ cls: "todo-dp-day-num", text: String(day) });
+      if (this.showLunar) {
+        const lunarText = getLunarDisplayText(year, month + 1, day);
+        const lunarCls = "todo-dp-lunar" + (isLunarSpecialDay(year, month + 1, day) ? " todo-lunar-festival" : "");
+        dayEl.createSpan({ cls: lunarCls, text: lunarText });
+      }
       if (year === selY && month === selM && day === selD) dayEl.addClass("is-selected");
       dayEl.addEventListener("click", () => {
         this.currentDate = new Date(year, month, day);
@@ -892,6 +902,7 @@ class RecurrencePickerModal extends Modal {
       { label: "每周", value: "weekly" },
       { label: "每月", value: "monthly" },
       { label: "每年", value: "yearly" },
+      { label: "每年（农历）", value: "lunar-yearly" },
     ];
 
     options.forEach((opt) => {
@@ -915,7 +926,7 @@ class RecurrencePickerModal extends Modal {
     const intervalInput = intervalRow.createEl("input", { attr: { type: "number", min: "1", value: "1" } }) as HTMLInputElement;
     intervalInput.style.width = "50px";
     const unitSelect = intervalRow.createEl("select") as HTMLSelectElement;
-    [{ v: "day", l: "天" }, { v: "week", l: "周" }, { v: "month", l: "月" }, { v: "year", l: "年" }].forEach((u) => {
+    [{ v: "day", l: "天" }, { v: "week", l: "周" }, { v: "month", l: "月" }, { v: "year", l: "年" }, { v: "lunar-monthly", l: "农历月" }, { v: "lunar-yearly", l: "农历年" }].forEach((u) => {
       const opt = unitSelect.createEl("option", { value: u.v, text: u.l });
       if (u.v === "day") opt.selected = true;
     });
@@ -924,7 +935,9 @@ class RecurrencePickerModal extends Modal {
     actions.createEl("button", { text: "取消" }).addEventListener("click", () => { this.contentEl.empty(); this.onOpen(); });
     actions.createEl("button", { text: "保存", cls: "mod-cta" }).addEventListener("click", () => {
       const interval = Math.max(1, parseInt(intervalInput.value) || 1);
-      this.onSelect("custom:" + interval + ":" + unitSelect.value);
+      const unit = unitSelect.value;
+        const rec = unit.startsWith("lunar-") ? unit : "custom:" + interval + ":" + unit;
+        this.onSelect(rec);
       this.close();
     });
   }

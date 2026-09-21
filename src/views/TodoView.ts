@@ -101,6 +101,7 @@ import type { SortConfig, SortField, SortDirection } from "../utils/sort";
 import { renderStatCard, renderDistributionBar, renderStackedBarChart, renderMonthCalendar, renderBarChart, renderYearHeatmap } from "../utils/chart";
 import { IconPickerModal } from "../ui/IconPickerModal";
 import { CreateListModal } from "../ui/CreateListModal";
+import { getLunarDisplayText, isLunarSpecialDay } from "../utils/lunar";
 
 export type ViewNav = "myday" | "all" | "inbox" | "plan" | "schedule" | "review" | "trash";
 
@@ -194,6 +195,7 @@ export interface TodoPluginLike {
     activeReviewMode: "day" | "week" | "month" | "year";
     taskFilterStatus: "all" | "active" | "shelved" | "abandoned" | "completed";
     goalViewMode: "card" | "list";
+    showLunarCalendar: boolean;
   };
   saveSettings(): Promise<void>;
     app?: App;
@@ -207,6 +209,7 @@ export class TodoView extends ItemView {
   private sortLabelEl!: HTMLSpanElement;
   private headerIconEl!: HTMLSpanElement;
   private headerTitleEl!: HTMLSpanElement;
+  private headerSubEl!: HTMLSpanElement;
   private navEls: Record<ViewNav, HTMLDivElement> = {} as Record<ViewNav, HTMLDivElement>;
   private listNavEl!: HTMLDivElement;
   private listItemsEl!: HTMLDivElement;
@@ -287,6 +290,7 @@ export class TodoView extends ItemView {
     const taskHeader = main.createDiv({ cls: "todo-task-header" });
     this.headerIconEl = taskHeader.createSpan({ cls: "todo-header-icon" });
     this.headerTitleEl = taskHeader.createSpan({ cls: "todo-header-title" });
+    this.headerSubEl = taskHeader.createSpan({ cls: "todo-header-sub" });
     this.sortBtnEl = taskHeader.createEl("button", { cls: "todo-sort-btn" });
     setIcon(this.sortBtnEl, "arrow-up-down");
     this.sortLabelEl = this.sortBtnEl.createSpan({ text: this.getSortLabel(this.plugin.settings.sortConfig.primary.field) });
@@ -615,6 +619,18 @@ export class TodoView extends ItemView {
           selection.selectAllChildren(this.headerTitleEl);
         }
       };
+    }
+
+    // Update subtitle (lunar date for myday)
+    if (this.headerSubEl) {
+      if (activeViewNav === "myday" && !selectedListId && this.plugin.settings.showLunarCalendar) {
+        const now = new Date();
+        this.headerSubEl.textContent = getLunarDisplayText(now.getFullYear(), now.getMonth() + 1, now.getDate());
+        this.headerSubEl.style.display = "";
+      } else {
+        this.headerSubEl.textContent = "";
+        this.headerSubEl.style.display = "none";
+      }
     }
   }
 
@@ -1133,40 +1149,6 @@ private async activateNav(nav: ViewNav): Promise<void> {
       return;
     }
 
-    // Status filter bar (not for myday)
-    const filterStatus = this.plugin.settings.taskFilterStatus;
-    const filterBar = this.taskListEl.createDiv({ cls: "todo-status-filter" });
-    const filterOptions: { key: string; label: string }[] = [
-      { key: "all", label: "全部" },
-      { key: "active", label: "进行中" },
-      { key: "shelved", label: "搁置" },
-      { key: "abandoned", label: "放弃" },
-      { key: "completed", label: "已完成" },
-    ];
-    for (const opt of filterOptions) {
-      const btn = filterBar.createSpan({
-        cls: "todo-status-filter-btn" + (opt.key === filterStatus ? " active" : ""),
-        text: opt.label,
-      });
-      btn.addEventListener("click", async () => {
-        this.plugin.settings.taskFilterStatus = opt.key as any;
-        await this.plugin.saveSettings();
-        filterBar.querySelectorAll(".todo-status-filter-btn").forEach((el) => el.removeClass("active"));
-        btn.addClass("active");
-        await this.renderTasks(view);
-      });
-    }
-
-    // Apply status filter
-    if (filterStatus !== "all") {
-      if (filterStatus === "completed") {
-        tasks = tasks.filter((t) => t.isCompleted);
-      } else if (filterStatus === "active") {
-        tasks = tasks.filter((t) => !t.isCompleted && (t.status || "active") === "active");
-      } else {
-        tasks = tasks.filter((t) => (t.status || "active") === filterStatus);
-      }
-    }
 
     // Apply review filter if active
     if (this.reviewFilter && view === "all") {
@@ -2604,7 +2586,11 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         return this.scheduleYear + "年" + (this.scheduleMonth + 1) + "月";
       case "day": {
         const d = new Date(this.scheduleYear, this.scheduleMonth, this.scheduleDate);
-        return (this.scheduleMonth + 1) + "月" + this.scheduleDate + "日 " + dowNames[d.getDay()];
+        let dayTitle = (this.scheduleMonth + 1) + "月" + this.scheduleDate + "日 " + dowNames[d.getDay()];
+        if (this.plugin.settings.showLunarCalendar) {
+          dayTitle += " · " + getLunarDisplayText(this.scheduleYear, this.scheduleMonth + 1, this.scheduleDate);
+        }
+        return dayTitle;
       }
       case "week": {
         const d = new Date(this.scheduleYear, this.scheduleMonth, this.scheduleDate);
@@ -2865,6 +2851,12 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const dow = i % 7;
       if (dow === 0 || dow === 6) cell.addClass("todo-schedule-weekend");
       cell.createDiv({ cls: "todo-schedule-cell-date", text: String(dayNum) });
+      if (this.plugin.settings.showLunarCalendar) {
+        const [yStr, mStr, dStr] = dateStr.split("-");
+        const lunarText = getLunarDisplayText(+yStr, +mStr, +dStr);
+        const lunarCls = "todo-schedule-cell-lunar" + (isLunarSpecialDay(+yStr, +mStr, +dStr) ? " todo-lunar-festival" : "");
+        cell.createSpan({ cls: lunarCls, text: lunarText });
+      }
       cell.createDiv({ cls: "todo-schedule-cell-tasks" });
     }
     // 渲染任务到月历格子
@@ -3185,6 +3177,11 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       col.createDiv({ cls: "todo-week-dow", text: dowNames[i] });
       const dateNum = col.createDiv({ cls: "todo-week-date-num", text: String(d.getDate()) });
       if (isToday) { dateNum.addClass("todo-schedule-today"); }
+      if (this.plugin.settings.showLunarCalendar) {
+        const lunarText = getLunarDisplayText(d.getFullYear(), d.getMonth() + 1, d.getDate());
+        const lunarCls = "todo-week-lunar" + (isLunarSpecialDay(d.getFullYear(), d.getMonth() + 1, d.getDate()) ? " todo-lunar-festival" : "");
+        col.createSpan({ cls: lunarCls, text: lunarText });
+      }
     }
 
     // All-day row

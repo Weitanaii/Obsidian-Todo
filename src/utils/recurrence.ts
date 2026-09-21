@@ -41,6 +41,7 @@ export function getNextOccurrenceDate(fromDate: Date, recurrence: string): Date 
   if (recurrence === "weekly") return addDays(fromDate, 7);
   if (recurrence === "monthly") return addMonthsClamp(fromDate, 1);
   if (recurrence === "yearly") return addYearsClamp(fromDate, 1);
+  if (recurrence === "lunar-yearly" || recurrence === "lunar-monthly") return getNextLunarOccurrence(fromDate, recurrence);
 
   if (recurrence.startsWith("custom:")) {
     const parts = recurrence.split(":");
@@ -74,6 +75,7 @@ export function getPreGenerateCount(recurrence: string): number {
     if (unit === "year") return Math.min(2, Math.ceil(2 / n));
   }
 
+  if (recurrence === "lunar-yearly" || recurrence === "lunar-monthly") return getLunarPreGenerateCount(recurrence);
   return 28;
 }
 
@@ -81,7 +83,7 @@ export function getPreGenerateCount(recurrence: string): number {
  * 格式化重复规则的显示文案
  */
 export function formatRecurrenceDisplay(rec: string): string {
-  const map: Record<string, string> = { daily: "每天", weekly: "每周", monthly: "每月", yearly: "每年" };
+  const map: Record<string, string> = { daily: "每天", weekly: "每周", monthly: "每月", yearly: "每年", "lunar-yearly": "每年（农历）", "lunar-monthly": "每月（农历）" };
   if (map[rec]) return map[rec];
   if (rec.startsWith("custom:")) {
     const parts = rec.split(":");
@@ -116,4 +118,48 @@ function addYearsClamp(d: Date, n: number): Date {
   const day = d.getDate();
   const lastDay = new Date(y, m + 1, 0).getDate();
   return new Date(y, m, Math.min(day, lastDay));
+}
+
+// ===== 农历重复日期计算 =====
+
+import { Solar, Lunar } from "lunar-typescript";
+
+/**
+ * 从公历日期反推农历月/日，再计算下一次该农历日期对应的公历日期
+ * @param fromDate 起算公历日期（本地）
+ * @param type "lunar-yearly" 每年 | "lunar-monthly" 每月
+ */
+export function getNextLunarOccurrence(fromDate: Date, type: string): Date {
+  const solar = Solar.fromYmd(fromDate.getFullYear(), fromDate.getMonth() + 1, fromDate.getDate());
+  const lunar = solar.getLunar();
+  const lunarMonth = lunar.getMonth();
+  const lunarDay = lunar.getDay();
+
+  if (type === "lunar-monthly") {
+    // 从 fromDate 的下一天开始，找下一个相同农历日
+    const search = addDays(fromDate, 1);
+    for (let i = 0; i < 40; i++) {
+      const s = Solar.fromYmd(search.getFullYear(), search.getMonth() + 1, search.getDate());
+      const l = s.getLunar();
+      if (l.getMonth() === lunarMonth && l.getDay() === lunarDay) return search;
+      search.setDate(search.getDate() + 1);
+    }
+    return addDays(fromDate, 30); // fallback
+  }
+
+  // lunar-yearly: 从下一年的正月初一往前找
+  const nextYear = fromDate.getFullYear() + 1;
+  // 尝试直接转换（lunar-typescript 处理闰月：如果该年无此农历月，取最近有效日期）
+  try {
+    const targetSolar = Lunar.fromYmd(nextYear, lunarMonth, lunarDay).getSolar();
+    return new Date(targetSolar.getYear(), targetSolar.getMonth() - 1, targetSolar.getDay());
+  } catch {
+    // 该年无对应农历日期（闰月缺失），fallback 到公历 +1 年
+    return addYearsClamp(fromDate, 1);
+  }
+}
+
+/** 获取农历重复的预生成数量 */
+export function getLunarPreGenerateCount(type: string): number {
+  return type === "lunar-monthly" ? 6 : 2;
 }
