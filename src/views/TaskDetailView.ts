@@ -427,13 +427,12 @@ export class TaskDetailView {
     }
     return ids;
   }
-  private renderPropertyRows(container: HTMLElement, task: Task): void {
+    private renderPropertyRows(container: HTMLElement, task: Task): void {
     if (task.planKind === 'life') {
       this.createAgeRow(container, task);
       this.createTagRow(container, task, true);
       this.createChildrenSection(container, task);
-    } else if (task.planKind === 'year' || task.planKind === 'month') {
-      this.createDueDateRow(container, task);
+    } else if (task.planKind === 'year' || task.planKind === 'quarter' || task.planKind === 'month' || task.planKind === 'week') {
       this.createTagRow(container, task);
       this.createParentSection(container, task);
       this.createChildrenSection(container, task);

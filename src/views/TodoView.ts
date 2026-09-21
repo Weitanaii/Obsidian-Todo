@@ -1434,9 +1434,15 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     }
     const allTags = this.plugin.tagService.getAll();
     const taskTags = (task.tags || []).map((id) => allTags.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t);
+    const parentOf = this.plugin.taskService.getParentOf(task.id);
+    if (parentOf) {
+      const parentLabelMap: Record<string, string> = { life: "人生目标", year: "年度目标", quarter: "季度目标" };
+      const parentLabel = parentLabelMap[parentOf.planKind ?? ""] ?? "上级目标";
+      metaRight.createSpan({ cls: "todo-task-tag-label", text: parentLabel + "：" + parentOf.title });
+    }
     if (taskTags.length > 0) {
       taskTags.forEach((tag, i) => {
-        if (i > 0) metaRight.createSpan({ cls: "todo-task-meta-dot", text: "\u00b7" });
+        if (parentOf || i > 0) metaRight.createSpan({ cls: "todo-task-meta-dot", text: "\u00b7" });
         const tagEl = metaRight.createSpan({ cls: "todo-task-tag-label" });
         const tagIcon = tagEl.createSpan({ cls: "todo-task-tag-icon" });
         setIcon(tagIcon, tag.icon);
@@ -1993,7 +1999,17 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const done = children.filter((c) => c.isCompleted).length;
       const rate = total === 0 ? null : done / total;
       const overdue = !goal.isCompleted && !!goal.dueDate && extractLocalDate(goal.dueDate!) < todayStr;
-      const parent = this.plugin.taskService.getParentOf(goal.id);
+      // Find parent plan based on period hierarchy (month→quarter, quarter→year)
+      let parent: Task | undefined;
+      if (goal.planKind === "month" || goal.planKind === "quarter") {
+        const parentKey = getParentPeriodKey(goal.planKind, goal.planPeriodKey ?? "");
+        if (parentKey) {
+          const parentKind: PlanKind = goal.planKind === "month" ? "quarter" : "year";
+          parent = this.plugin.taskService.getByPlanKindAndPeriod(parentKind, parentKey)[0];
+        }
+      } else {
+        parent = this.plugin.taskService.getParentOf(goal.id);
+      }
       const goalTags = (goal.tags || []).map((id) => goalAllTags.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t);
 
       const card = cards.createDiv({ cls: "todo-goal-card" + (overdue ? " todo-goal-card-overdue" : "") });
@@ -2014,7 +2030,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       if (parent || goalTags.length > 0) {
         const right = row1.createDiv({ cls: "todo-goal-card-right" });
         if (parent) {
-          const parentLabel = parent.planKind === "life" ? "人生目标" : "年度目标";
+          const parentLabelMap: Record<string, string> = { life: "人生目标", year: "年度目标", quarter: "季度目标" };
+          const parentLabel = parentLabelMap[parent.planKind ?? ""] ?? "上级目标";
           right.createSpan({ cls: "todo-goal-card-parent-label", text: parentLabel + "：" + parent.title });
         }
         if (goalTags.length > 0) {
@@ -2024,8 +2041,10 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
             } else if (i > 0) {
               right.createSpan({ cls: "todo-goal-card-dot", text: " · " });
             }
-            const tagSpan = right.createSpan({ cls: "todo-goal-card-tag", text: tag.name });
-            tagSpan.style.color = tag.color;
+            const tagEl = right.createSpan({ cls: "todo-task-tag-label" });
+            const tagIcon = tagEl.createSpan({ cls: "todo-task-tag-icon" });
+            setIcon(tagIcon, tag.icon);
+            tagEl.createSpan({ text: tag.name });
           });
         }
       }
