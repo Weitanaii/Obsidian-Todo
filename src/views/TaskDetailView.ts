@@ -820,7 +820,7 @@ class AgePickerModal extends Modal {
     const selectorRow = this.contentEl.createDiv({ cls: "todo-age-selector" });
     const minusBtn = selectorRow.createEl("button", { cls: "todo-age-btn", text: "\u2212" });
     minusBtn.addEventListener("click", () => {
-      if (this.selectedAge > this.currentAge) {
+      if (this.selectedAge > 0) {
         this.selectedAge--;
         this.renderContent();
       }
@@ -828,12 +828,12 @@ class AgePickerModal extends Modal {
 
     const ageInput = selectorRow.createEl("input", {
       cls: "todo-age-input",
-      attr: { type: "number", min: String(this.currentAge), max: String(this.currentAge + 50) }
+      attr: { type: "number", min: "0", max: "100" }
     }) as HTMLInputElement;
     ageInput.value = String(this.selectedAge);
     ageInput.addEventListener("change", () => {
       const val = parseInt(ageInput.value, 10);
-      if (!isNaN(val) && val >= this.currentAge && val <= this.currentAge + 50) {
+      if (!isNaN(val) && val >= 0 && val <= 100) {
         this.selectedAge = val;
         this.renderContent();
       }
@@ -841,7 +841,7 @@ class AgePickerModal extends Modal {
 
     const plusBtn = selectorRow.createEl("button", { cls: "todo-age-btn", text: "+" });
     plusBtn.addEventListener("click", () => {
-      if (this.selectedAge < this.currentAge + 50) {
+      if (this.selectedAge < 100) {
         this.selectedAge++;
         this.renderContent();
       }
@@ -851,7 +851,7 @@ class AgePickerModal extends Modal {
     const quickRow = this.contentEl.createDiv({ cls: "todo-age-quick" });
     const milestones = [18, 20, 25, 30, 35, 40, 50, 60];
     milestones.forEach((age) => {
-      if (age >= this.currentAge && age <= this.currentAge + 50) {
+      if (age >= 0 && age <= 100) {
         const btn = quickRow.createEl("button", { cls: "todo-age-quick-btn" + (age === this.selectedAge ? " is-selected" : ""), text: String(age) });
         btn.addEventListener("click", () => {
           this.selectedAge = age;

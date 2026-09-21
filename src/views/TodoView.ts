@@ -494,6 +494,7 @@ export class TodoView extends ItemView {
       this.taskListEl.empty();
       this.taskListEl.createDiv({ cls: "todo-empty-state", text: "\u89c6\u56fe\u5df2\u91cd\u7f6e\uff0c\u8bf7\u91cd\u65b0\u5bfc\u822a" });
     }
+
   }
 
   private async navigateWithFilter(filter: { type: "date" | "overdue" | "tag"; value: string; label: string; dateField?: "dueDate" | "completedAt" }): Promise<void> {
@@ -1094,7 +1095,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
   private async renderTasks(view: ViewNav | "list"): Promise<void> {
     if (view === "plan" && this.activePlanKind) {
       this.sortBtnEl.style.display = "none";
-      this.quickContainerEl.style.display = "none";
+      this.updateQuickPlaceholder();
       if (this.activePlanKind === 'life') {
         await this.renderLifePlanView();
       } else if (this.activePlanKind === 'year' || this.activePlanKind === 'month') {
@@ -1585,7 +1586,15 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
   private updateQuickPlaceholder(): void {
     const { activeViewNav, selectedListId } = this.plugin.settings;
-    if (activeViewNav === "plan") { this.quickContainerEl.style.display = "none"; return; }
+    if (activeViewNav === "plan") {
+      this.quickContainerEl.style.display = "";
+      const pk = this.activePlanKind;
+      if (pk === "life") this.quickInputEl.placeholder = "新建人生目标...";
+      else if (pk === "year") this.quickInputEl.placeholder = "新建年度目标...";
+      else if (pk === "month") this.quickInputEl.placeholder = "新建月度目标...";
+      else this.quickInputEl.placeholder = "新建任务...";
+      return;
+    }
     this.quickContainerEl.style.display = activeViewNav === "inbox" ? "none" : "";
     if (activeViewNav === "myday") {
       this.quickInputEl.placeholder = "添加任务到我的一天...";
@@ -1643,6 +1652,22 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const title = this.quickInputEl.value.trim();
     if (!title) return;
 
+    // Plan view: create plan task
+    if (this.plugin.settings.activeViewNav === "plan" && this.activePlanKind) {
+      const kind = this.activePlanKind;
+      if (kind === "life") {
+        await this.plugin.taskService.create({ title, planKind: "life" });
+      } else {
+        await this.plugin.taskService.create({ title, planKind: kind, planPeriodKey: this.goalPeriodKey! });
+      }
+      this.quickInputEl.value = "";
+      if (kind === "life") await this.renderLifePlanView();
+      else if (kind === "year" || kind === "month") await this.renderGoalDashboard(kind);
+      else await this.renderPlanView(kind);
+      return;
+    }
+
+
 
     const { activeViewNav, selectedListId } = this.plugin.settings;
     let listId = selectedListId || undefined;
@@ -1690,7 +1715,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       el.toggleClass("active", (kind === "life" && i === 0) || (kind === "year" && i === 1) || (kind === "month" && i === 2));
     });
     this.sortBtnEl.style.display = "none";
-    this.quickContainerEl.style.display = "none";
+    this.updateQuickPlaceholder();
     this.taskListEl.empty();
     if (kind === "life") {
       await this.renderLifePlanView();
@@ -1861,8 +1886,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     };
     const clampKey = (k: string) => {
       if (kind === "year") {
-        const min = 2000, max = new Date().getFullYear() + 5;
-        const y = Math.min(max, Math.max(min, parseInt(k, 10)));
+        const min = 2000;
+        const y = Math.max(min, parseInt(k, 10));
         return String(y);
       }
       return k;
@@ -1875,7 +1900,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         const [yStr, mStr] = this.goalPeriodKey!.split("-");
         let y = parseInt(yStr, 10), m = parseInt(mStr, 10) + delta;
         if (m < 1) { y -= 1; m = 12; } else if (m > 12) { y += 1; m = 1; }
-        const yy = Math.max(2000, Math.min(new Date().getFullYear() + 5, y));
+        const yy = Math.max(2000, y);
         this.goalPeriodKey = yy + "-" + String(m).padStart(2, "0");
       }
       updateLabel();
@@ -1949,33 +1974,6 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       }
     }
 
-    const addWrap = this.taskListEl.createDiv({ cls: "todo-goal-add" });
-    const addBtn = addWrap.createEl("button", { cls: "todo-goal-add-btn", text: (kind === "year" ? "＋ 新建年度目标" : "＋ 新建月度目标") });
-    addBtn.setAttribute("aria-label", "新建目标");
-    addBtn.addEventListener("click", () => {
-      if (addWrap.querySelector(".todo-goal-add-input")) return;
-      const row = addWrap.createDiv({ cls: "todo-goal-add-input" });
-      const input = row.createEl("input");
-      input.placeholder = kind === "year" ? "输入年度目标标题" : "输入月度目标标题";
-      window.setTimeout(() => input.focus(), 30);
-      let saved = false;
-      const save = async () => {
-        if (saved) return;
-        saved = true;
-        const title = input.value.trim();
-        if (title) {
-          await this.plugin.taskService.create({ title, planKind: kind, planPeriodKey: this.goalPeriodKey! });
-          await this.renderGoalDashboard(kind);
-        } else {
-          row.remove();
-        }
-      };
-      input.addEventListener("keydown", async (ev) => {
-        if (ev.key === "Enter") { ev.preventDefault(); await save(); }
-        if (ev.key === "Escape") { ev.preventDefault(); saved = true; row.remove(); }
-      });
-      input.addEventListener("blur", async () => { await save(); });
-    });
 
     const modeSwitch = nav.createDiv({ cls: "todo-goal-mode-switch" });
     const cardModeBtn = modeSwitch.createSpan({ cls: "todo-goal-mode-btn" + (this.plugin.settings.goalViewMode !== "list" ? " active" : ""), text: "卡片" });
@@ -2520,7 +2518,13 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const contentCol = node.createDiv({ cls: "todo-life-content-col" });
       for (const t of tasks) {
         const card = contentCol.createDiv({ cls: "todo-life-card", attr: { "data-task-id": t.id } });
-        card.createSpan({ cls: "todo-life-card-title", text: t.title });
+        const lifeCheckbox = card.createDiv({ cls: "todo-checkbox" + (t.isCompleted ? " checked" : ""), text: t.isCompleted ? "\u2713" : "" });
+        lifeCheckbox.addEventListener("click", async (ev) => {
+          ev.stopPropagation();
+          if (t.isCompleted) { await this.plugin.taskService.uncomplete(t.id); } else { await this.plugin.taskService.complete(t.id); }
+          await this.renderLifePlanView();
+        });
+        card.createSpan({ cls: "todo-life-card-title" + (t.isCompleted ? " completed" : ""), text: t.title });
         const cardTags0 = (t.tags || []).map((id) => allTags.find((tg) => tg.id === id)).filter((tg): tg is NonNullable<typeof tg> => !!tg);
         if (cardTags0.length > 0) {
           const tagRow = card.createDiv({ cls: "todo-life-card-tags" });
@@ -2553,7 +2557,13 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const naContent = naNode.createDiv({ cls: "todo-life-content-col" });
       for (const t of noAge) {
         const card = naContent.createDiv({ cls: "todo-life-card", attr: { "data-task-id": t.id } });
-        card.createSpan({ cls: "todo-life-card-title", text: t.title });
+        const lifeCheckbox2 = card.createDiv({ cls: "todo-checkbox" + (t.isCompleted ? " checked" : ""), text: t.isCompleted ? "\u2713" : "" });
+        lifeCheckbox2.addEventListener("click", async (ev) => {
+          ev.stopPropagation();
+          if (t.isCompleted) { await this.plugin.taskService.uncomplete(t.id); } else { await this.plugin.taskService.complete(t.id); }
+          await this.renderLifePlanView();
+        });
+        card.createSpan({ cls: "todo-life-card-title" + (t.isCompleted ? " completed" : ""), text: t.title });
         const cardTags1 = (t.tags || []).map((id) => allTags.find((tg) => tg.id === id)).filter((tg): tg is NonNullable<typeof tg> => !!tg);
         if (cardTags1.length > 0) {
           const tagRow = card.createDiv({ cls: "todo-life-card-tags" });
@@ -2582,35 +2592,6 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         curNode.scrollIntoView({ block: "center" });
       }
     }
-    // Add button at bottom
-    const addRow = container.createDiv({ cls: "todo-life-add-row" });
-    const addBtnEl = addRow.createEl("button", { cls: "todo-life-add-btn" });
-    addBtnEl.createSpan({ text: "+" });
-    addBtnEl.createSpan({ text: " \u6dfb\u52a0\u4eba\u751f\u76ee\u6807" });
-    addBtnEl.addEventListener("click", () => {
-      addBtnEl.style.display = "none";
-      const input = addRow.createEl("input", { cls: "todo-life-add-input" }) as HTMLInputElement;
-      input.placeholder = "\u8f93\u5165\u4eba\u751f\u76ee\u6807\u6807\u9898\u2026";
-      input.focus();
-      let saved = false;
-      const save = async () => {
-        if (saved) return;
-        saved = true;
-        const title = input.value.trim();
-        if (title) {
-          await this.plugin.taskService.create({ title, planKind: "life" });
-          await this.renderLifePlanView();
-        } else {
-          input.remove();
-          addBtnEl.style.display = "";
-        }
-      };
-      input.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter") { ev.preventDefault(); save(); }
-        if (ev.key === "Escape") { input.remove(); addBtnEl.style.display = ""; }
-      });
-      input.addEventListener("blur", save);
-    });
 
   }
 

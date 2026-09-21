@@ -2124,6 +2124,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.todo-life-card-title.completed {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
 .todo-life-card-date {
   font-size: 11px;
   color: var(--text-faint);
@@ -3899,12 +3903,6 @@
 .todo-goal-quarter-empty{font-size:12px;color:var(--text-faint);padding:8px 0}
 .todo-goal-card-drop-hover{border-color:var(--interactive-accent)!important;box-shadow:0 0 0 2px color-mix(in srgb, var(--interactive-accent) 30%, transparent)!important}
 /* ===== Goal Plan Add Entry (step 5) ===== */
-.todo-goal-add{padding:6px 0 10px}
-.todo-goal-add-btn{width:100%;min-height:38px;border:1px dashed var(--background-modifier-border);border-radius:10px;background:transparent;color:var(--text-muted);cursor:pointer;font-size:13px}
-.todo-goal-add-btn:hover{color:var(--text-normal);background:var(--background-modifier-hover)}
-.todo-goal-add-input{padding-top:8px}
-.todo-goal-add-input input{width:100%;padding:10px 12px;border:1px solid var(--background-modifier-border);border-radius:10px;background:transparent;color:var(--text-normal);font-size:var(--font-ui-normal)}
-.todo-goal-add-input input::placeholder{color:var(--text-faint)}
 /* ===== Goal Plan Card Body / Expand (step 7) ===== */
 .todo-goal-card-body{display:block;padding:8px 0 4px;overflow:hidden;transition:max-height 0.25s ease, opacity 0.2s ease;opacity:1}
 .todo-goal-card-body-collapsed{max-height:0!important;opacity:0;padding:0}
@@ -3928,7 +3926,6 @@
   .todo-goal-nav{flex-wrap:wrap;gap:8px}
   .todo-goal-stats-row{display:grid;grid-template-columns:1fr;gap:8px}
   .todo-goal-card{min-height:56px}
-  .todo-goal-add-btn{min-height:48px}
 }
 
 /* ===== Goal Plan P1 polish ===== */
