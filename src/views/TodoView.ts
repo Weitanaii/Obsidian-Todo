@@ -192,6 +192,8 @@ export interface TodoPluginLike {
     quadrantGroupCollapsed: boolean;
     activeScheduleMode: "day" | "week" | "month";
     activeReviewMode: "day" | "week" | "month" | "year";
+    taskFilterStatus: "all" | "active" | "shelved" | "abandoned" | "completed";
+    goalViewMode: "card" | "list";
   };
   saveSettings(): Promise<void>;
     app?: App;
@@ -1920,9 +1922,6 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const BATCH = 40;
     let goalIdx = 0;
     const renderGoal = (goal: Task) => {
-    const BATCH = 40;
-    let goalIdx = 0;
-    const renderGoal = (goal: Task) => {
       const children = this.plugin.taskService.getChildrenOf(goal.id);
       const total = children.length;
       const done = children.filter((c) => c.isCompleted).length;
@@ -2071,6 +2070,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       this.taskListEl.scrollTop = prevScrollTop;
     } else if (targetEl) {
       targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
     }
   }
 
