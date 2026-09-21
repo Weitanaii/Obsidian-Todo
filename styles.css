@@ -3874,7 +3874,7 @@
 .todo-goal-placeholder{color:var(--text-muted);font-size:12px;padding:8px 0}
 /* ===== Goal Plan Stats Row (step 3) ===== */
 .todo-goal-stats-row{display:flex;gap:10px;flex-wrap:wrap;padding:8px 0 12px}
-.todo-goal-stat-card{flex:1 1 120px;max-width:180px;padding:10px 12px;border-radius:10px;background:var(--background-secondary);border:1px solid var(--background-modifier-border)}
+.todo-goal-stat-card{flex:1 1 120px;padding:10px 12px;border-radius:10px;background:var(--background-secondary);border:1px solid var(--background-modifier-border)}
 .todo-goal-stat-value{font-size:20px;font-weight:700;color:var(--text-normal)}
 .todo-goal-stat-label{font-size:11px;color:var(--text-muted);margin-top:2px}
 /* ===== Goal Plan Cards (step 4) ===== */
@@ -3885,6 +3885,19 @@
 .todo-goal-progress{position:relative;height:8px;flex:1 1 160px;background:var(--background-modifier-border);border-radius:8px}
 .todo-goal-progress-fill{height:100%;border-radius:8px;background:linear-gradient(90deg,var(--interactive-accent),color-mix(in srgb,var(--interactive-accent) 70%,var(--background-secondary)))}
 .todo-goal-progress-text{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text-normal)}
+/* ===== Quarterly Goals Section (monthly view) ===== */
+.todo-goal-quarter-section{padding:8px 0 12px}
+.todo-goal-quarter-label{font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px}
+.todo-goal-quarter-scroll{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;scrollbar-width:thin}
+.todo-goal-quarter-scroll::-webkit-scrollbar{height:4px}
+.todo-goal-quarter-scroll::-webkit-scrollbar-thumb{background:var(--background-modifier-border);border-radius:4px}
+.todo-goal-quarter-card{flex:0 0 auto;min-width:140px;max-width:200px;padding:10px 12px;border-radius:8px;background:var(--background-secondary);border:1px solid var(--background-modifier-border);cursor:grab;transition:border-color 0.15s,box-shadow 0.15s}
+.todo-goal-quarter-card:hover{border-color:var(--interactive-accent)}
+.todo-goal-quarter-card.dragging{opacity:0.5;border-color:var(--interactive-accent);box-shadow:0 0 0 2px color-mix(in srgb, var(--interactive-accent) 25%, transparent)}
+.todo-goal-quarter-card-title{display:block;font-size:13px;font-weight:600;color:var(--text-normal);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.todo-goal-quarter-card-meta{display:block;font-size:11px;color:var(--text-muted);margin-top:4px}
+.todo-goal-quarter-empty{font-size:12px;color:var(--text-faint);padding:8px 0}
+.todo-goal-card-drop-hover{border-color:var(--interactive-accent)!important;box-shadow:0 0 0 2px color-mix(in srgb, var(--interactive-accent) 30%, transparent)!important}
 /* ===== Goal Plan Add Entry (step 5) ===== */
 .todo-goal-add{padding:6px 0 10px}
 .todo-goal-add-btn{width:100%;min-height:38px;border:1px dashed var(--background-modifier-border);border-radius:10px;background:transparent;color:var(--text-muted);cursor:pointer;font-size:13px}

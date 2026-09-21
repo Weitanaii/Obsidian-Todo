@@ -1921,6 +1921,34 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     addStatCard("逾期", String(overdueCount), "alert-triangle", overdueCount > 0 ? "todo-goal-stat-overdue" : "todo-goal-stat-overdue-empty");
     addStatCard("完成率", completionRate + "%", "pie-chart", completionRate >= 100 ? "todo-goal-stat-rate-full" : undefined);
 
+    // Monthly view: show quarterly goals as draggable cards
+    if (kind === "month" && this.goalPeriodKey) {
+      const quarterKey = getParentPeriodKey("month", this.goalPeriodKey);
+      if (quarterKey) {
+        const quarterTasks = this.plugin.taskService.getByPlanKindAndPeriod("quarter", quarterKey);
+        const qSection = this.taskListEl.createDiv({ cls: "todo-goal-quarter-section" });
+        const qLabel = qSection.createDiv({ cls: "todo-goal-quarter-label", text: subGroupLabel("quarter", quarterKey) + " 目标" });
+        const qScroll = qSection.createDiv({ cls: "todo-goal-quarter-scroll" });
+        for (const qt of quarterTasks) {
+          const qCard = qScroll.createDiv({ cls: "todo-goal-quarter-card", attr: { "data-task-id": qt.id, draggable: "true" } });
+          qCard.createSpan({ cls: "todo-goal-quarter-card-title", text: qt.title });
+          const qChildren = this.plugin.taskService.getChildrenOf(qt.id);
+          const qDone = qChildren.filter(c => c.isCompleted).length;
+          if (qChildren.length > 0) {
+            qCard.createSpan({ cls: "todo-goal-quarter-card-meta", text: qDone + "/" + qChildren.length });
+          }
+          qCard.addEventListener("dragstart", (ev) => {
+            ev.dataTransfer!.setData("text/plain", qt.id);
+            qCard.addClass("dragging");
+          });
+          qCard.addEventListener("dragend", () => { qCard.removeClass("dragging"); });
+        }
+        if (quarterTasks.length === 0) {
+          qScroll.createDiv({ cls: "todo-goal-quarter-empty", text: "暂无季度目标" });
+        }
+      }
+    }
+
     const addWrap = this.taskListEl.createDiv({ cls: "todo-goal-add" });
     const addBtn = addWrap.createEl("button", { cls: "todo-goal-add-btn", text: (kind === "year" ? "＋ 新建年度目标" : "＋ 新建月度目标") });
     addBtn.setAttribute("aria-label", "新建目标");
@@ -1999,14 +2027,14 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const overdue = !goal.isCompleted && !!goal.dueDate && extractLocalDate(goal.dueDate!) < todayStr;
       // Find parent plan based on period hierarchy (month→quarter, quarter→year)
       let parent: Task | undefined;
-      if (goal.planKind === "month" || goal.planKind === "quarter") {
+      // Use explicit parentId first; fall back to period-based lookup
+      parent = this.plugin.taskService.getParentOf(goal.id);
+      if (!parent && (goal.planKind === "month" || goal.planKind === "quarter")) {
         const parentKey = getParentPeriodKey(goal.planKind, goal.planPeriodKey ?? "");
         if (parentKey) {
           const parentKind: PlanKind = goal.planKind === "month" ? "quarter" : "year";
           parent = this.plugin.taskService.getByPlanKindAndPeriod(parentKind, parentKey)[0];
         }
-      } else {
-        parent = this.plugin.taskService.getParentOf(goal.id);
       }
       const goalTags = (goal.tags || []).map((id) => goalAllTags.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t);
 
@@ -2014,6 +2042,21 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       card.setAttribute("data-goal-id", goal.id);
       card.tabIndex = 0;
       card.setAttribute("role", "button");
+
+      // Drop handler: associate dragged quarterly goal with this monthly goal
+      if (kind === "month") {
+        card.addEventListener("dragover", (ev) => { ev.preventDefault(); card.addClass("todo-goal-card-drop-hover"); });
+        card.addEventListener("dragleave", () => { card.removeClass("todo-goal-card-drop-hover"); });
+        card.addEventListener("drop", async (ev) => {
+          ev.preventDefault();
+          card.removeClass("todo-goal-card-drop-hover");
+          const dragId = ev.dataTransfer?.getData("text/plain");
+          if (dragId && dragId !== goal.id) {
+            await this.plugin.taskService.update(goal.id, { parentId: dragId });
+            await this.renderGoalDashboard(kind);
+          }
+        });
+      }
 
             // row1: checkbox + title + right-aligned parent/tags
       const row1 = card.createDiv({ cls: "todo-goal-card-row" });
