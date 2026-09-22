@@ -4070,7 +4070,7 @@
 .todo-sidebar-nav .todo-nav-add:hover{background:var(--background-modifier-hover);color:var(--text-normal)}
 .todo-mobile-back{display:flex}
 .todo-detail-close{display:none!important}
-.todo-detail-mobile-back{display:flex!important;margin-right:auto}
+.todo-ai-detail-panel .todo-detail-close{display:inline-flex!important;margin-left:auto!important}
 .todo-task-header{gap:2px}
 .todo-task-header{padding-right:8px}
 .todo-header-title{max-width:140px}

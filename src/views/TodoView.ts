@@ -96,6 +96,7 @@ import { Task, MyDayGroup, PlanKind } from "../models/Task";
 import { extractLocalDate } from "../utils/recurrence";
 import { localTodayStr, currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent, getParentPeriodKey, ageFromDueDate, currentAge, getISOWeekNumber, getISOWeekRange } from "../utils/period";
 import { TaskDetailView } from "./TaskDetailView";
+import { AIRecommendationView } from "./AIRecommendationView";
 import { sortTasks, getMyDayGroupFromTime } from "../utils/sort";
 import type { SortConfig, SortField, SortDirection } from "../utils/sort";
 import { renderStatCard, renderDistributionBar, renderStackedBarChart, renderMonthCalendar, renderBarChart, renderYearHeatmap } from "../utils/chart";
@@ -227,6 +228,7 @@ export class TodoView extends ItemView {
   private quickContainerEl!: HTMLDivElement;
   private detailEl!: HTMLDivElement;
   private detailView!: TaskDetailView;
+  private aiView!: AIRecommendationView;
   private planContainerEl!: HTMLDivElement;
   private planGroupEl!: HTMLDivElement;
   private quadrantGroupEl!: HTMLDivElement;
@@ -496,6 +498,11 @@ export class TodoView extends ItemView {
     }, () => {
       this.showMobilePanel("detail");
     });
+    this.aiView = new AIRecommendationView(this.plugin, this.detailEl, () => {
+      const layout = this.containerEl.querySelector(".todo-layout");
+      if (layout) layout.removeClass("todo-layout-detail-open");
+      this.showMobilePanel("main");
+    });
 
     this.plugin.settings.selectedTaskId = null;
 
@@ -514,27 +521,29 @@ export class TodoView extends ItemView {
     const mode = this.plugin.settings.activeViewNav === "plan" && this.activePlanKind === "month" ? "month" : "myday";
     const date = this.myDayViewDate || localTodayStr();
     const monthKey = this.goalPeriodKey || currentPeriodKey("month");
+    const provider = new LocalAIProvider();
+    let items: AIRecommendation[] = [];
+    const accept = async (item: AIRecommendation): Promise<void> => {
+      const error = validateRecommendation(item);
+      if (error) { new Notice(error); return; }
+      const duplicate = this.plugin.taskService.getAll().some((task) => !task.isDeleted && isSimilar(task.title, item.title) && (mode === "month" ? task.planPeriodKey === item.planPeriodKey : task.myDayDate === item.myDayDate));
+      if (duplicate) { new Notice(t("跳过重复或无效项")); return; }
+      if (item.sourceTaskId) await this.plugin.taskService.update(item.sourceTaskId, { myDayDate: item.myDayDate, myDayGroup: item.myDayGroup, startDate: item.startDate, dueDate: item.dueDate });
+      else await this.plugin.taskService.create({ title: item.title, note: item.note, listId: item.listId, tags: item.tags, isImportant: item.isImportant, myDayDate: item.myDayDate ?? null, myDayGroup: item.myDayGroup ?? "allday", startDate: item.startDate ?? null, dueDate: item.dueDate ?? null, planKind: item.planKind, planPeriodKey: item.planPeriodKey, parentId: item.parentId });
+      await this.refreshAll();
+      new Notice(t("已保存"));
+    };
+    const generate = async () => {
+      const context = { tasks: this.plugin.taskService.getAll(), date, monthKey, intensity: this.plugin.settings.planningIntensity };
+      items = mode === "myday" ? await provider.recommendMyDay(context) : await provider.recommendMonthWeeks(context);
+      this.aiView.open(items, generate, accept);
+    };
+    this.aiView.open([], generate, accept);
     const tasks = this.plugin.taskService.getAll();
     if (mode === "month" && !tasks.some((task) => task.planKind === "month" && task.planPeriodKey === monthKey)) {
       new Notice(t("当前月份没有月度目标，请先创建月度目标"));
       return;
     }
-    const provider = new LocalAIProvider();
-    let items: AIRecommendation[] = [];
-    const generate = async () => {
-      const context = { tasks: this.plugin.taskService.getAll(), date, monthKey, intensity: this.plugin.settings.planningIntensity };
-      items = mode === "myday" ? await provider.recommendMyDay(context) : await provider.recommendMonthWeeks(context);
-      this.detailView.openAIRecommendations(items, generate, async (item) => {
-        const error = validateRecommendation(item);
-        if (error) { new Notice(error); return; }
-        const duplicate = this.plugin.taskService.getAll().some((task) => !task.isDeleted && isSimilar(task.title, item.title) && (mode === "month" ? task.planPeriodKey === item.planPeriodKey : task.myDayDate === item.myDayDate));
-        if (duplicate) { new Notice(t("跳过重复或无效项")); return; }
-        if (item.sourceTaskId) await this.plugin.taskService.update(item.sourceTaskId, { myDayDate: item.myDayDate, myDayGroup: item.myDayGroup, startDate: item.startDate, dueDate: item.dueDate });
-        else await this.plugin.taskService.create({ title: item.title, note: item.note, listId: item.listId, tags: item.tags, isImportant: item.isImportant, myDayDate: item.myDayDate ?? null, myDayGroup: item.myDayGroup ?? "allday", startDate: item.startDate ?? null, dueDate: item.dueDate ?? null, planKind: item.planKind, planPeriodKey: item.planPeriodKey, parentId: item.parentId });
-        await this.refreshAll();
-        new Notice(t("已保存"));
-      });
-    };
     try { await generate(); } catch (error) { console.error(error); new Notice(t("AI 推荐失败，请稍后重试")); }
   }
 
