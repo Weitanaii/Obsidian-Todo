@@ -3768,6 +3768,7 @@
 
 .todo-sort-btn {
   margin-left: auto;
+  font-size: 14px;
 }
 
 /* ========== Tag Edit Icon Grid ========== */
@@ -4019,17 +4020,23 @@
 .todo-main{display:flex!important}
 .todo-layout[data-mobile-panel="detail"] .todo-detail{display:flex!important}
 .todo-layout[data-mobile-panel="detail"] .todo-main{display:none!important}
-.todo-sidebar-nav{padding:68px 0 8px}
+/* Obsidian's .view-content padding has higher specificity; keep the mobile nav clear of the top toolbar. */
+.view-content.todo-sidebar-nav{padding:32px 0 8px!important}
 .todo-sidebar-nav-sep{height:1px;background:var(--background-modifier-border);margin:8px 12px}
 .todo-sidebar-nav .todo-nav-item{display:flex;align-items:center;gap:8px;padding:6px 16px;cursor:pointer;font-size:14px}
+.todo-sidebar-nav > .todo-nav-item{font-size:var(--nav-item-size,14px)}
+.todo-sidebar-nav .todo-plan-group .todo-nav-item,
+.todo-sidebar-nav .todo-quadrant-group .todo-nav-item{font-size:calc(var(--nav-item-size,14px) - 1px)}
 .todo-sidebar-nav .todo-nav-item:hover{background:var(--background-modifier-hover)}
 .todo-sidebar-nav .todo-nav-item.active{background:var(--background-modifier-hover);color:var(--text-accent)}
 .todo-sidebar-nav .todo-nav-icon{display:inline-flex;width:20px;justify-content:center}
 .todo-sidebar-nav .todo-nav-group{margin-top:4px}
-.todo-sidebar-nav .todo-nav-group-header{display:flex;align-items:center;gap:6px;padding:6px 16px;cursor:pointer;font-size:12px;color:var(--text-muted);font-weight:600}
+.todo-sidebar-nav .todo-nav-group-header{display:flex;align-items:center;gap:8px;padding:6px 16px;cursor:pointer;font-size:var(--nav-item-size,14px);color:var(--text-normal);font-weight:400}
+.todo-sidebar-nav .todo-nav-group-header > span:first-child{display:inline-flex;align-items:center;justify-content:center;width:20px;flex-shrink:0}
+.todo-sidebar-nav .todo-nav-group-header > span:first-child svg{width:16px;height:16px}
 .todo-sidebar-nav .todo-nav-group-header:hover{background:var(--background-modifier-hover)}
 .todo-sidebar-nav .todo-nav-group-list{}
-.todo-sidebar-nav .todo-nav-group-name{font-size:12px}
+.todo-sidebar-nav .todo-nav-group-name{font-size:inherit}
 .todo-sidebar-nav .todo-nav-group-arrow{font-size:9px;transition:transform .15s}
 .todo-sidebar-nav .todo-nav-group-arrow.collapsed{transform:rotate(-90deg)}
 .todo-sidebar-nav .todo-nav-section{margin-top:8px;padding:0!important}
@@ -4041,6 +4048,7 @@
 .todo-detail-close{display:none!important}
 .todo-detail-mobile-back{display:flex!important;margin-right:auto}
 .todo-task-header{gap:2px}
+.todo-task-header{padding-right:8px}
 .todo-header-title{max-width:140px}
 .todo-schedule-cell{min-height:52px}
 .todo-goal-stats-row{display:flex!important;gap:6px!important;padding:6px 0 8px!important;flex-wrap:nowrap!important;overflow-x:auto!important}
