@@ -6,7 +6,7 @@ import { ResourceSuggestModal } from "../ui/ResourceSuggestModal";
 import { formatRecurrenceDisplay } from "../utils/recurrence";
 import { localTodayStr, getPeriodKeyForDate, getParentPeriodKey, ageFromDueDate, currentAge } from "../utils/period";
 import { getLunarDisplayText, isLunarSpecialDay } from "../utils/lunar";
-import { isEnglish, localizeDom, systemTagName } from "../i18n";
+import { isEnglish, localizeDom, systemTagName, t } from "../i18n";
 
 export class TaskDetailView {
   private app: App;
@@ -651,15 +651,15 @@ class ConfirmModal extends Modal {
 
   constructor(app: App, message: string) {
     super(app);
-    this.message = message;
+    this.message = t(message);
   }
 
   onOpen(): void {
     const { contentEl } = this;
     contentEl.createEl("p", { text: this.message });
     const actions = contentEl.createDiv({ cls: "todo-prompt-actions" });
-    const cancelBtn = actions.createEl("button", { text: "\u53d6\u6d88" });
-    const confirmBtn = actions.createEl("button", { text: "\u5220\u9664", cls: "mod-warning" });
+    const cancelBtn = actions.createEl("button", { text: t("\u53d6\u6d88") });
+    const confirmBtn = actions.createEl("button", { text: t("\u5220\u9664"), cls: "mod-warning" });
     cancelBtn.addEventListener("click", () => this.finish(false));
     confirmBtn.addEventListener("click", () => this.finish(true));
   }

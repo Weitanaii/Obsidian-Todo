@@ -2,7 +2,7 @@ import { App, ItemView, Modal, setIcon, WorkspaceLeaf } from "obsidian";
 import type ObsidianTodoPlugin from "../../main";
 import type { ViewNav } from "./TodoView";
 import type { PlanKind } from "../models/Task";
-import { localizeDom } from "../i18n";
+import { localizeDom, t } from "../i18n";
 
 export const VIEW_TYPE_TODO_NAV = "obsidian-todo-nav";
 
@@ -240,7 +240,7 @@ class PromptModal extends Modal {
   private promptText: string;
   private resolve!: (value: string | null) => void;
   private value = "";
-  constructor(app: App, promptText: string) { super(app); this.promptText = promptText; }
+  constructor(app: App, promptText: string) { super(app); this.promptText = t(promptText); }
   onOpen(): void {
     this.contentEl.createEl("p", { text: this.promptText });
     const input = this.contentEl.createEl("input") as HTMLInputElement;
@@ -248,8 +248,8 @@ class PromptModal extends Modal {
     input.addEventListener("input", () => { this.value = input.value; });
     input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { this.resolve(input.value.trim()); this.close(); } });
     const actions = this.contentEl.createDiv({ cls: "todo-prompt-actions" });
-    actions.createEl("button", { text: "\u53d6\u6d88" }).addEventListener("click", () => { this.resolve(null); this.close(); });
-    actions.createEl("button", { text: "\u786e\u5b9a", cls: "mod-cta" }).addEventListener("click", () => { this.resolve(input.value.trim()); this.close(); });
+    actions.createEl("button", { text: t("\u53d6\u6d88") }).addEventListener("click", () => { this.resolve(null); this.close(); });
+    actions.createEl("button", { text: t("\u786e\u8ba4"), cls: "mod-cta" }).addEventListener("click", () => { this.resolve(input.value.trim()); this.close(); });
     window.setTimeout(() => input.focus(), 30);
   }
   onClose(): void { this.contentEl.empty(); }

@@ -23,6 +23,13 @@ const translations: Record<string, string> = {
   "年度计划": "Year Plan",
   "月度计划": "Month Plan",
   "新建列表": "New List",
+  "编辑列表": "Edit List",
+  "列表名称": "List name",
+  "输入列表名称...": "Enter list name...",
+  "选择图标": "Choose icon",
+  "搜索图标...": "Search icons...",
+  "没有匹配的图标": "No matching icons",
+  "创建": "Create",
   "新建分组": "New Group",
   "设置": "Settings",
   "统计": "Statistics",
@@ -33,6 +40,12 @@ const translations: Record<string, string> = {
   "确认": "Confirm",
   "保存": "Save",
   "编辑": "Edit",
+  "编辑标签": "Edit Tag",
+  "新增标签": "New Tag",
+  "名称": "Name",
+  "标签名称": "Tag name",
+  "图标": "Icon",
+  "颜色": "Color",
   "删除": "Delete",
   "恢复": "Restore",
   "按重要程度": "By Importance",
@@ -40,28 +53,31 @@ const translations: Record<string, string> = {
   "按创建时间": "By Created Time",
   "按标题": "By Title",
   "添加任务...": "Add task...",
-  "显示设置": "Display Settings",
-  "界面显示选项": "Interface display options",
   "显示农历": "Show lunar calendar",
   "在日历、日程视图和日期选择器中显示农历日期、节日和节气": "Show lunar dates, festivals, and solar terms in calendars, schedules, and date pickers",
   "语言": "Language",
   "选择插件界面语言": "Choose the plugin interface language",
   "中文": "Chinese",
   "英文": "English",
-  "任务管理插件设置": "Task management plugin settings",
   "基本设置": "Basic Settings",
+  "显示设置": "Display Settings",
+  "界面显示选项": "Interface display options",
   "插件核心配置": "Core plugin configuration",
   "数据存储文件夹": "Data folder",
   "任务数据文件存储在 Vault 中的文件夹路径": "Folder in the Vault where task data is stored",
   "默认列表名称": "Default list name",
   "首次运行时自动创建的默认列表名称": "Default list name created on first run",
   "生日": "Birthday",
+  "任务管理插件设置": "Task management plugin settings",
   "用于人生计划视图计算年龄（格式：YYYY-MM-DD）": "Used to calculate age in the life plan view (YYYY-MM-DD)",
   "标签管理": "Tag Management",
   "任务分类与标签配置": "Task categories and tag configuration",
   "四象限标签": "Quadrant Tags",
   "领域标签": "Domain Tags",
   "自定义标签": "Custom Tags",
+  "用于四象限视图的任务分类": "Task categories used by the quadrant view",
+  "用于人生领域维度的任务分类": "Task categories used for life domains",
+  "自由创建的个性化标签": "Custom personal tags",
   "高级设置": "Advanced Settings",
   "调试与日志": "Debugging and logging",
   "日志级别": "Log level",
@@ -76,6 +92,7 @@ const translations: Record<string, string> = {
   "清空所有任务": "Clear all tasks",
   "删除所有任务，保留列表和标签配置": "Delete all tasks while keeping lists and tags",
   "清空任务": "Clear Tasks",
+  "删除所有任务数据，保留列表和标签配置": "Delete all task data while keeping lists and tag settings",
   "重置所有数据": "Reset all data",
   "清空所有任务、列表、标签、分组，恢复到初始状态": "Clear all tasks, lists, tags, and groups and restore defaults",
   "全部重置": "Reset Everything",
@@ -90,7 +107,15 @@ const translations: Record<string, string> = {
   "已完成": "Completed",
   "清空回收站": "Empty Trash",
   "回收站是空的": "Trash is empty",
+  "已删除的任务将保留 30 天，之后自动清理": "Deleted tasks are kept for 30 days, then automatically cleared",
+  "彻底删除": "Delete permanently",
+  "删除于": "Deleted on",
+  "共": "Total",
+  "个任务": " tasks",
+  "确定永久删除回收站中的任务吗？此操作不可撤销。": "Permanently delete the tasks in the trash? This action cannot be undone.",
+  "确定永久删除吗？此操作不可撤销。": "Permanently delete this task? This action cannot be undone.",
   "没有任务": "No tasks",
+  "还没有列表": "No lists yet",
   "今天还没有安排": "Nothing planned for today",
   "从下方输入一个任务，或从其它列表把重要事项加入今天计划。": "Enter a task below, or add an important item from another list to today's plan.",
   "添加一个今日任务": "Add today's task",
@@ -128,9 +153,28 @@ const translations: Record<string, string> = {
   "日": "Day",
   "周": "Week",
   "月": "Month",
+  "年": "Year",
   "季度计划": "Quarter Plan",
   "周计划": "Week Plan",
   "统计分布": "Statistics",
+  "今日任务": "Today's Tasks",
+  "今日完成": "Completed Today",
+  "昨日逾期": "Overdue Yesterday",
+  "本周任务": "This Week's Tasks",
+  "本周完成": "Completed This Week",
+  "逾期任务": "Overdue Tasks",
+  "本月任务": "This Month's Tasks",
+  "本月完成": "Completed This Month",
+  "本年完成": "Completed This Year",
+  "完成": "Completed",
+  "四象限分布": "Quadrant Distribution",
+  "领域分布": "Domain Distribution",
+  "每日任务趋势": "Daily Task Trend",
+  "月度打卡": "Monthly Activity",
+  "每周任务趋势": "Weekly Task Trend",
+  "年度打卡": "Yearly Activity",
+  "每月任务趋势": "Monthly Task Trend",
+  "本年任务": "This Year's Tasks",
   "没有目标": "No goals",
   "添加目标": "Add goal",
   "新建人生目标...": "New life goal...",
@@ -140,7 +184,6 @@ const translations: Record<string, string> = {
   "添加任务到我的一天...": "Add task to My Day...",
   "添加任务到任务...": "Add task to Tasks...",
   "添加任务到当前列表...": "Add task to current list...",
-  "输入任务标题": "Enter task title",
   "任务标题": "Task title",
   "选择一个任务查看详情": "Select a task to view details",
   "点击列表中的任务后，可在此处编辑标题、备注、日期、重复规则等属性。": "Select a task to edit its title, notes, dates, and recurrence here.",
@@ -152,6 +195,13 @@ const translations: Record<string, string> = {
   "我的计划": "My Plans",
   "输入列表名称": "Enter list name",
   "输入分组名称": "Enter group name",
+  "输入新名称": "Enter a new name",
+  "输入任务标题": "Enter task title",
+  "确定删除列表吗？": "Delete this list?",
+  "确定删除分组吗？组内列表将变为未分组。": "Delete this group? Its lists will become ungrouped.",
+  "确定删除标签吗？": "Delete this tag?",
+  "将删除个未完成实例，已完成的保留。确定继续？": "Uncompleted instances will be deleted while completed ones are kept. Continue?",
+  "任务有个子任务，删除后子任务也将被删除。确定继续？": "This task has child tasks, which will also be deleted. Continue?",
   "目标数": "Goals",
   "进行中": "In Progress",
   "逾期": "Overdue",
@@ -185,7 +235,24 @@ export function isEnglish(): boolean {
 }
 
 export function t(text: string): string {
-  return currentLanguage === "en" ? (translations[text] || text) : text;
+  if (currentLanguage !== "en") return text;
+  if (translations[text]) return translations[text];
+  let match = text.match(/^确定删除[「『](.+?)[」』]吗？列表中的任务也会被删除。$/);
+  if (match) return `Delete "${match[1]}"? All tasks in this list will also be deleted.`;
+  match = text.match(/^确定删除列表[「『](.+?)[」』]？$/);
+  if (match) return `Delete list "${match[1]}"?`;
+  match = text.match(/^确定删除分组[「『](.+?)[」』]？组内列表将变为未分组。$/);
+  if (match) return `Delete group "${match[1]}"? Its lists will become ungrouped.`;
+  match = text.match(/^确定删除标签[「『](.+?)[」』]吗？$/);
+  if (match) return `Delete tag "${match[1]}"?`;
+  match = text.match(/^即将删除 (\d+) 个任务，此操作不可撤销。确认清空吗？$/);
+  if (match) return `About to delete ${match[1]} tasks. This action cannot be undone. Empty all tasks?`;
+  if (text === "即将重置所有数据（任务、列表、标签、分组），此操作不可撤销。确认重置吗？") return "About to reset all data (tasks, lists, tags, and groups). This action cannot be undone. Reset everything?";
+  match = text.match(/^将删除 (\d+) 个未完成实例，已完成的保留。确定继续？$/);
+  if (match) return `This will delete ${match[1]} incomplete instances while keeping completed ones. Continue?`;
+  match = text.match(/^任务[「『](.+?)[」』]有 (\d+) 个子任务，删除后子任务也将被删除。确定继续？$/);
+  if (match) return `Task "${match[1]}" has ${match[2]} child tasks, which will also be deleted. Continue?`;
+  return text;
 }
 
 export function systemTagName(tag: { name: string; isDefault?: boolean }): string {

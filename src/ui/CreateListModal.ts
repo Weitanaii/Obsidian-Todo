@@ -1,4 +1,5 @@
 import { App, Modal, setIcon } from "obsidian";
+import { t } from "../i18n";
 
 export interface CreateListResult {
   name: string;
@@ -47,22 +48,22 @@ export class CreateListModal extends Modal {
     contentEl.addClass("todo-create-list-modal");
 
     // Title
-    contentEl.createDiv({ cls: "todo-create-list-title", text: "新建列表" });
+    contentEl.createDiv({ cls: "todo-create-list-title", text: this.editName ? t("编辑列表") : t("新建列表") });
 
     // Wait for onOpen to set nameInput value
 
     // Name input
     const nameGroup = contentEl.createDiv({ cls: "todo-create-list-group" });
-    nameGroup.createDiv({ cls: "todo-create-list-label", text: "列表名称" });
+    nameGroup.createDiv({ cls: "todo-create-list-label", text: t("列表名称") });
     this.nameInput = nameGroup.createEl("input", {
       cls: "todo-create-list-input",
-      attr: { type: "text", placeholder: "输入列表名称..." },
+      attr: { type: "text", placeholder: t("输入列表名称...") },
     }) as HTMLInputElement;
     if (this.editName) this.nameInput.value = this.editName;
 
     // Icon selector
     const iconGroup = contentEl.createDiv({ cls: "todo-create-list-group" });
-    iconGroup.createDiv({ cls: "todo-create-list-label", text: "选择图标" });
+    iconGroup.createDiv({ cls: "todo-create-list-label", text: t("选择图标") });
 
     // Current icon preview
     const iconPreview = iconGroup.createDiv({ cls: "todo-create-list-icon-preview" });
@@ -73,7 +74,7 @@ export class CreateListModal extends Modal {
     // Search input
     const searchInput = iconGroup.createEl("input", {
       cls: "todo-create-list-search",
-      attr: { type: "text", placeholder: "搜索图标..." },
+      attr: { type: "text", placeholder: t("搜索图标...") },
     }) as HTMLInputElement;
 
     // Icon grid
@@ -102,7 +103,7 @@ export class CreateListModal extends Modal {
       }
 
       if (filtered.length === 0) {
-        gridEl.createDiv({ cls: "todo-create-list-icon-empty", text: "没有匹配的图标" });
+        gridEl.createDiv({ cls: "todo-create-list-icon-empty", text: t("没有匹配的图标") });
       }
     };
 
@@ -111,8 +112,8 @@ export class CreateListModal extends Modal {
 
     // Actions
     const actions = contentEl.createDiv({ cls: "todo-create-list-actions" });
-    const cancelBtn = actions.createEl("button", { text: "取消" });
-    const confirmBtn = actions.createEl("button", { text: this.editName ? "保存" : "创建", cls: "mod-cta" });
+    const cancelBtn = actions.createEl("button", { text: t("取消") });
+    const confirmBtn = actions.createEl("button", { text: this.editName ? t("保存") : t("创建"), cls: "mod-cta" });
 
     cancelBtn.addEventListener("click", () => this.finish(null));
     confirmBtn.addEventListener("click", () => this.finish({ name: this.nameInput.value.trim(), icon: this.selectedIcon }));

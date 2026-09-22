@@ -5,7 +5,7 @@ class ConfirmModal extends Modal {
 
   constructor(app: App, message: string) {
     super(app);
-    this.message = message;
+    this.message = t(message);
   }
 
   onOpen(): void {
@@ -13,8 +13,8 @@ class ConfirmModal extends Modal {
     contentEl.createEl("p", { text: this.message });
 
     const actions = contentEl.createDiv({ cls: "todo-prompt-actions" });
-    const cancelBtn = actions.createEl("button", { text: "取消" });
-    const confirmBtn = actions.createEl("button", { text: "删除", cls: "mod-warning" });
+    const cancelBtn = actions.createEl("button", { text: t("取消") });
+    const confirmBtn = actions.createEl("button", { text: t("删除"), cls: "mod-warning" });
 
     cancelBtn.addEventListener("click", () => this.finish(false));
     confirmBtn.addEventListener("click", () => this.finish(true));
@@ -44,7 +44,7 @@ class PromptModal extends Modal {
 
   constructor(app: App, promptText: string) {
     super(app);
-    this.promptText = promptText;
+    this.promptText = t(promptText);
   }
 
   onOpen(): void {
@@ -65,8 +65,8 @@ class PromptModal extends Modal {
     });
 
     const actions = contentEl.createDiv({ cls: "todo-prompt-actions" });
-    const cancelBtn = actions.createEl("button", { text: "取消" });
-    const confirmBtn = actions.createEl("button", { text: "确定", cls: "mod-cta" });
+    const cancelBtn = actions.createEl("button", { text: t("取消") });
+    const confirmBtn = actions.createEl("button", { text: t("确认"), cls: "mod-cta" });
 
     cancelBtn.addEventListener("click", () => this.resolveAndClose(null));
     confirmBtn.addEventListener("click", () => this.resolveAndClose(input.value.trim()));
@@ -864,7 +864,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
     const groups = this.plugin.groupService.getAll();
 
     if (!lists.length && !groups.length) {
-      this.listItemsEl.createDiv({ cls: "todo-empty-state", text: "\u8fd8\u6ca1\u6709\u5217\u8868" });
+      this.listItemsEl.createDiv({ cls: "todo-empty-state", text: t("\u8fd8\u6ca1\u6709\u5217\u8868") });
       return;
     }
 
@@ -1183,7 +1183,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
 
 
   private getSortLabel(field: SortField): string {
-    return SORT_FIELD_LABELS[field] ?? field;
+    return t(SORT_FIELD_LABELS[field] ?? field);
   }
 
 
@@ -1193,7 +1193,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
     const currentField = this.plugin.settings.sortConfig.primary.field;
     fields.forEach(([field, label]) => {
       menu.addItem((item) =>
-        item.setTitle(label).setChecked(field === currentField).onClick(async () => {
+        item.setTitle(t(label)).setChecked(field === currentField).onClick(async () => {
           const defaultDir: Record<SortField, SortDirection> = {
             importance: "desc", dueDate: "asc", createdAt: "desc", title: "asc",
           };
@@ -1495,6 +1495,9 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   }
 
   refreshLanguageLabels(): void {
+    if (this.sortLabelEl) {
+      this.sortLabelEl.setText(this.getSortLabel(this.plugin.settings.sortConfig.primary.field));
+    }
     const setItemLabel = (key: ViewNav, label: string) => {
       const item = this.navEls[key];
       if (!item) return;
@@ -2135,15 +2138,15 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           qCard.addEventListener("dragend", () => { qCard.removeClass("dragging"); });
         }
         if (quarterTasks.length === 0) {
-          qScroll.createDiv({ cls: "todo-goal-quarter-empty", text: "暂无季度目标" });
+          qScroll.createDiv({ cls: "todo-goal-quarter-empty", text: t("暂无季度目标") });
         }
       }
     }
 
 
     const modeSwitch = nav.createDiv({ cls: "todo-goal-mode-switch" });
-    const cardModeBtn = modeSwitch.createSpan({ cls: "todo-goal-mode-btn" + (this.plugin.settings.goalViewMode !== "list" ? " active" : ""), text: "卡片" });
-    const listModeBtn = modeSwitch.createSpan({ cls: "todo-goal-mode-btn" + (this.plugin.settings.goalViewMode === "list" ? " active" : ""), text: "列表" });
+    const cardModeBtn = modeSwitch.createSpan({ cls: "todo-goal-mode-btn" + (this.plugin.settings.goalViewMode !== "list" ? " active" : ""), text: t("卡片") });
+    const listModeBtn = modeSwitch.createSpan({ cls: "todo-goal-mode-btn" + (this.plugin.settings.goalViewMode === "list" ? " active" : ""), text: t("列表") });
     cardModeBtn.addEventListener("click", async () => {
       if (this.plugin.settings.goalViewMode !== "card") {
         this.plugin.settings.goalViewMode = "card";
@@ -2903,13 +2906,13 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     const header = container.createDiv({ cls: "todo-trash-header" });
     const headerText = header.createDiv({ cls: "todo-trash-header-text" });
-    headerText.createEl("h2", { text: "\u56de\u6536\u7ad9" });
+    headerText.createEl("h2", { text: t("\u56de\u6536\u7ad9") });
     const desc = headerText.createDiv({ cls: "todo-trash-desc" });
-    desc.createSpan({ text: "\u5df2\u5220\u9664\u7684\u4efb\u52a1\u5c06\u4fdd\u7559 30 \u5929\uff0c\u4e4b\u540e\u81ea\u52a8\u6e05\u7406" });
+    desc.createSpan({ text: t("\u5df2\u5220\u9664\u7684\u4efb\u52a1\u5c06\u4fdd\u7559 30 \u5929\uff0c\u4e4b\u540e\u81ea\u52a8\u6e05\u7406") });
 
-    const emptyBtn = header.createEl("button", { text: "\u6e05\u7a7a\u56de\u6536\u7ad9", cls: "todo-trash-btn todo-trash-btn-danger todo-trash-header-btn" });
+    const emptyBtn = header.createEl("button", { text: t("\u6e05\u7a7a\u56de\u6536\u7ad9"), cls: "todo-trash-btn todo-trash-btn-danger todo-trash-header-btn" });
     emptyBtn.addEventListener("click", async () => {
-      const confirmed = await new ConfirmModal(this.app, "\u786e\u5b9a\u6c38\u4e45\u5220\u9664\u56de\u6536\u7ad9\u4e2d\u7684 " + deletedTasks.length + " \u4e2a\u4efb\u52a1\u5417\uff1f\u6b64\u64cd\u4f5c\u4e0d\u53ef\u64a4\u9500\u3002").openAndConfirm();
+      const confirmed = await new ConfirmModal(this.app, t("确定永久删除回收站中的任务吗？此操作不可撤销。") + " (" + deletedTasks.length + t("个任务") + ")").openAndConfirm();
       if (confirmed) {
         await this.plugin.taskService.emptyTrash();
         this.renderTrashView();
@@ -2921,33 +2924,33 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     if (deletedTasks.length === 0) {
       const empty = container.createDiv({ cls: "todo-trash-empty" });
-      empty.createDiv({ text: "回收站是空的" });
+      empty.createDiv({ text: t("回收站是空的") });
       return;
     }
 
     const stats = container.createDiv({ cls: "todo-trash-stats" });
-    stats.createSpan({ text: "共 " + deletedTasks.length + " 个任务" });
+    stats.createSpan({ text: t("共") + " " + deletedTasks.length + t("个任务") });
 
     const list = container.createDiv({ cls: "todo-trash-list" });
     for (const task of deletedTasks) {
       const row = list.createDiv({ cls: "todo-trash-item" });
       const info = row.createDiv({ cls: "todo-trash-item-info" });
-      info.createDiv({ cls: "todo-trash-item-title", text: task.title || "未命名任务" });
+      info.createDiv({ cls: "todo-trash-item-title", text: task.title || t("未命名任务") });
       const meta = info.createDiv({ cls: "todo-trash-item-meta" });
       if (task.deletedAt) {
         const deleteDate = new Date(task.deletedAt);
-        meta.createSpan({ text: "删除于 " + deleteDate.toLocaleDateString() + " " + deleteDate.toLocaleTimeString() });
+        meta.createSpan({ text: t("删除于") + " " + deleteDate.toLocaleString(isEnglish() ? "en-US" : "zh-CN") });
       }
 
       const actions = row.createDiv({ cls: "todo-trash-item-actions" });
-      const restoreBtn = actions.createEl("button", { text: "恢复", cls: "todo-trash-btn" });
+      const restoreBtn = actions.createEl("button", { text: t("恢复"), cls: "todo-trash-btn" });
       restoreBtn.addEventListener("click", async () => {
         await this.plugin.taskService.restore(task.id);
         this.renderTrashView();
       });
-      const deleteBtn = actions.createEl("button", { text: "彻底删除", cls: "todo-trash-btn todo-trash-btn-danger" });
+      const deleteBtn = actions.createEl("button", { text: t("彻底删除"), cls: "todo-trash-btn todo-trash-btn-danger" });
       deleteBtn.addEventListener("click", async () => {
-        const confirmed = await new ConfirmModal(this.app, "确定永久删除「" + (task.title || "未命名任务") + "」吗？此操作不可撤销。").openAndConfirm();
+        const confirmed = await new ConfirmModal(this.app, t("确定永久删除吗？此操作不可撤销。") + " " + (task.title || t("未命名任务"))).openAndConfirm();
         if (confirmed) {
           await this.plugin.taskService.hardDelete(task.id);
           this.renderTrashView();
@@ -3983,6 +3986,9 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const dayNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
     if (this.reviewMode === "day") {
       const d = new Date(this.reviewYear, this.reviewMonth, this.reviewDate);
+      if (isEnglish()) {
+        return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", weekday: "long" }).format(d);
+      }
       return (this.reviewMonth + 1) + "月" + this.reviewDate + "日 " + dayNames[d.getDay()];
     }
     if (this.reviewMode === "week") {
@@ -3994,11 +4000,18 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const sd = range.start.getDate();
       const em = range.end.getMonth() + 1;
       const ed = range.end.getDate();
+      if (isEnglish()) {
+        return `${weekYear} Week ${wn} (${sm}/${sd} - ${em}/${ed})`;
+      }
       return weekYear + "年第" + wn + "周 (" + sm + "." + sd + " - " + em + "." + ed + ")";
     }
     if (this.reviewMode === "month") {
+      if (isEnglish()) {
+        return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(new Date(this.reviewYear, this.reviewMonth, 1));
+      }
       return this.reviewYear + "年 " + (this.reviewMonth + 1) + "月";
     }
+    if (isEnglish()) return String(this.reviewYear);
     return this.reviewYear + "年";
   }
 
@@ -4054,7 +4067,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     const switchEl = header.createDiv({ cls: "todo-review-mode-switch" });
     const modes = ["day", "week", "month", "year"] as const;
-    const modeLabels: Record<string, string> = { day: "日", week: "周", month: "月", year: "年" };
+    const modeLabels: Record<string, string> = { day: t("日"), week: t("周"), month: t("月"), year: t("年") };
     for (const m of modes) {
       const btn = switchEl.createSpan({
         cls: "todo-review-mode-btn" + (m === this.reviewMode ? " active" : ""),
@@ -4114,7 +4127,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     }
     const qDataFixed = Array.from(qGroups.entries()).map(([name, v]) => ({ label: name === "未分类" ? (isEnglish() ? "Uncategorized" : name) : systemTagName(allTags.find(t => t.name === name) || { name, isDefault: false }), total: v.total, completed: v.completed, color: v.color }));
     const qSection = container.createDiv({ cls: "todo-review-section" });
-    qSection.createDiv({ cls: "todo-review-section-title", text: "四象限分布" });
+    qSection.createDiv({ cls: "todo-review-section-title", text: t("四象限分布") });
     renderDistributionBar(qSection, qDataFixed);
   }
 
@@ -4133,7 +4146,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     }
     const dDataFixed = Array.from(dGroups.entries()).map(([name, v]) => ({ label: name === "未分类" ? (isEnglish() ? "Uncategorized" : name) : systemTagName(allTags.find(t => t.name === name) || { name, isDefault: false }), total: v.total, completed: v.completed, color: v.color }));
     const dSection = container.createDiv({ cls: "todo-review-section" });
-    dSection.createDiv({ cls: "todo-review-section-title", text: "领域分布" });
+    dSection.createDiv({ cls: "todo-review-section-title", text: t("领域分布") });
     renderDistributionBar(dSection, dDataFixed);
   }
 
@@ -4143,13 +4156,13 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     const todayDueCount = this.plugin.taskService.getAll().filter(t => t.dueDate && extractLocalDate(t.dueDate) === dateStr).length;
     const statsRow = container.createDiv({ cls: "todo-review-stats-row" });
-    renderStatCard(statsRow, "今日任务", String(todayDueCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: dateStr, label: dateStr + " 到期任务", dateField: "dueDate" }));
-    renderStatCard(statsRow, "今日完成", String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: dateStr, label: dateStr + " 完成任务", dateField: "completedAt" }));
-    renderStatCard(statsRow, "完成率", Math.round(stats.completionRate * 100) + "%", "bar-chart-2", "#91719E");
+    renderStatCard(statsRow, t("今日任务"), String(todayDueCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: dateStr, label: dateStr + " " + t("逾期任务"), dateField: "dueDate" }));
+    renderStatCard(statsRow, t("今日完成"), String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: dateStr, label: dateStr + " " + t("完成"), dateField: "completedAt" }));
+    renderStatCard(statsRow, t("完成率"), Math.round(stats.completionRate * 100) + "%", "bar-chart-2", "#91719E");
     const yesterday = new Date(this.reviewYear, this.reviewMonth, this.reviewDate - 1);
     const yesterdayStr = yesterday.getFullYear() + "-" + String(yesterday.getMonth() + 1).padStart(2, "0") + "-" + String(yesterday.getDate()).padStart(2, "0");
     const yesterdayOverdue = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) === yesterdayStr).length;
-    renderStatCard(statsRow, "昨日逾期", String(yesterdayOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "date", value: yesterdayStr, label: yesterdayStr + " 逾期任务", dateField: "dueDate" }));
+    renderStatCard(statsRow, t("昨日逾期"), String(yesterdayOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "date", value: yesterdayStr, label: yesterdayStr + " " + t("逾期任务"), dateField: "dueDate" }));
 
     // 今日任务按象限分组
     const todayTasks = this.plugin.taskService.getAll().filter(t => t.dueDate && extractLocalDate(t.dueDate) === dateStr);
@@ -4172,27 +4185,27 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const weekDueCount = this.plugin.taskService.getAll().filter(t => t.dueDate && !t.isCompleted && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
     const weekTotalCount = stats.completedCount + weekDueCount;
     const statsRow = container.createDiv({ cls: "todo-review-stats-row" });
-    renderStatCard(statsRow, "本周任务", String(weekTotalCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: startStr, label: "本周到期任务", dateField: "dueDate" }));
-    renderStatCard(statsRow, "本周完成", String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: startStr, label: "本周完成任务", dateField: "completedAt" }));
+    renderStatCard(statsRow, t("本周任务"), String(weekTotalCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本周任务"), dateField: "dueDate" }));
+    renderStatCard(statsRow, t("本周完成"), String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本周完成"), dateField: "completedAt" }));
     const denom = stats.completedCount + weekDueCount;
     const weekRate = denom > 0 ? Math.round(stats.completedCount / denom * 100) : 0;
-    renderStatCard(statsRow, "完成率", weekRate + "%", "bar-chart-2", "#91719E");
+    renderStatCard(statsRow, t("完成率"), weekRate + "%", "bar-chart-2", "#91719E");
     const today = new Date();
     const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
     const weekOverdue = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < todayStr && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
-    renderStatCard(statsRow, "逾期任务", String(weekOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "overdue", value: "", label: "逾期任务" }));
+    renderStatCard(statsRow, t("逾期任务"), String(weekOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "overdue", value: "", label: t("逾期任务") }));
 
     // 每日完成趋势堆叠柱状图
-    const dayLabels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+    const dayLabels = isEnglish() ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
     const stackedData = stats.dailyTrend.map((item: { date: string; count: number; rate: number; uncompleted: number }, i: number) => ({
       label: dayLabels[i] || item.date,
       segments: [
-        { value: item.uncompleted, color: "#C8C8C8", label: "未完成" },
-        { value: item.count, color: "#41B974", label: "完成" },
+        { value: item.uncompleted, color: "#C8C8C8", label: t("未完成") },
+        { value: item.count, color: "#41B974", label: t("完成") },
       ],
     }));
     const trendSection = container.createDiv({ cls: "todo-review-section" });
-    trendSection.createDiv({ cls: "todo-review-section-title", text: "每日任务趋势" });
+    trendSection.createDiv({ cls: "todo-review-section-title", text: t("每日任务趋势") });
     renderStackedBarChart(trendSection, stackedData);
 
     const allTasks = this.plugin.taskService.getAll();
@@ -4216,19 +4229,19 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const monthDueCount = allTasks.filter(t => t.dueDate && !t.isCompleted && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
     const monthTotalCount = stats.completedCount + monthDueCount;
     const statsRow = container.createDiv({ cls: "todo-review-stats-row" });
-    renderStatCard(statsRow, "本月任务", String(monthTotalCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: startStr, label: "本月到期任务", dateField: "dueDate" }));
-    renderStatCard(statsRow, "本月完成", String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: startStr, label: "本月完成任务", dateField: "completedAt" }));
+    renderStatCard(statsRow, t("本月任务"), String(monthTotalCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本月任务"), dateField: "dueDate" }));
+    renderStatCard(statsRow, t("本月完成"), String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本月完成"), dateField: "completedAt" }));
     const denom = stats.completedCount + monthDueCount;
     const monthRate = denom > 0 ? Math.round(stats.completedCount / denom * 100) : 0;
-    renderStatCard(statsRow, "完成率", monthRate + "%", "bar-chart-2", "#91719E");
+    renderStatCard(statsRow, t("完成率"), monthRate + "%", "bar-chart-2", "#91719E");
     const today = new Date();
     const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
     const monthOverdue = allTasks.filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < todayStr && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
-    renderStatCard(statsRow, "逾期任务", String(monthOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "overdue", value: "", label: "逾期任务" }));
+    renderStatCard(statsRow, t("逾期任务"), String(monthOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "overdue", value: "", label: t("逾期任务") }));
 
     // 月历热力图
     const calSection = container.createDiv({ cls: "todo-review-section" });
-    calSection.createDiv({ cls: "todo-review-section-title", text: "月度打卡" });
+    calSection.createDiv({ cls: "todo-review-section-title", text: t("月度打卡") });
     renderMonthCalendar(calSection, year, month, stats.dailyTrend.map((d: { date: string; count: number }) => ({ date: d.date, count: d.count })));
 
     // 每周任务趋势堆叠柱状图
@@ -4237,20 +4250,20 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     for (const d of stats.dailyTrend) {
       const dateObj = new Date(d.date + "T00:00:00");
       const wy = getISOWeekNumber(dateObj);
-      const key = "第" + wy + "周";
+      const key = isEnglish() ? "Week " + wy : "第" + wy + "周";
       weekCompletedMap.set(key, (weekCompletedMap.get(key) || 0) + d.count);
       weekUncompletedMap.set(key, (weekUncompletedMap.get(key) || 0) + d.uncompleted);
     }
     const weekStackedData = Array.from(weekCompletedMap.keys()).sort().map(key => ({
       label: key,
       segments: [
-        { value: weekUncompletedMap.get(key) || 0, color: "#C8C8C8", label: "未完成" },
-        { value: weekCompletedMap.get(key) || 0, color: "#41B974", label: "完成" },
+        { value: weekUncompletedMap.get(key) || 0, color: "#C8C8C8", label: t("未完成") },
+        { value: weekCompletedMap.get(key) || 0, color: "#41B974", label: t("完成") },
       ],
     }));
     if (weekStackedData.length > 0) {
       const weekSection = container.createDiv({ cls: "todo-review-section" });
-      weekSection.createDiv({ cls: "todo-review-section-title", text: "每周任务趋势" });
+      weekSection.createDiv({ cls: "todo-review-section-title", text: t("每周任务趋势") });
       renderStackedBarChart(weekSection, weekStackedData);
     }
 
@@ -4272,19 +4285,19 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const yearDueCount = allTasks.filter(t => t.dueDate && !t.isCompleted && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
     const yearTotalCount = stats.completedCount + yearDueCount;
     const statsRow = container.createDiv({ cls: "todo-review-stats-row" });
-    renderStatCard(statsRow, "本年任务", String(yearTotalCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: startStr, label: "本年到期任务", dateField: "dueDate" }));
-    renderStatCard(statsRow, "本年完成", String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: startStr, label: "本年完成任务", dateField: "completedAt" }));
+    renderStatCard(statsRow, t("本年任务"), String(yearTotalCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本年任务"), dateField: "dueDate" }));
+    renderStatCard(statsRow, t("本年完成"), String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本年完成"), dateField: "completedAt" }));
     const denom = stats.completedCount + yearDueCount;
     const yearRate = denom > 0 ? Math.round(stats.completedCount / denom * 100) : 0;
-    renderStatCard(statsRow, "完成率", yearRate + "%", "bar-chart-2", "#91719E");
+    renderStatCard(statsRow, t("完成率"), yearRate + "%", "bar-chart-2", "#91719E");
     const today = new Date();
     const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
     const yearOverdue = allTasks.filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < todayStr && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
-    renderStatCard(statsRow, "逾期任务", String(yearOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "overdue", value: "", label: "逾期任务" }));
+    renderStatCard(statsRow, t("逾期任务"), String(yearOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "overdue", value: "", label: t("逾期任务") }));
 
     // GitHub 风格年热力图
     const heatSection = container.createDiv({ cls: "todo-review-section" });
-    heatSection.createDiv({ cls: "todo-review-section-title", text: "年度打卡" });
+    heatSection.createDiv({ cls: "todo-review-section-title", text: t("年度打卡") });
     renderYearHeatmap(heatSection, year, stats.dailyTrend.map((d: { date: string; count: number }) => ({ date: d.date, count: d.count })));
 
     // 每月任务趋势堆叠柱状图
@@ -4292,23 +4305,26 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const monthUncompletedMap = new Map<string, number>();
     for (const d of stats.dailyTrend) {
       const m = d.date.substring(5, 7);
-      const key = parseInt(m, 10) + "月";
+      const key = String(parseInt(m, 10));
       monthCompletedMap.set(key, (monthCompletedMap.get(key) || 0) + d.count);
       monthUncompletedMap.set(key, (monthUncompletedMap.get(key) || 0) + d.uncompleted);
     }
     const monthStackedData: { label: string; segments: { value: number; color: string; label: string }[] }[] = [];
     for (let m = 1; m <= 12; m++) {
-      const key = m + "月";
+      const key = String(m);
+      const label = isEnglish()
+        ? new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(year, m - 1, 1))
+        : m + "月";
       monthStackedData.push({
-        label: key,
+        label,
         segments: [
-          { value: monthUncompletedMap.get(key) || 0, color: "#C8C8C8", label: "未完成" },
-          { value: monthCompletedMap.get(key) || 0, color: "#41B974", label: "完成" },
+          { value: monthUncompletedMap.get(key) || 0, color: "#C8C8C8", label: t("未完成") },
+          { value: monthCompletedMap.get(key) || 0, color: "#41B974", label: t("完成") },
         ],
       });
     }
     const monthSection = container.createDiv({ cls: "todo-review-section" });
-    monthSection.createDiv({ cls: "todo-review-section-title", text: "每月任务趋势" });
+    monthSection.createDiv({ cls: "todo-review-section-title", text: t("每月任务趋势") });
     renderStackedBarChart(monthSection, monthStackedData);
 
     const yearTasks = allTasks.filter(t => t.dueDate && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr);

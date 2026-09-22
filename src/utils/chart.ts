@@ -1,5 +1,6 @@
 // chart.ts - DOM/CSS/SVG 图表渲染工具函数
 import { setIcon } from "obsidian";
+import { isEnglish, t } from "../i18n";
 
 /** 渲染数字统计卡片 */
 export function renderStatCard(
@@ -346,7 +347,7 @@ export function renderMonthCalendar(
   const cal = container.createDiv({ cls: "todo-review-month-calendar" });
 
   // 列头
-  const headers = ["一", "二", "三", "四", "五", "六", "日"];
+  const headers = isEnglish() ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["一", "二", "三", "四", "五", "六", "日"];
   for (const h of headers) {
     cal.createDiv({ cls: "todo-review-month-calendar-header", text: h });
   }
@@ -381,7 +382,7 @@ export function renderMonthCalendar(
     if (count > 0) {
       cell.createSpan({ cls: "todo-review-month-calendar-day-count", text: String(count) });
     }
-    cell.title = dateStr + ": 完成 " + count + " 个任务";
+    cell.title = dateStr + ": " + t("完成") + " " + count + (isEnglish() ? " tasks" : " 个任务");
   }
 
   // 填充月末空格（补齐到完整行）
@@ -395,11 +396,11 @@ export function renderMonthCalendar(
 
   // 图例
   const legend = container.createDiv({ cls: "todo-review-month-calendar-legend" });
-  legend.createSpan({ text: "少" });
+  legend.createSpan({ text: isEnglish() ? "Less" : "少" });
   for (let i = 0; i <= 3; i++) {
     legend.createSpan({ cls: "todo-review-month-calendar-legend-cell todo-review-month-calendar-day--level-" + i });
   }
-  legend.createSpan({ text: "多" });
+  legend.createSpan({ text: isEnglish() ? "More" : "多" });
 }
 
 /** 渲染 GitHub 风格年热力图（53列×7行，周一起始） */
@@ -428,7 +429,7 @@ export function renderYearHeatmap(
     const diffDays = Math.floor((monthStart.getTime() - jan1.getTime()) / 86400000);
     col = startCol + diffDays;
     const weekCol = Math.floor(col / 7);
-    const label = monthRow.createSpan({ cls: "todo-review-year-month-label", text: (m + 1) + "月" });
+    const label = monthRow.createSpan({ cls: "todo-review-year-month-label", text: isEnglish() ? new Intl.DateTimeFormat("en-US", { month: "short" }).format(monthStart) : (m + 1) + "月" });
     label.style.gridColumn = String(weekCol + 2); // +2 for label column
   }
 
@@ -436,7 +437,7 @@ export function renderYearHeatmap(
   const grid = wrap.createDiv({ cls: "todo-review-year-grid" });
 
   // 左侧周几标签
-  const dayLabels = ["", "一", "", "三", "", "五", ""];
+  const dayLabels = isEnglish() ? ["", "M", "", "W", "", "F", ""] : ["", "一", "", "三", "", "五", ""];
   for (let r = 0; r < 7; r++) {
     const lbl = grid.createDiv({ cls: "todo-review-year-day-label" });
     lbl.textContent = dayLabels[r];
@@ -462,7 +463,7 @@ export function renderYearHeatmap(
         else if (count >= 3) level = 2;
         else if (count >= 1) level = 1;
         const cell = grid.createDiv({ cls: "todo-review-year-cell todo-review-year-cell--level-" + level });
-        cell.title = dateStr + ": 完成 " + count + " 个任务";
+        cell.title = dateStr + ": " + t("完成") + " " + count + (isEnglish() ? " tasks" : " 个任务");
       }
     }
   }

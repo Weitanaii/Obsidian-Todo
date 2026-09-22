@@ -86,13 +86,13 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
     // --- Header ---
     const head = containerEl.createDiv("todo-settings-head");
     head.createDiv({ cls: "todo-settings-title", text: "Obsidian Todo" });
-    head.createDiv({ cls: "todo-settings-sub", text: "任务管理插件设置" });
+    head.createDiv({ cls: "todo-settings-sub", text: t("任务管理插件设置") });
 
     // --- Basic Settings ---
-    this.settingGroup(containerEl, "基本设置", "插件核心配置", (group) => {
+    this.settingGroup(containerEl, t("基本设置"), t("插件核心配置"), (group) => {
       new Setting(group)
-        .setName("数据存储文件夹")
-        .setDesc("任务数据文件存储在 Vault 中的文件夹路径")
+        .setName(t("数据存储文件夹"))
+        .setDesc(t("任务数据文件存储在 Vault 中的文件夹路径"))
         .addText((text) =>
           text
             .setPlaceholder("todo")
@@ -104,8 +104,8 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
         );
 
       new Setting(group)
-        .setName("默认列表名称")
-        .setDesc("首次运行时自动创建的默认列表名称")
+        .setName(t("默认列表名称"))
+        .setDesc(t("首次运行时自动创建的默认列表名称"))
         .addText((text) =>
           text
             .setPlaceholder("Tasks")
@@ -117,8 +117,8 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
         );
 
       const birthdaySetting = new Setting(group)
-        .setName("生日")
-        .setDesc("用于人生计划视图计算年龄（格式：YYYY-MM-DD）");
+        .setName(t("生日"))
+        .setDesc(t("用于人生计划视图计算年龄（格式：YYYY-MM-DD）"));
       const birthdayInput = birthdaySetting.controlEl.createEl("input", {
         attr: { type: "date" },
       }) as HTMLInputElement;
@@ -130,7 +130,7 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
     });
 
     // --- Display Settings ---
-    this.settingGroup(containerEl, "显示设置", "界面显示选项", (group) => {
+    this.settingGroup(containerEl, t("显示设置"), t("界面显示选项"), (group) => {
       new Setting(group)
         .setName(t("语言"))
         .setDesc(t("选择插件界面语言"))
@@ -167,23 +167,23 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
     const domainTags = allTags.filter((t) => t.sortOrder >= 4);
     const customTags = allTags.filter((t) => !t.isDefault);
 
-    this.settingGroup(containerEl, "标签管理", "任务分类与标签配置", (group) => {
-      this.renderTagGroup(group, "四象限标签", quadrantTags, false, "用于四象限视图的任务分类");
-      this.renderTagGroup(group, "领域标签", domainTags, false, "用于人生领域维度的任务分类");
-      this.renderTagGroup(group, "自定义标签", customTags, true, "自由创建的个性化标签");
+    this.settingGroup(containerEl, t("标签管理"), t("任务分类与标签配置"), (group) => {
+      this.renderTagGroup(group, t("四象限标签"), quadrantTags, false, t("用于四象限视图的任务分类"));
+      this.renderTagGroup(group, t("领域标签"), domainTags, false, t("用于人生领域维度的任务分类"));
+      this.renderTagGroup(group, t("自定义标签"), customTags, true, t("自由创建的个性化标签"));
     });
 
     // --- Advanced Settings ---
-    this.settingGroup(containerEl, "高级设置", "调试与日志", (group) => {
+    this.settingGroup(containerEl, t("高级设置"), t("调试与日志"), (group) => {
       new Setting(group)
-        .setName("日志级别")
-        .setDesc("控制控制台日志的详细程度")
+        .setName(t("日志级别"))
+        .setDesc(t("控制控制台日志的详细程度"))
         .addDropdown((dropdown) =>
           dropdown
-            .addOption("DEBUG", "调试")
-            .addOption("INFO", "信息")
-            .addOption("WARN", "警告")
-            .addOption("ERROR", "错误")
+            .addOption("DEBUG", t("调试"))
+            .addOption("INFO", t("信息"))
+            .addOption("WARN", t("警告"))
+            .addOption("ERROR", t("错误"))
             .setValue(this.plugin.settings.logLevel)
             .onChange(async (value) => {
               this.plugin.settings.logLevel = value;
@@ -195,16 +195,16 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
 
     // --- Data Management ---
     const stats = this.plugin.taskService.getStats();
-    this.settingGroup(containerEl, "数据管理", "备份、清空与重置", (group) => {
+    this.settingGroup(containerEl, t("数据管理"), t("备份、清空与重置"), (group) => {
       const statsEl = group.createDiv({ cls: "todo-setting-stats" });
-      statsEl.createSpan({ text: "任务总数：" + stats.total + "（进行中：" + stats.active + "，已完成：" + stats.completed + "，回收站：" + stats.deleted + "）" });
+      statsEl.createSpan({ text: `${t("任务总数：")}${stats.total} (${t("进行中")}: ${stats.active}, ${t("已完成")}: ${stats.completed}, ${t("回收站")}: ${stats.deleted})` });
 
       new Setting(group)
-        .setName("清空所有任务")
-        .setDesc("删除所有任务数据，保留列表和标签配置")
+        .setName(t("清空所有任务"))
+        .setDesc(t("删除所有任务数据，保留列表和标签配置"))
         .addButton((btn) =>
           btn
-            .setButtonText("清空任务")
+            .setButtonText(t("清空任务"))
             .setWarning()
             .onClick(async () => {
               const confirmed = await new ConfirmModal(this.app, "即将删除 " + stats.total + " 个任务，此操作不可撤销。确认清空吗？").openAndConfirm();
@@ -218,11 +218,11 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
 
 
       new Setting(group)
-        .setName("重置所有数据")
-        .setDesc("清空所有任务、列表、标签、分组，恢复到初始状态")
+        .setName(t("重置所有数据"))
+        .setDesc(t("清空所有任务、列表、标签、分组，恢复到初始状态"))
         .addButton((btn) =>
           btn
-            .setButtonText("全部重置")
+            .setButtonText(t("全部重置"))
             .setWarning()
             .onClick(async () => {
               const confirmed = await new ConfirmModal(this.app, "即将重置所有数据（任务、列表、标签、分组），此操作不可撤销。确认重置吗？").openAndConfirm();
@@ -251,7 +251,7 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
     titleLeft.createEl("span", { text: title, cls: "todo-setting-tag-group-title" });
     titleLeft.createEl("span", { text: "(" + tags.length + ")", cls: "todo-setting-tag-group-count" });
     if (editable) {
-      const addBtn = titleRow.createEl("button", { text: "+ 添加", cls: "todo-setting-tag-add-btn" });
+      const addBtn = titleRow.createEl("button", { text: `+ ${t("添加")}`, cls: "todo-setting-tag-add-btn" });
       addBtn.addEventListener("click", () => {
         new TagEditModal(this.app, null, async (result) => {
           await this.plugin.tagService.create({
@@ -270,7 +270,7 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
     }
 
     if (tags.length === 0) {
-      group.createDiv({ cls: "todo-setting-tag-empty", text: "暂无标签" });
+      group.createDiv({ cls: "todo-setting-tag-empty", text: t("暂无标签") });
       return;
     }
 
@@ -286,7 +286,7 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
 
       if (editable) {
         const actions = item.createDiv({ cls: "todo-setting-tag-actions" });
-        const editBtn = actions.createEl("button", { text: "编辑", cls: "todo-setting-tag-btn" });
+        const editBtn = actions.createEl("button", { text: t("编辑"), cls: "todo-setting-tag-btn" });
         editBtn.addEventListener("click", () => {
           new TagEditModal(this.app, tag, async (result) => {
             await this.plugin.tagService.update(tag.id, {
@@ -297,7 +297,7 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
             this.display();
           }).open();
         });
-        const delBtn = actions.createEl("button", { text: "删除", cls: "todo-setting-tag-btn mod-warning" });
+        const delBtn = actions.createEl("button", { text: t("删除"), cls: "todo-setting-tag-btn mod-warning" });
         delBtn.addEventListener("click", async () => {
           const confirmed = await new ConfirmModal(this.app, "确定删除标签「" + tag.name + "」吗？").openAndConfirm();
           if (confirmed) {
@@ -323,13 +323,13 @@ class ConfirmModal extends Modal {
   private resolve!: (value: boolean) => void;
   constructor(app: App, message: string) {
     super(app);
-    this.message = message;
+    this.message = t(message);
   }
   onOpen(): void {
     this.contentEl.createEl("p", { text: this.message });
     const actions = this.contentEl.createDiv({ cls: "todo-prompt-actions" });
-    actions.createEl("button", { text: "取消" }).addEventListener("click", () => { this.resolve(false); this.close(); });
-    actions.createEl("button", { text: "确认", cls: "mod-cta" }).addEventListener("click", () => { this.resolve(true); this.close(); });
+    actions.createEl("button", { text: t("取消") }).addEventListener("click", () => { this.resolve(false); this.close(); });
+    actions.createEl("button", { text: t("确认"), cls: "mod-cta" }).addEventListener("click", () => { this.resolve(true); this.close(); });
   }
   onClose(): void { this.contentEl.empty(); }
   openAndConfirm(): Promise<boolean> {
@@ -353,17 +353,17 @@ class TagEditModal extends Modal {
 
   onOpen(): void {
     this.contentEl.addClass("todo-tag-edit-modal");
-    this.contentEl.createDiv({ cls: "todo-tag-edit-title", text: this.tag ? "编辑标签" : "新增标签" });
+    this.contentEl.createDiv({ cls: "todo-tag-edit-title", text: this.tag ? t("编辑标签") : t("新增标签") });
 
     // Name
     const nameRow = this.contentEl.createDiv({ cls: "todo-tag-edit-row" });
-    nameRow.createEl("label", { text: "名称" });
-    this.nameInput = nameRow.createEl("input", { attr: { type: "text", placeholder: "标签名称" } }) as HTMLInputElement;
+    nameRow.createEl("label", { text: t("名称") });
+    this.nameInput = nameRow.createEl("input", { attr: { type: "text", placeholder: t("标签名称") } }) as HTMLInputElement;
     this.nameInput.value = this.tag?.name || "";
 
     // Icon
     const iconGroup = this.contentEl.createDiv({ cls: "todo-tag-edit-row" });
-    iconGroup.createEl("label", { text: "图标" });
+    iconGroup.createEl("label", { text: t("图标") });
     
     // Current icon preview
     const iconPreview = iconGroup.createDiv({ cls: "todo-tag-edit-icon-preview" });
@@ -391,14 +391,14 @@ class TagEditModal extends Modal {
 
     // Color
     const colorRow = this.contentEl.createDiv({ cls: "todo-tag-edit-row" });
-    colorRow.createEl("label", { text: "颜色" });
+    colorRow.createEl("label", { text: t("颜色") });
     this.colorInput = colorRow.createEl("input", { attr: { type: "color" } }) as HTMLInputElement;
     this.colorInput.value = this.tag?.color || "#6B7280";
 
     // Actions
     const actions = this.contentEl.createDiv({ cls: "todo-tag-edit-actions" });
-    actions.createEl("button", { text: "取消" }).addEventListener("click", () => this.close());
-    const saveBtn = actions.createEl("button", { text: "保存", cls: "mod-cta" });
+    actions.createEl("button", { text: t("取消") }).addEventListener("click", () => this.close());
+    const saveBtn = actions.createEl("button", { text: t("保存"), cls: "mod-cta" });
     saveBtn.addEventListener("click", () => {
       const name = this.nameInput.value.trim();
       if (!name) return;
