@@ -20,15 +20,17 @@ export class TaskDetailView {
   private onTaskUpdated?: (taskId: string) => void;
   private onClose?: () => void;
   private onNavigateToTask?: (taskId: string) => void;
+  private onOpen?: () => void;
   private historyStack: { taskId: string; title: string }[] = [];
 
-  constructor(app: App, plugin: TodoPluginLike, root: HTMLElement, onTaskUpdated?: (taskId: string) => void, onClose?: () => void, onNavigateToTask?: (taskId: string) => void) {
+  constructor(app: App, plugin: TodoPluginLike, root: HTMLElement, onTaskUpdated?: (taskId: string) => void, onClose?: () => void, onNavigateToTask?: (taskId: string) => void, onOpen?: () => void) {
     this.app = app;
     this.plugin = plugin;
     this.root = root;
     this.onTaskUpdated = onTaskUpdated;
     this.onClose = onClose;
     this.onNavigateToTask = onNavigateToTask;
+    this.onOpen = onOpen;
     this.root.addClass("todo-detail-panel");
     this.renderEmpty();
   }
@@ -41,6 +43,7 @@ export class TaskDetailView {
   open(taskId: string): void {
     this.taskId = taskId;
     void this.renderCurrentTask();
+    this.onOpen?.();
   }
 
   close(): void {
@@ -80,6 +83,16 @@ export class TaskDetailView {
         if (entry) this.onNavigateToTask?.(entry.taskId);
       });
     }
+    // Mobile back button (hidden on desktop via CSS)
+    const mobileBack = header.createEl("button", { cls: "todo-mobile-back todo-detail-mobile-back" });
+    setIcon(mobileBack, "arrow-left");
+    mobileBack.addEventListener("click", () => {
+      this.historyStack = [];
+      this.plugin.settings.selectedTaskId = null;
+      void this.plugin.saveSettings();
+      this.close();
+      this.onClose?.();
+    });
     const closeBtn = header.createEl("button", { cls: "todo-detail-close" });
     setIcon(closeBtn, "x");
     closeBtn.addEventListener("click", () => {
@@ -118,6 +131,16 @@ export class TaskDetailView {
     noteLabel.createSpan({ text: " 备注" });
     this.noteInput = noteSection.createEl("textarea", { cls: "todo-detail-textarea", attr: { rows: "2" } }) as HTMLTextAreaElement;
     this.noteInput.value = task.note || "";
+    this.noteInput.addEventListener("focus", async (ev) => {
+      if (window.innerWidth <= 600) {
+        ev.preventDefault();
+        this.noteInput.blur();
+        const modal = new NoteEditModal(this.app, this.noteInput.value);
+        const result = await modal.openAndEdit();
+        this.noteInput.value = result;
+        if (result !== (task.note || "")) void this.saveChanges({ note: result });
+      }
+    });
     this.noteInput.addEventListener("blur", () => {
       const next = this.noteInput.value;
       if (next !== (task.note || "")) void this.saveChanges({ note: next });
@@ -942,6 +965,31 @@ class RecurrencePickerModal extends Modal {
     });
   }
 }
+class NoteEditModal extends Modal {
+  private note: string;
+  private resolve!: (value: string) => void;
+  constructor(app: App, note: string) {
+    super(app);
+    this.note = note;
+  }
+  onOpen(): void {
+    this.contentEl.addClass('todo-note-edit-modal');
+    this.contentEl.createDiv({ cls: 'todo-rec-title', text: '编辑备注' });
+    const ta = this.contentEl.createEl('textarea', { cls: 'todo-note-edit-textarea' }) as HTMLTextAreaElement;
+    ta.value = this.note;
+    ta.rows = 8;
+    ta.addEventListener('input', () => { this.note = ta.value; });
+    const actions = this.contentEl.createDiv({ cls: 'todo-dp-actions' });
+    actions.createEl('button', { text: '取消' }).addEventListener('click', () => { this.resolve(this.note); this.close(); });
+    actions.createEl('button', { text: '保存', cls: 'mod-cta' }).addEventListener('click', () => { this.resolve(ta.value); this.close(); });
+    window.setTimeout(() => ta.focus(), 30);
+  }
+  onClose(): void { this.contentEl.empty(); }
+  async openAndEdit(): Promise<string> {
+    return new Promise<string>((resolve) => { this.resolve = resolve; this.open(); });
+  }
+}
+
 class TagPickerModal extends Modal {
   private plugin: TodoPluginLike;
   private selectedIds: string[];

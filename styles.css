@@ -4008,3 +4008,33 @@
 .todo-myday-nav-title{font-size:13px;font-weight:600;color:var(--text-normal);flex:1;text-align:center}
 .todo-myday-nav-today{background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:11px;padding:2px 8px;border-radius:var(--radius-s)}
 .todo-myday-nav-today:hover{background:var(--background-modifier-hover);color:var(--text-normal)}
+
+/* === Mobile Navigation === */
+.todo-mobile-back{display:none;align-items:center;gap:4px;background:none;border:none;cursor:pointer;color:var(--text-muted);padding:4px 8px;border-radius:var(--radius-s);font-size:14px;flex-shrink:0}
+.todo-mobile-back:hover{background:var(--background-modifier-hover);color:var(--text-normal)}
+@media(max-width:600px){
+.todo-layout{position:relative!important;overflow:hidden}
+.todo-nav,.todo-main,.todo-detail{position:absolute;inset:0;width:100%;height:100%;display:none!important;flex-direction:column;overflow:hidden;padding-bottom:48px}
+.todo-layout[data-mobile-panel="nav"] .todo-nav{display:flex!important;padding-bottom:48px!important}
+.todo-layout[data-mobile-panel="main"] .todo-main{display:flex!important}
+.todo-layout[data-mobile-panel="detail"] .todo-detail{display:flex!important}
+.todo-mobile-back{display:flex}
+.todo-detail-close{display:none!important}
+.todo-detail-mobile-back{display:flex!important;margin-right:auto}
+.todo-task-header{gap:2px}
+.todo-header-title{max-width:140px}
+.todo-schedule-cell{min-height:52px}
+.todo-goal-stats-row{display:flex!important;gap:6px!important;padding:6px 0 8px!important;flex-wrap:nowrap!important;overflow-x:auto!important}
+.todo-goal-stat-card{padding:6px 8px!important;border-radius:8px!important}
+.todo-goal-stat-value{font-size:16px!important}
+.todo-goal-stat-label{font-size:10px!important;margin-top:1px!important}
+.todo-goal-cards{gap:8px!important;padding:4px 0 8px!important}
+.todo-goal-card{padding:6px 8px!important;min-height:44px!important}
+.todo-schedule-cell-lunar{font-size:8px}
+.todo-week-lunar{font-size:8px}
+.todo-review-stats-row{flex-wrap:nowrap!important;gap:4px!important}
+.todo-review-stat-card{min-width:0!important;padding:8px 4px!important}
+.todo-review-stat-icon{font-size:14px!important;margin-bottom:2px!important}
+.todo-review-stat-value{font-size:16px!important}
+.todo-review-stat-label{font-size:9px!important}
+}

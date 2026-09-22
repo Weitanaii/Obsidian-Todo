@@ -210,6 +210,8 @@ export class TodoView extends ItemView {
   private headerIconEl!: HTMLSpanElement;
   private headerTitleEl!: HTMLSpanElement;
   private headerSubEl!: HTMLSpanElement;
+  private layoutEl!: HTMLDivElement;
+  private mobilePanel: "nav" | "main" | "detail" = "main";
   private navEls: Record<ViewNav, HTMLDivElement> = {} as Record<ViewNav, HTMLDivElement>;
   private listNavEl!: HTMLDivElement;
   private listItemsEl!: HTMLDivElement;
@@ -286,9 +288,14 @@ export class TodoView extends ItemView {
     container.addClass("obsidian-todo-tab");
 
     const layout = container.createDiv({ cls: "todo-layout" });
+    this.layoutEl = layout;
+    layout.dataset.mobilePanel = "main";
     const nav = layout.createDiv({ cls: "todo-nav" });
     const main = layout.createDiv({ cls: "todo-main" });
     const taskHeader = main.createDiv({ cls: "todo-task-header" });
+    const mobileBackBtn = taskHeader.createEl("button", { cls: "todo-mobile-back" });
+    setIcon(mobileBackBtn, "arrow-left");
+    mobileBackBtn.addEventListener("click", () => { this.showMobilePanel("nav"); });
     this.headerIconEl = taskHeader.createSpan({ cls: "todo-header-icon" });
     this.headerTitleEl = taskHeader.createSpan({ cls: "todo-header-title" });
     this.headerSubEl = taskHeader.createSpan({ cls: "todo-header-sub" });
@@ -376,6 +383,7 @@ export class TodoView extends ItemView {
         qItem.addClass("active");
         await this.renderTasks("all");
         this.updateHeaderInfo();
+        this.showMobilePanel("main");
       });
     }
     qHeader.addEventListener("click", () => {
@@ -430,6 +438,20 @@ export class TodoView extends ItemView {
 
     this.quickInputEl = this.quickContainerEl.createEl("input", { attr: { placeholder: "添加任务..." } });
     this.updateQuickPlaceholder();
+    this.quickInputEl.addEventListener("focus", (ev) => {
+      if (this.isMobile()) {
+        ev.preventDefault();
+        this.quickInputEl.blur();
+        void this.promptQuickCreate();
+      }
+    });
+    this.quickInputEl.addEventListener("click", (ev) => {
+      if (this.isMobile()) {
+        ev.preventDefault();
+        this.quickInputEl.blur();
+        void this.promptQuickCreate();
+      }
+    });
     this.quickInputEl.addEventListener("keydown", async (ev) => {
       if (ev.key === "Enter") {
         ev.preventDefault();
@@ -452,8 +474,11 @@ export class TodoView extends ItemView {
     }, () => {
       const layout = this.containerEl.querySelector(".todo-layout");
       if (layout) layout.removeClass("todo-layout-detail-open");
+      this.showMobilePanel("main");
     }, (targetId) => {
       void this.navigateToTask(targetId);
+    }, () => {
+      this.showMobilePanel("detail");
     });
 
     this.plugin.settings.selectedTaskId = null;
@@ -508,6 +533,14 @@ export class TodoView extends ItemView {
   }
 
   
+  private isMobile(): boolean { return this.layoutEl && this.layoutEl.clientWidth <= 600; }
+
+  private showMobilePanel(panel: "nav" | "main" | "detail"): void {
+    if (!this.layoutEl) return;
+    this.mobilePanel = panel;
+    this.layoutEl.dataset.mobilePanel = panel;
+  }
+
   private updateHeaderInfo(): void {
     if (!this.headerIconEl || !this.headerTitleEl) return;
     
@@ -659,6 +692,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
       this.taskListEl.empty();
       this.renderReviewView();
       this.updateHeaderInfo();
+      this.showMobilePanel("main");
       return;
     }
     if (nav === "schedule") {
@@ -680,6 +714,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
       this.scheduleScrollTarget = "now";
       this.renderScheduleView();
       this.updateHeaderInfo();
+      this.showMobilePanel("main");
       return;
     }
     if (nav === "trash") {
@@ -692,6 +727,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
       this.taskListEl.empty();
       this.renderTrashView();
       this.updateHeaderInfo();
+      this.showMobilePanel("main");
       return;
     }
     if (nav === "plan" && this.activePlanKind) {
@@ -738,6 +774,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
     await this.renderTasks(nav);
     this.updateQuickPlaceholder();
     this.updateHeaderInfo();
+    this.showMobilePanel("main");
   }
 
   private async activateList(listId: string): Promise<void> {
@@ -753,6 +790,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
     await this.renderTasks("list");
     this.updateQuickPlaceholder();
     this.updateHeaderInfo();
+    this.showMobilePanel("main");
   }
 
   private async renderLists(): Promise<void> {
@@ -1750,6 +1788,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       await this.renderPlanView(kind);
     }
     this.updateHeaderInfo();
+    this.showMobilePanel("main");
   }
 
   /** Navigate to a task: switch plan view + highlight + scroll + open detail */
@@ -2033,11 +2072,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     if (sorted.length === 0) {
       const guide = cards.createDiv({ cls: "todo-goal-guide" });
-      guide.createDiv({ text: "还没有目标，先创建一个年度目标，再拆解到月度与KR。" });
-      const hint = guide.createDiv({ cls: "todo-goal-guide-hint" });
-      hint.createSpan({ text: "点击上方「" });
-      hint.createSpan({ cls: "todo-goal-guide-btn", text: kind === "year" ? "＋ 新建年度目标" : "＋ 新建月度目标" });
-      hint.createSpan({ text: "」开始。" });
+      guide.createDiv({ text: kind === "year" ? "暂无年度目标" : "暂无月度目标" });
     }
 
     const BATCH = 40;
@@ -2629,17 +2664,25 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         return this.scheduleYear + "年" + (this.scheduleMonth + 1) + "月";
       case "day": {
         const d = new Date(this.scheduleYear, this.scheduleMonth, this.scheduleDate);
-        let dayTitle = (this.scheduleMonth + 1) + "月" + this.scheduleDate + "日 " + dowNames[d.getDay()];
-        if (this.plugin.settings.showLunarCalendar) {
-          dayTitle += " · " + getLunarDisplayText(this.scheduleYear, this.scheduleMonth + 1, this.scheduleDate);
-        }
-        return dayTitle;
+        return (this.scheduleMonth + 1) + "月" + this.scheduleDate + "日" + "|" + dowNames[d.getDay()];
       }
       case "week": {
         const d = new Date(this.scheduleYear, this.scheduleMonth, this.scheduleDate);
         const wn = getISOWeekNumber(d);
-        return this.scheduleYear + "年 第" + wn + "周";
+        return this.scheduleYear + "年" + "|" + "第" + wn + "周";
       }
+    }
+  }
+
+  private updateScheduleTitle(el: HTMLElement): void {
+    const raw = this.getScheduleTitle();
+    const parts = raw.split("|");
+    el.empty();
+    if (parts.length === 2 && this.isMobile()) {
+      el.createDiv({ cls: "todo-schedule-title-line1", text: parts[0] });
+      el.createDiv({ cls: "todo-schedule-title-line2", text: parts[1] });
+    } else {
+      el.textContent = parts.join("");
     }
   }
 
@@ -2791,7 +2834,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const todayBtn = nav.createEl("button", { cls: "todo-schedule-today-btn", text: "今天" });
 
     const updateView = () => {
-      titleEl.textContent = this.getScheduleTitle();
+      this.updateScheduleTitle(titleEl);
       this.renderScheduleContent(contentEl);
     };
 
@@ -2829,7 +2872,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         await this.plugin.saveSettings();
         switchEl.querySelectorAll(".todo-schedule-mode-btn").forEach((el) => el.removeClass("active"));
         btn.addClass("active");
-        titleEl.textContent = this.getScheduleTitle();
+        this.updateScheduleTitle(titleEl);
         this.scheduleScrollTarget = "now";
         this.renderScheduleContent(contentEl);
       });
