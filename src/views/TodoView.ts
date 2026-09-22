@@ -199,6 +199,10 @@ export interface TodoPluginLike {
   };
   saveSettings(): Promise<void>;
     app?: App;
+  activateNav?: (nav: ViewNav) => Promise<void>;
+  activateList?: (listId: string) => Promise<void>;
+  activatePlan?: (kind: PlanKind) => Promise<void>;
+  showMobilePanel?: (panel: "nav" | "main" | "detail") => void;
 }
 
 
@@ -207,6 +211,7 @@ export class TodoView extends ItemView {
   private taskListEl!: HTMLDivElement;
   private sortBtnEl!: HTMLButtonElement;
   private sortLabelEl!: HTMLSpanElement;
+  private aiBtnEl!: HTMLButtonElement;
   private headerIconEl!: HTMLSpanElement;
   private headerTitleEl!: HTMLSpanElement;
   private headerSubEl!: HTMLSpanElement;
@@ -290,12 +295,10 @@ export class TodoView extends ItemView {
     const layout = container.createDiv({ cls: "todo-layout" });
     this.layoutEl = layout;
     layout.dataset.mobilePanel = "main";
+    (this.plugin as any).todoView = this;
     const nav = layout.createDiv({ cls: "todo-nav" });
     const main = layout.createDiv({ cls: "todo-main" });
     const taskHeader = main.createDiv({ cls: "todo-task-header" });
-    const mobileBackBtn = taskHeader.createEl("button", { cls: "todo-mobile-back" });
-    setIcon(mobileBackBtn, "arrow-left");
-    mobileBackBtn.addEventListener("click", () => { this.showMobilePanel("nav"); });
     this.headerIconEl = taskHeader.createSpan({ cls: "todo-header-icon" });
     this.headerTitleEl = taskHeader.createSpan({ cls: "todo-header-title" });
     this.headerSubEl = taskHeader.createSpan({ cls: "todo-header-sub" });
@@ -303,6 +306,11 @@ export class TodoView extends ItemView {
     setIcon(this.sortBtnEl, "arrow-up-down");
     this.sortLabelEl = this.sortBtnEl.createSpan({ text: this.getSortLabel(this.plugin.settings.sortConfig.primary.field) });
     this.sortBtnEl.addEventListener("click", (ev) => this.showSortMenu(ev));
+    this.aiBtnEl = taskHeader.createEl("button", { cls: "todo-sort-btn todo-ai-btn" }) as HTMLButtonElement;
+    setIcon(this.aiBtnEl, "lightbulb");
+    this.aiBtnEl.style.display = "none";
+    this.aiBtnEl.title = "AI 推荐";
+    this.aiBtnEl.addEventListener("click", () => { new Notice("AI 推荐功能即将推出"); });
     this.planContainerEl = main.createDiv({ cls: "todo-plan-container" });
 
     this.taskListEl = main.createDiv({ cls: "todo-task-list" });
@@ -541,6 +549,33 @@ export class TodoView extends ItemView {
     this.layoutEl.dataset.mobilePanel = panel;
   }
 
+  onPaneMenu(menu: Menu, source: string): void {
+    super.onPaneMenu(menu, source);
+    const listId = this.plugin.settings.selectedListId;
+    if (!listId) return;
+    const list = this.plugin.listService.getById(listId);
+    if (!list || list.isDefault) return;
+    menu.addSeparator();
+    menu.addItem((item) => item.setTitle("编辑列表").setIcon("pencil").onClick(async () => {
+      const modal = new CreateListModal(this.app, { name: list.name, icon: list.icon || "list" } as any);
+      const result = await modal.openAndGetValue();
+      if (result) {
+        await this.plugin.listService.update(listId, { name: result.name, icon: result.icon });
+        this.updateHeaderInfo();
+        await this.renderLists();
+      }
+    }));
+    menu.addItem((item) => item.setTitle("删除列表").setIcon("trash").onClick(async () => {
+      const confirmed = await new ConfirmModal(this.app, "确定删除「" + list.name + "」吗？列表中的任务也会被删除。").openAndConfirm();
+      if (confirmed) {
+        await this.plugin.listService.delete(listId);
+        this.plugin.settings.selectedListId = null;
+        await this.plugin.saveSettings();
+        await this.activateNav("myday");
+      }
+    }));
+  }
+
   private updateHeaderInfo(): void {
     if (!this.headerIconEl || !this.headerTitleEl) return;
     
@@ -660,11 +695,35 @@ export class TodoView extends ItemView {
       };
     }
 
+
+    // Show AI button for myday, sort button for others
+    if (this.aiBtnEl && this.sortBtnEl) {
+      const isMyday = activeViewNav === "myday" && !selectedListId;
+      this.aiBtnEl.style.display = isMyday ? "" : "none";
+      if (isMyday) this.sortBtnEl.style.display = "none";
+    }
+
     // Update subtitle
     if (this.headerSubEl) {
       this.headerSubEl.textContent = "";
       this.headerSubEl.style.display = "none";
     }
+  }
+
+  async activateNavFromExternal(nav: ViewNav): Promise<void> {
+    await this.activateNav(nav);
+  }
+
+  async activateListFromExternal(listId: string): Promise<void> {
+    await this.activateList(listId);
+  }
+
+  async activatePlanFromExternal(kind: PlanKind): Promise<void> {
+    await this.activatePlan(kind);
+  }
+
+  showMobilePanelFromExternal(panel: "nav" | "main" | "detail"): void {
+    this.showMobilePanel(panel);
   }
 
 private async activateNav(nav: ViewNav): Promise<void> {
@@ -1122,6 +1181,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
   private getSortLabel(field: SortField): string {
     return SORT_FIELD_LABELS[field] ?? field;
   }
+
 
   private showSortMenu(ev: MouseEvent): void {
     const fields = Object.entries(SORT_FIELD_LABELS) as [SortField, string][];

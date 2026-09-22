@@ -4015,9 +4015,28 @@
 @media(max-width:600px){
 .todo-layout{position:relative!important;overflow:hidden}
 .todo-nav,.todo-main,.todo-detail{position:absolute;inset:0;width:100%;height:100%;display:none!important;flex-direction:column;overflow:hidden;padding-bottom:48px}
-.todo-layout[data-mobile-panel="nav"] .todo-nav{display:flex!important;padding-bottom:48px!important}
-.todo-layout[data-mobile-panel="main"] .todo-main{display:flex!important}
+.todo-nav{display:none!important}
+.todo-main{display:flex!important}
 .todo-layout[data-mobile-panel="detail"] .todo-detail{display:flex!important}
+.todo-layout[data-mobile-panel="detail"] .todo-main{display:none!important}
+.todo-sidebar-nav{padding:68px 0 8px}
+.todo-sidebar-nav-sep{height:1px;background:var(--background-modifier-border);margin:8px 12px}
+.todo-sidebar-nav .todo-nav-item{display:flex;align-items:center;gap:8px;padding:6px 16px;cursor:pointer;font-size:14px}
+.todo-sidebar-nav .todo-nav-item:hover{background:var(--background-modifier-hover)}
+.todo-sidebar-nav .todo-nav-item.active{background:var(--background-modifier-hover);color:var(--text-accent)}
+.todo-sidebar-nav .todo-nav-icon{display:inline-flex;width:20px;justify-content:center}
+.todo-sidebar-nav .todo-nav-group{margin-top:4px}
+.todo-sidebar-nav .todo-nav-group-header{display:flex;align-items:center;gap:6px;padding:6px 16px;cursor:pointer;font-size:12px;color:var(--text-muted);font-weight:600}
+.todo-sidebar-nav .todo-nav-group-header:hover{background:var(--background-modifier-hover)}
+.todo-sidebar-nav .todo-nav-group-list{}
+.todo-sidebar-nav .todo-nav-group-name{font-size:12px}
+.todo-sidebar-nav .todo-nav-group-arrow{font-size:9px;transition:transform .15s}
+.todo-sidebar-nav .todo-nav-group-arrow.collapsed{transform:rotate(-90deg)}
+.todo-sidebar-nav .todo-nav-section{margin-top:8px;padding:0!important}
+.todo-sidebar-nav .todo-quadrant-item .todo-nav-icon{display:inline-flex;width:20px;justify-content:center}
+.todo-sidebar-nav .todo-plan-item .todo-nav-icon{display:inline-flex;width:20px;justify-content:center}
+.todo-sidebar-nav .todo-nav-add{display:flex;align-items:center;gap:8px;padding:6px 16px;cursor:pointer;font-size:13px;color:var(--text-muted)}
+.todo-sidebar-nav .todo-nav-add:hover{background:var(--background-modifier-hover);color:var(--text-normal)}
 .todo-mobile-back{display:flex}
 .todo-detail-close{display:none!important}
 .todo-detail-mobile-back{display:flex!important;margin-right:auto}
@@ -4038,3 +4057,5 @@
 .todo-review-stat-value{font-size:16px!important}
 .todo-review-stat-label{font-size:9px!important}
 }
+
+.is-mobile .obsidian-todo-nav-sidebar{display:none!important}

@@ -25,9 +25,14 @@ export class CreateListModal extends Modal {
   private resolve!: (value: CreateListResult | null) => void;
   private selectedIcon = "list-checks";
   private nameInput!: HTMLInputElement;
+  private editName: string;
+  private editIcon: string;
 
-  constructor(app: App) {
+  constructor(app: App, editList?: { name: string; icon?: string }) {
     super(app);
+    this.editName = editList?.name || "";
+    this.editIcon = editList?.icon || "list-checks";
+    if (editList) this.selectedIcon = editList.icon || "list-checks";
   }
 
   async openAndGetValue(): Promise<CreateListResult | null> {
@@ -44,6 +49,8 @@ export class CreateListModal extends Modal {
     // Title
     contentEl.createDiv({ cls: "todo-create-list-title", text: "新建列表" });
 
+    // Wait for onOpen to set nameInput value
+
     // Name input
     const nameGroup = contentEl.createDiv({ cls: "todo-create-list-group" });
     nameGroup.createDiv({ cls: "todo-create-list-label", text: "列表名称" });
@@ -51,6 +58,7 @@ export class CreateListModal extends Modal {
       cls: "todo-create-list-input",
       attr: { type: "text", placeholder: "输入列表名称..." },
     }) as HTMLInputElement;
+    if (this.editName) this.nameInput.value = this.editName;
 
     // Icon selector
     const iconGroup = contentEl.createDiv({ cls: "todo-create-list-group" });
@@ -104,7 +112,7 @@ export class CreateListModal extends Modal {
     // Actions
     const actions = contentEl.createDiv({ cls: "todo-create-list-actions" });
     const cancelBtn = actions.createEl("button", { text: "取消" });
-    const confirmBtn = actions.createEl("button", { text: "创建", cls: "mod-cta" });
+    const confirmBtn = actions.createEl("button", { text: this.editName ? "保存" : "创建", cls: "mod-cta" });
 
     cancelBtn.addEventListener("click", () => this.finish(null));
     confirmBtn.addEventListener("click", () => this.finish({ name: this.nameInput.value.trim(), icon: this.selectedIcon }));

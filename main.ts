@@ -14,6 +14,7 @@ import { TagService } from "./src/services/TagService";
 import { GroupService } from "./src/services/GroupService";
 
 import { TodoView, VIEW_TYPE_TODO } from "./src/views/TodoView";
+import { TodoNavView, VIEW_TYPE_TODO_NAV } from "./src/views/TodoNavView";
 import { StatsService } from "./src/services/StatsService";
 
 export default class ObsidianTodoPlugin extends Plugin {
@@ -24,6 +25,11 @@ export default class ObsidianTodoPlugin extends Plugin {
   tagService!: TagService;
   groupService!: GroupService;
   statsService!: StatsService;
+  todoView?: TodoView;
+  activateNav?: (nav: any) => Promise<void>;
+  activateList?: (listId: string) => Promise<void>;
+  activatePlan?: (kind: any) => Promise<void>;
+  showMobilePanel?: (panel: "nav" | "main" | "detail") => void;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -41,6 +47,7 @@ export default class ObsidianTodoPlugin extends Plugin {
 
     this.addSettingTab(new ObsidianTodoSettingTab(this.app, this));
     this.registerView(VIEW_TYPE_TODO, (leaf) => new TodoView(leaf, this));
+    this.registerView(VIEW_TYPE_TODO_NAV, (leaf) => new TodoNavView(leaf, this));
 
     this.addRibbonIcon("check-square", "Obsidian Todo", async () => {
       await this.activateView();
@@ -65,6 +72,26 @@ export default class ObsidianTodoPlugin extends Plugin {
           view.promptQuickCreate();
         }
       },
+    });
+
+    // Wire up sidebar nav callbacks
+    this.activateNav = async (nav: any) => { if (this.todoView) await this.todoView.activateNavFromExternal(nav); };
+    this.activateList = async (listId: string) => { if (this.todoView) await this.todoView.activateListFromExternal(listId); };
+    this.activatePlan = async (kind: any) => { if (this.todoView) await this.todoView.activatePlanFromExternal(kind); };
+    this.showMobilePanel = (panel) => { if (this.todoView) this.todoView.showMobilePanelFromExternal(panel); };
+
+    // Auto-open sidebar nav and main view on startup
+    this.app.workspace.onLayoutReady(async () => {
+      // Ensure sidebar nav view exists
+      const navLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TODO_NAV);
+      if (!navLeaves.length) {
+        const navLeaf = await this.app.workspace.ensureSideLeaf(VIEW_TYPE_TODO_NAV, "left", { active: false, reveal: true });
+        if (navLeaf) {
+          await navLeaf.setViewState({ type: VIEW_TYPE_TODO_NAV, active: false });
+        }
+      }
+      // Open main todo view
+      await this.activateView();
     });
   }
 
