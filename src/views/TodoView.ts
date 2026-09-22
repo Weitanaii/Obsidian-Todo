@@ -1652,9 +1652,9 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const empty = this.taskListEl.createDiv({ cls: "todo-empty-state todo-guide" });
 
     if (view === "myday") {
-      empty.createDiv({ cls: "todo-empty-title", text: "今天还没有安排" });
-      empty.createDiv({ cls: "todo-empty-desc", text: "从下方输入一个任务，或从其它列表把重要事项加入今天计划。" });
-      const action = empty.createDiv({ cls: "todo-empty-action", text: "添加一个今日任务" });
+      empty.createDiv({ cls: "todo-empty-title", text: t("今天还没有安排") });
+      empty.createDiv({ cls: "todo-empty-desc", text: t("从下方输入一个任务，或从其它列表把重要事项加入今天计划。") });
+      const action = empty.createDiv({ cls: "todo-empty-action", text: t("添加一个今日任务") });
       action.addEventListener("click", () => {
         void this.promptQuickCreate();
       });
@@ -1662,9 +1662,9 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     }
 
     if (view === "all") {
-      empty.createDiv({ cls: "todo-empty-title", text: "还没有任务" });
-      empty.createDiv({ cls: "todo-empty-desc", text: "在输入框里写下第一件要做的事，按回车即可创建。" });
-      const action = empty.createDiv({ cls: "todo-empty-action", text: "立即创建任务" });
+      empty.createDiv({ cls: "todo-empty-title", text: t("还没有任务") });
+      empty.createDiv({ cls: "todo-empty-desc", text: t("在输入框里写下第一件要做的事，按回车即可创建。") });
+      const action = empty.createDiv({ cls: "todo-empty-action", text: t("立即创建任务") });
       action.addEventListener("click", () => {
         void this.promptQuickCreate();
       });
@@ -1672,14 +1672,14 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     }
 
     if (view === "inbox") {
-      empty.createDiv({ cls: "todo-empty-title", text: "任务是空的" });
-      empty.createDiv({ cls: "todo-empty-desc", text: "将任务从其他列表移动到此处，或右键任务选择“移动到任务”。" });
+      empty.createDiv({ cls: "todo-empty-title", text: t("任务是空的") });
+      empty.createDiv({ cls: "todo-empty-desc", text: t("将任务从其他列表移动到此处，或右键任务选择“移动到任务”。") });
       return;
     }
 
-    empty.createDiv({ cls: "todo-empty-title", text: "当前列表是空的" });
-    empty.createDiv({ cls: "todo-empty-desc", text: "给这个清单起一个明确目标，然后先添加第一件最小行动项。" });
-    const action = empty.createDiv({ cls: "todo-empty-action", text: "为当前列表新增任务" });
+    empty.createDiv({ cls: "todo-empty-title", text: t("当前列表是空的") });
+    empty.createDiv({ cls: "todo-empty-desc", text: t("给这个清单起一个明确目标，然后先添加第一件最小行动项。") });
+    const action = empty.createDiv({ cls: "todo-empty-action", text: t("为当前列表新增任务") });
     action.addEventListener("click", () => {
       void this.promptQuickCreate();
     });
@@ -2174,7 +2174,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     if (sorted.length === 0) {
       const guide = cards.createDiv({ cls: "todo-goal-guide" });
-      guide.createDiv({ text: kind === "year" ? "暂无年度目标" : "暂无月度目标" });
+      guide.createDiv({ text: t(kind === "year" ? "暂无年度目标" : "暂无月度目标") });
     }
 
     const BATCH = 40;
