@@ -27,6 +27,7 @@ export interface ObsidianTodoSettings {
   taskFilterStatus: "all" | "active" | "shelved" | "abandoned" | "completed";
   goalViewMode: "card" | "list";
   showLunarCalendar: boolean;
+  planningIntensity: "light" | "balanced" | "high";
 }
 
 export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
@@ -53,6 +54,7 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
   taskFilterStatus: "active",
   goalViewMode: "card",
   showLunarCalendar: true,
+  planningIntensity: "balanced",
 };
 
 const ICON_OPTIONS = [
@@ -231,6 +233,21 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
               }
             })
       );
+    });
+
+    this.settingGroup(containerEl, t("AI 规划"), t("控制 AI 推荐的每日和每周容量"), (group) => {
+      new Setting(group)
+        .setName(t("计划强度"))
+        .setDesc(t("轻量、稳健或高强度会影响推荐任务容量，不会改变任务优先级"))
+        .addDropdown((dropdown) => dropdown
+          .addOption("light", t("轻量"))
+          .addOption("balanced", t("稳健"))
+          .addOption("high", t("高强度"))
+          .setValue(this.plugin.settings.planningIntensity)
+          .onChange(async (value) => {
+            this.plugin.settings.planningIntensity = value as "light" | "balanced" | "high";
+            await this.plugin.saveSettings();
+          }));
     });
 
     localizeDom(containerEl);

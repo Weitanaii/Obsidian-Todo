@@ -103,6 +103,8 @@ import { IconPickerModal } from "../ui/IconPickerModal";
 import { CreateListModal } from "../ui/CreateListModal";
 import { getLunarDisplayText, isLunarSpecialDay } from "../utils/lunar";
 import { isEnglish, localizeDom, systemTagName, t } from "../i18n";
+import { AIRecommendationModal } from "../ui/AIRecommendationModal";
+import { LocalAIProvider } from "../services/AIRecommendationService";
 
 export type ViewNav = "myday" | "all" | "inbox" | "plan" | "schedule" | "review" | "trash";
 
@@ -197,6 +199,7 @@ export interface TodoPluginLike {
     taskFilterStatus: "all" | "active" | "shelved" | "abandoned" | "completed";
     goalViewMode: "card" | "list";
     showLunarCalendar: boolean;
+    planningIntensity: "light" | "balanced" | "high";
   };
   saveSettings(): Promise<void>;
     app?: App;
@@ -310,8 +313,11 @@ export class TodoView extends ItemView {
     this.aiBtnEl = taskHeader.createEl("button", { cls: "todo-sort-btn todo-ai-btn" }) as HTMLButtonElement;
     setIcon(this.aiBtnEl, "lightbulb");
     this.aiBtnEl.style.display = "none";
-    this.aiBtnEl.title = "AI 推荐";
-    this.aiBtnEl.addEventListener("click", () => { new Notice("AI 推荐功能即将推出"); });
+    this.aiBtnEl.title = t("AI 推荐");
+    this.aiBtnEl.addEventListener("click", () => {
+      const isMonthlyPlan = this.plugin.settings.activeViewNav === "plan" && this.activePlanKind === "month";
+      void this.openAIRecommendations(isMonthlyPlan ? "month" : "myday");
+    });
     this.planContainerEl = main.createDiv({ cls: "todo-plan-container" });
 
     this.taskListEl = main.createDiv({ cls: "todo-task-list" });
@@ -702,7 +708,10 @@ export class TodoView extends ItemView {
     // Show AI button for myday, sort button for others
     if (this.aiBtnEl && this.sortBtnEl) {
       const isMyday = activeViewNav === "myday" && !selectedListId;
-      this.aiBtnEl.style.display = isMyday ? "" : "none";
+      const isMonthlyPlan = activeViewNav === "plan" && this.activePlanKind === "month";
+      const showAi = isMyday || isMonthlyPlan;
+      this.aiBtnEl.style.display = showAi ? "" : "none";
+      this.aiBtnEl.title = t("AI 推荐");
       if (isMyday) this.sortBtnEl.style.display = "none";
     }
 
@@ -3808,6 +3817,44 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     this.detailView?.close();
     const layout = this.containerEl.querySelector(".todo-layout");
     if (layout) layout.removeClass("todo-layout-detail-open");
+  }
+
+  private async openAIRecommendations(mode: "myday" | "month"): Promise<void> {
+    const date = this.myDayViewDate || localTodayStr();
+    const monthKey = this.goalPeriodKey || currentPeriodKey("month");
+    if (mode === "month") {
+      const monthGoals = this.plugin.taskService.getAll().filter((task) => task.planKind === "month" && task.planPeriodKey === monthKey && !task.isDeleted);
+      if (!monthGoals.length) {
+        new Notice(t("当前月份没有月度目标，请先创建月度目标"));
+        return;
+      }
+    }
+    const modal = new AIRecommendationModal(this.app, {
+      provider: new LocalAIProvider(),
+      mode,
+      date,
+      monthKey,
+      intensity: this.plugin.settings.planningIntensity,
+      host: {
+        getTasks: () => this.plugin.taskService.getAll(),
+        createTask: (fields) => this.plugin.taskService.create(fields),
+        updateTask: (id, changes) => this.plugin.taskService.update(id, changes),
+        refresh: async () => {
+          if (mode === "month") await this.renderGoalDashboard("month");
+          else await this.renderTasks("myday");
+        },
+        openTaskDetail: (taskId) => {
+          const task = this.plugin.taskService.getAll().find((candidate) => candidate.id === taskId);
+          if (!task) return;
+          this.plugin.settings.selectedTaskId = taskId;
+          void this.plugin.saveSettings();
+          this.detailView.open(taskId);
+          const layout = this.containerEl.querySelector(".todo-layout");
+          if (layout) layout.addClass("todo-layout-detail-open");
+        },
+      },
+    });
+    modal.open();
   }
 
   private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" | "review"): void {

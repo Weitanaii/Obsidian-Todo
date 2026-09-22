@@ -3959,6 +3959,34 @@
 .todo-goal-sentinel{height:1px}
 .todo-goal-kr-more{width:100%;margin-top:6px;padding:8px 10px;border:1px dashed var(--background-modifier-border);border-radius:10px;background:transparent;color:var(--text-muted);cursor:pointer;font-size:12px}
 .todo-goal-kr-more:hover{color:var(--text-normal);background:var(--background-modifier-hover)}
+
+/* === AI Recommendation Board === */
+.todo-ai-modal .modal-content{max-width:860px;width:min(860px,calc(100vw - 32px));max-height:calc(100vh - 48px);display:flex;flex-direction:column;overflow:hidden}
+.todo-ai-modal-subtitle{color:var(--text-muted);font-size:var(--font-ui-small);margin:-8px 0 10px}
+.todo-ai-board{display:grid;grid-template-rows:minmax(150px,1fr) minmax(180px,1fr);gap:10px;min-height:360px;overflow:hidden}
+.todo-ai-dropzone,.todo-ai-candidates-zone{border:1px dashed var(--background-modifier-border);border-radius:8px;padding:10px;overflow:auto;background:var(--background-secondary)}
+.todo-ai-selected-zone{background:color-mix(in srgb,var(--interactive-accent) 7%,var(--background-secondary))}
+.todo-ai-zone-title{font-size:var(--font-ui-small);font-weight:600;color:var(--text-muted);margin-bottom:8px}
+.todo-ai-card-list{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;min-height:70px}
+.todo-ai-card{width:min(260px,100%);padding:10px;border:1px solid var(--background-modifier-border);border-radius:8px;background:var(--background-primary);cursor:grab;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.todo-ai-card.is-selected{border-color:var(--interactive-accent)}
+.todo-ai-card:active{cursor:grabbing}
+.todo-ai-card-head{display:flex;gap:8px;align-items:flex-start}
+.todo-ai-card-title{font-weight:600;flex:1;line-height:1.35}
+.todo-ai-card-duration{font-size:11px;color:var(--text-muted);white-space:nowrap}
+.todo-ai-card-meta,.todo-ai-card-reason{font-size:11px;color:var(--text-muted);margin-top:5px}
+.todo-ai-card-note{font-size:12px;margin-top:6px;line-height:1.35}
+.todo-ai-card-warning{font-size:11px;color:var(--text-warning);margin-top:6px}
+.todo-ai-card-edit{width:100%;margin-top:6px}
+.todo-ai-status{min-height:20px;color:var(--text-muted);font-size:var(--font-ui-small);padding:6px 0}
+.todo-ai-actions{display:flex;justify-content:flex-end;gap:8px;padding-top:8px;border-top:1px solid var(--background-modifier-border)}
+@media(max-width:600px){
+  .todo-ai-modal .modal-content{width:calc(100vw - 20px);max-height:calc(100vh - 24px);padding-bottom:env(safe-area-inset-bottom)}
+  .todo-ai-board{grid-template-rows:minmax(130px,1fr) minmax(180px,1fr);min-height:420px}
+  .todo-ai-card{width:100%;min-height:74px}
+  .todo-ai-actions{position:sticky;bottom:0;background:var(--background-primary);padding-bottom:calc(8px + env(safe-area-inset-bottom))}
+  .todo-ai-actions button{min-height:40px}
+}
 /* Goal card checkbox */
 .todo-goal-card-title.completed{text-decoration:line-through;color:var(--text-muted)}
 /* Status filter bar */
