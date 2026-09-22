@@ -103,6 +103,7 @@ import { IconPickerModal } from "../ui/IconPickerModal";
 import { CreateListModal } from "../ui/CreateListModal";
 import { getLunarDisplayText, isLunarSpecialDay } from "../utils/lunar";
 import { isEnglish, localizeDom, systemTagName, t } from "../i18n";
+import { LocalAIProvider, AIRecommendation, isSimilar, validateRecommendation } from "../services/AIRecommendationService";
 
 export type ViewNav = "myday" | "all" | "inbox" | "plan" | "schedule" | "review" | "trash";
 
@@ -313,8 +314,10 @@ export class TodoView extends ItemView {
     this.aiBtnEl.style.display = "none";
     this.aiBtnEl.title = t("AI 推荐");
     this.aiBtnEl.addEventListener("click", () => {
-      const isMonthlyPlan = this.plugin.settings.activeViewNav === "plan" && this.activePlanKind === "month";
-      new Notice(t(isMonthlyPlan ? "AI 周计划推荐功能即将推出" : "AI 推荐功能即将推出"));
+      const layout = this.containerEl.querySelector(".todo-layout");
+      if (layout) layout.addClass("todo-layout-detail-open");
+      void this.openAIBar();
+      this.showMobilePanel("detail");
     });
     this.planContainerEl = main.createDiv({ cls: "todo-plan-container" });
 
@@ -505,6 +508,34 @@ export class TodoView extends ItemView {
     document.addEventListener("mousemove", this._onDragMove);
     document.addEventListener("mouseup", this._onDragEnd);
     localizeDom(this.containerEl);
+  }
+
+  private async openAIBar(): Promise<void> {
+    const mode = this.plugin.settings.activeViewNav === "plan" && this.activePlanKind === "month" ? "month" : "myday";
+    const date = this.myDayViewDate || localTodayStr();
+    const monthKey = this.goalPeriodKey || currentPeriodKey("month");
+    const tasks = this.plugin.taskService.getAll();
+    if (mode === "month" && !tasks.some((task) => task.planKind === "month" && task.planPeriodKey === monthKey)) {
+      new Notice(t("当前月份没有月度目标，请先创建月度目标"));
+      return;
+    }
+    const provider = new LocalAIProvider();
+    let items: AIRecommendation[] = [];
+    const generate = async () => {
+      const context = { tasks: this.plugin.taskService.getAll(), date, monthKey, intensity: this.plugin.settings.planningIntensity };
+      items = mode === "myday" ? await provider.recommendMyDay(context) : await provider.recommendMonthWeeks(context);
+      this.detailView.openAIRecommendations(items, generate, async (item) => {
+        const error = validateRecommendation(item);
+        if (error) { new Notice(error); return; }
+        const duplicate = this.plugin.taskService.getAll().some((task) => !task.isDeleted && isSimilar(task.title, item.title) && (mode === "month" ? task.planPeriodKey === item.planPeriodKey : task.myDayDate === item.myDayDate));
+        if (duplicate) { new Notice(t("跳过重复或无效项")); return; }
+        if (item.sourceTaskId) await this.plugin.taskService.update(item.sourceTaskId, { myDayDate: item.myDayDate, myDayGroup: item.myDayGroup, startDate: item.startDate, dueDate: item.dueDate });
+        else await this.plugin.taskService.create({ title: item.title, note: item.note, listId: item.listId, tags: item.tags, isImportant: item.isImportant, myDayDate: item.myDayDate ?? null, myDayGroup: item.myDayGroup ?? "allday", startDate: item.startDate ?? null, dueDate: item.dueDate ?? null, planKind: item.planKind, planPeriodKey: item.planPeriodKey, parentId: item.parentId });
+        await this.refreshAll();
+        new Notice(t("已保存"));
+      });
+    };
+    try { await generate(); } catch (error) { console.error(error); new Notice(t("AI 推荐失败，请稍后重试")); }
   }
 
   async onClose(): Promise<void> {
