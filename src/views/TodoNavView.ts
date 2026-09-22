@@ -2,6 +2,7 @@ import { App, ItemView, Modal, setIcon, WorkspaceLeaf } from "obsidian";
 import type ObsidianTodoPlugin from "../../main";
 import type { ViewNav } from "./TodoView";
 import type { PlanKind } from "../models/Task";
+import { localizeDom } from "../i18n";
 
 export const VIEW_TYPE_TODO_NAV = "obsidian-todo-nav";
 
@@ -190,6 +191,48 @@ export class TodoNavView extends ItemView {
         await this.renderNav();
       }
     });
+
+    // Bottom actions shared with the desktop navigation.
+    const settingsContainer = this.contentEl.createDiv({ cls: "todo-nav-settings" });
+    const settingsBtn = settingsContainer.createDiv({ cls: "todo-nav-settings-btn" });
+    setIcon(settingsBtn, "settings");
+    settingsBtn.title = "设置";
+    settingsBtn.addEventListener("click", () => {
+      const setting = (this.app as any)?.setting;
+      setting?.open();
+      setting?.openTabById("obsidian-todo");
+    });
+
+    const reviewBtn = settingsContainer.createDiv({ cls: "todo-nav-settings-btn" });
+    setIcon(reviewBtn, "bar-chart-2");
+    reviewBtn.title = "统计";
+    reviewBtn.addEventListener("click", async () => {
+      if (this.plugin.activateNav) await this.plugin.activateNav("review");
+      this.collapseSidebar();
+      await this.renderNav();
+    });
+
+    const trashBtn = settingsContainer.createDiv({ cls: "todo-nav-settings-btn" });
+    setIcon(trashBtn, "trash-2");
+    trashBtn.title = "回收站";
+    trashBtn.addEventListener("click", async () => {
+      if (this.plugin.activateNav) await this.plugin.activateNav("trash");
+      this.collapseSidebar();
+      await this.renderNav();
+    });
+
+    const addGroupBtn = settingsContainer.createDiv({ cls: "todo-nav-settings-btn" });
+    setIcon(addGroupBtn, "folder-plus");
+    addGroupBtn.title = "新建分组";
+    addGroupBtn.addEventListener("click", async () => {
+      const prompt = new PromptModal(this.app, "输入分组名称");
+      const name = await prompt.openAndGetValue();
+      if (name) {
+        await this.plugin.groupService.create({ name });
+        await this.renderNav();
+      }
+    });
+    localizeDom(this.contentEl);
   }
 }
 

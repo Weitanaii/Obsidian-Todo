@@ -6,6 +6,7 @@ import { ResourceSuggestModal } from "../ui/ResourceSuggestModal";
 import { formatRecurrenceDisplay } from "../utils/recurrence";
 import { localTodayStr, getPeriodKeyForDate, getParentPeriodKey, ageFromDueDate, currentAge } from "../utils/period";
 import { getLunarDisplayText, isLunarSpecialDay } from "../utils/lunar";
+import { isEnglish, localizeDom, systemTagName } from "../i18n";
 
 export class TaskDetailView {
   private app: App;
@@ -149,6 +150,7 @@ export class TaskDetailView {
     // --- Related resources ---
     this.relatedEl = this.root.createDiv({ cls: "todo-detail-related" });
     this.renderRelatedSection(this.relatedEl, task);
+    localizeDom(this.root);
     // --- Bottom bar ---
     const bottomBar = this.root.createDiv({ cls: "todo-detail-bottom" });
     bottomBar.createDiv({ cls: "todo-detail-created", text: this.formatCreatedDate(task.createdAt) });
@@ -220,7 +222,7 @@ export class TaskDetailView {
 
         const chipIcon = chip.createSpan({ cls: "todo-tag-chip-icon" });
         setIcon(chipIcon, tag.icon);
-        chip.createSpan({ cls: "todo-tag-chip-name", text: tag.name });
+        chip.createSpan({ cls: "todo-tag-chip-name", text: systemTagName(tag) });
         const removeBtn = chip.createSpan({ cls: "todo-tag-chip-remove" });
         removeBtn.textContent = "\u00d7";
         removeBtn.title = "移除";
@@ -265,7 +267,7 @@ export class TaskDetailView {
       unsetText: "添加截止时间",
       isSet: hasDue,
       displayText: display,
-      onClick: () => { new DatePickerModal(this.app, task.dueDate, "end", (date) => { void this.saveChanges({ dueDate: date }); }, undefined, this.plugin.settings.showLunarCalendar).open(); },
+      onClick: () => { new DatePickerModal(this.app, task.dueDate, "end", (date) => { void this.saveChanges({ dueDate: date }); }, undefined, !isEnglish() && this.plugin.settings.showLunarCalendar).open(); },
       onClear: () => { void this.saveChanges({ dueDate: null }); },
     });
   }
@@ -301,7 +303,7 @@ export class TaskDetailView {
       unsetText: "添加开始时间",
       isSet: hasStart,
       displayText: display,
-      onClick: () => { new DatePickerModal(this.app, task.startDate, "start", (date) => { void this.saveChanges({ startDate: date }); }, (startIso, endIso) => { void this.saveChanges({ startDate: startIso, dueDate: endIso }); }, this.plugin.settings.showLunarCalendar).open(); },
+      onClick: () => { new DatePickerModal(this.app, task.startDate, "start", (date) => { void this.saveChanges({ startDate: date }); }, (startIso, endIso) => { void this.saveChanges({ startDate: startIso, dueDate: endIso }); }, !isEnglish() && this.plugin.settings.showLunarCalendar).open(); },
       onClear: () => { void this.saveChanges({ startDate: null }); },
     });
   }
@@ -309,7 +311,7 @@ export class TaskDetailView {
   private createRecurrenceRow(parent: HTMLElement, task: Task): void {
     const hasRec = !!task.recurrence;
     let display = "设置重复";
-    if (hasRec && task.recurrence) { display = "重复：" + formatRecurrenceDisplay(task.recurrence); }
+    if (hasRec && task.recurrence) { display = isEnglish() ? "Recurring" : "重复：" + formatRecurrenceDisplay(task.recurrence); }
     this.createPropertyRow(parent, task, {
       icon: "repeat",
       unsetText: "设置重复",
@@ -925,7 +927,7 @@ class RecurrencePickerModal extends Modal {
       { label: "每周", value: "weekly" },
       { label: "每月", value: "monthly" },
       { label: "每年", value: "yearly" },
-      { label: "每年（农历）", value: "lunar-yearly" },
+      ...(!isEnglish() ? [{ label: "每年（农历）", value: "lunar-yearly" }] : []),
     ];
 
     options.forEach((opt) => {
@@ -949,7 +951,7 @@ class RecurrencePickerModal extends Modal {
     const intervalInput = intervalRow.createEl("input", { attr: { type: "number", min: "1", value: "1" } }) as HTMLInputElement;
     intervalInput.style.width = "50px";
     const unitSelect = intervalRow.createEl("select") as HTMLSelectElement;
-    [{ v: "day", l: "天" }, { v: "week", l: "周" }, { v: "month", l: "月" }, { v: "year", l: "年" }, { v: "lunar-monthly", l: "农历月" }, { v: "lunar-yearly", l: "农历年" }].forEach((u) => {
+    [{ v: "day", l: "天" }, { v: "week", l: "周" }, { v: "month", l: "月" }, { v: "year", l: "年" }, ...(!isEnglish() ? [{ v: "lunar-monthly", l: "农历月" }, { v: "lunar-yearly", l: "农历年" }] : [])].forEach((u) => {
       const opt = unitSelect.createEl("option", { value: u.v, text: u.l });
       if (u.v === "day") opt.selected = true;
     });
@@ -1027,7 +1029,7 @@ class TagPickerModal extends Modal {
 
         const optIcon = opt.createSpan({ cls: "todo-tag-option-icon" });
         setIcon(optIcon, tag.icon);
-        opt.createSpan({ cls: "todo-tag-option-name", text: tag.name });
+        opt.createSpan({ cls: "todo-tag-option-name", text: systemTagName(tag) });
         opt.addEventListener("click", () => {
           if (this.selectedIds.includes(tag.id)) {
             this.selectedIds = this.selectedIds.filter((id) => id !== tag.id);

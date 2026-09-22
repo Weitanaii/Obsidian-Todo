@@ -102,6 +102,7 @@ import { renderStatCard, renderDistributionBar, renderStackedBarChart, renderMon
 import { IconPickerModal } from "../ui/IconPickerModal";
 import { CreateListModal } from "../ui/CreateListModal";
 import { getLunarDisplayText, isLunarSpecialDay } from "../utils/lunar";
+import { isEnglish, localizeDom, systemTagName, t } from "../i18n";
 
 export type ViewNav = "myday" | "all" | "inbox" | "plan" | "schedule" | "review" | "trash";
 
@@ -499,6 +500,7 @@ export class TodoView extends ItemView {
     this._onDragEnd = (ev: MouseEvent) => this.handleDragEnd(ev);
     document.addEventListener("mousemove", this._onDragMove);
     document.addEventListener("mouseup", this._onDragEnd);
+    localizeDom(this.containerEl);
   }
 
   async onClose(): Promise<void> {
@@ -527,6 +529,7 @@ export class TodoView extends ItemView {
       } else {
         await this.activateNav(nav);
       }
+      localizeDom(this.containerEl);
     } catch (e) {
       console.error("refreshAll failed, falling back to empty state:", e);
       this.taskListEl.empty();
@@ -708,6 +711,7 @@ export class TodoView extends ItemView {
       this.headerSubEl.textContent = "";
       this.headerSubEl.style.display = "none";
     }
+    localizeDom(this.containerEl);
   }
 
   async activateNavFromExternal(nav: ViewNav): Promise<void> {
@@ -1487,6 +1491,36 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       incomplete.forEach((task) => this.renderTaskRow(listEl, task, "myday"));
       completed.forEach((task) => this.renderTaskRow(listEl, task, "myday"));
     });
+    localizeDom(this.taskListEl);
+  }
+
+  refreshLanguageLabels(): void {
+    const setItemLabel = (key: ViewNav, label: string) => {
+      const item = this.navEls[key];
+      if (!item) return;
+      const labels = item.querySelectorAll<HTMLElement>(":scope > span:not(.todo-nav-icon)");
+      const labelEl = labels[labels.length - 1];
+      if (labelEl) labelEl.setText(label);
+    };
+    setItemLabel("myday", t("我的一天"));
+    setItemLabel("all", t("所有任务"));
+    setItemLabel("inbox", t("任务"));
+    setItemLabel("schedule", t("我的日程"));
+
+    this.planGroupEl?.querySelector<HTMLElement>(".todo-nav-group-name")?.setText(t("我的计划"));
+    this.planGroupEl?.querySelectorAll<HTMLElement>(".todo-plan-name").forEach((el, index) => {
+      el.setText([t("人生计划"), t("年度计划"), t("月度计划")][index] || el.textContent || "");
+    });
+    this.quadrantGroupEl?.querySelector<HTMLElement>(".todo-nav-group-name")?.setText(t("四象限"));
+    const quadrantLabels = ["重要紧急", "重要不紧急", "不重要紧急", "不重要不紧急"];
+    this.quadrantGroupEl?.querySelectorAll<HTMLElement>(".todo-quadrant-name").forEach((el, index) => {
+      el.setText(t(quadrantLabels[index] || el.textContent || ""));
+    });
+    this.listNavEl?.querySelector<HTMLElement>(".todo-nav-add")?.setText(`+ ${t("新建列表")}`);
+
+    const settingsButtons = this.containerEl.querySelectorAll<HTMLElement>(".todo-nav-settings-btn");
+    const titles = ["设置", "复盘", "回收站", "新建分组"];
+    settingsButtons.forEach((el, index) => { if (titles[index]) el.title = t(titles[index]); });
   }
 
   private renderTaskRow(container: HTMLDivElement, task: Task, currentView: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" | "review"): void {
@@ -1570,7 +1604,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         const tagEl = metaRight.createSpan({ cls: "todo-task-tag-label" });
         const tagIcon = tagEl.createSpan({ cls: "todo-task-tag-icon" });
         setIcon(tagIcon, tag.icon);
-        tagEl.createSpan({ text: tag.name });
+        tagEl.createSpan({ text: systemTagName(tag) });
       });
     }
 
@@ -1716,27 +1750,33 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       else if (pk === "year") this.quickInputEl.placeholder = "新建年度目标...";
       else if (pk === "month") this.quickInputEl.placeholder = "新建月度目标...";
       else this.quickInputEl.placeholder = "新建任务...";
+      localizeDom(this.containerEl);
       return;
     }
     this.quickContainerEl.style.display = activeViewNav === "inbox" ? "none" : "";
     if (activeViewNav === "myday") {
       this.quickInputEl.placeholder = "添加任务到我的一天...";
+      localizeDom(this.containerEl);
       return;
     }
     if (activeViewNav === "all") {
       this.quickInputEl.placeholder = "添加任务...";
+      localizeDom(this.containerEl);
       return;
     }
     if (activeViewNav === "inbox") {
       this.quickInputEl.placeholder = "添加任务到任务...";
+      localizeDom(this.containerEl);
       return;
     }
     if (selectedListId) {
       const list = this.plugin.listService.getActive().find((l) => l.id === selectedListId);
       this.quickInputEl.placeholder = list ? `添加任务到「${list.name}」...` : "添加任务到当前列表...";
+      localizeDom(this.containerEl);
       return;
     }
     this.quickInputEl.placeholder = "添加任务...";
+    localizeDom(this.containerEl);
   }
 
   
@@ -1935,7 +1975,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const groupEl = this.taskListEl.createDiv({ cls: "todo-plan-group" });
       const headerEl = groupEl.createDiv({ cls: "todo-plan-group-header" });
       const arrow = headerEl.createSpan({ cls: "todo-plan-group-arrow" + (isCurrent ? "" : " collapsed"), text: "\u25bc" });
-      headerEl.createSpan({ cls: "todo-plan-group-label", text: periodLabel(kind, pk) });
+      headerEl.createSpan({ cls: "todo-plan-group-label", text: this.localizedPeriodLabel(kind, pk) });
       headerEl.createSpan({ cls: "todo-plan-group-count", text: String(parentTasks.length) });
       const addBtn = headerEl.createSpan({ cls: "todo-plan-add-btn", text: "+" });
       addBtn.title = "\u65b0\u5efa\u4efb\u52a1";
@@ -1965,7 +2005,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           const subGroupEl = bodyEl.createDiv({ cls: "todo-plan-subgroup" });
           const subHeaderEl = subGroupEl.createDiv({ cls: "todo-plan-subgroup-header" });
           const subArrow = subHeaderEl.createSpan({ cls: "todo-plan-group-arrow" + (isCurSub ? "" : " collapsed"), text: "\u25bc" });
-          subHeaderEl.createSpan({ cls: "todo-plan-subgroup-label", text: subGroupLabel(subKind, sk) });
+          subHeaderEl.createSpan({ cls: "todo-plan-subgroup-label", text: this.localizedSubGroupLabel(subKind, sk) });
           subHeaderEl.createSpan({ cls: "todo-plan-group-count", text: String(subTasks.length) });
           const subAddBtn = subHeaderEl.createSpan({ cls: "todo-plan-add-btn", text: "+" });
           subAddBtn.title = "\u65b0\u5efa\u4efb\u52a1";
@@ -2007,6 +2047,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     const updateLabel = () => {
       labelEl.setText(kind === "year" ? (this.goalPeriodKey ?? "") + " 年" : (this.goalPeriodKey ?? ""));
+      localizeDom(nav);
     };
     const clampKey = (k: string) => {
       if (kind === "year") {
@@ -2069,6 +2110,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     addStatCard("进行中", String(inProgressCount), "timer", "todo-goal-stat-inprogress");
     addStatCard("逾期", String(overdueCount), "alert-triangle", overdueCount > 0 ? "todo-goal-stat-overdue" : "todo-goal-stat-overdue-empty");
     addStatCard("完成率", completionRate + "%", "pie-chart", completionRate >= 100 ? "todo-goal-stat-rate-full" : undefined);
+    localizeDom(this.taskListEl);
 
     // Monthly view: show quarterly goals as draggable cards
     if (kind === "month" && this.goalPeriodKey) {
@@ -2076,7 +2118,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       if (quarterKey) {
         const quarterTasks = this.plugin.taskService.getByPlanKindAndPeriod("quarter", quarterKey);
         const qSection = this.taskListEl.createDiv({ cls: "todo-goal-quarter-section" });
-        const qLabel = qSection.createDiv({ cls: "todo-goal-quarter-label", text: subGroupLabel("quarter", quarterKey) + " 目标" });
+        const qLabel = qSection.createDiv({ cls: "todo-goal-quarter-label", text: isEnglish() ? this.localizedSubGroupLabel("quarter", quarterKey) + " Goals" : subGroupLabel("quarter", quarterKey) + " 目标" });
         const qScroll = qSection.createDiv({ cls: "todo-goal-quarter-scroll" });
         for (const qt of quarterTasks) {
           const qCard = qScroll.createDiv({ cls: "todo-goal-quarter-card", attr: { "data-task-id": qt.id, draggable: "true" } });
@@ -2203,7 +2245,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
             const tagEl = right.createSpan({ cls: "todo-task-tag-label" });
             const tagIcon = tagEl.createSpan({ cls: "todo-task-tag-icon" });
             setIcon(tagIcon, tag.icon);
-            tagEl.createSpan({ text: tag.name });
+            tagEl.createSpan({ text: systemTagName(tag) });
           });
         }
       }
@@ -2280,7 +2322,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           };
           for (const [sk, items] of grouped) {
             hasAny = true;
-            const title = subGroupLabel(subKind, sk);
+            const title = this.localizedSubGroupLabel(subKind, sk);
             const sgHeader = body.createDiv({ cls: "todo-goal-subgroup-title" });
             sgHeader.createSpan({ text: title });
             const addBtn = sgHeader.createSpan({ cls: "todo-goal-subgroup-add", text: " ＋" });
@@ -2557,7 +2599,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const groupEl = container.createDiv({ cls: "todo-plan-group" });
     const headerEl = groupEl.createDiv({ cls: "todo-plan-group-header" });
     const arrow = headerEl.createSpan({ cls: "todo-plan-group-arrow", text: "▼" });
-    headerEl.createSpan({ cls: "todo-plan-group-label", text: periodLabel(kind, pk) });
+    headerEl.createSpan({ cls: "todo-plan-group-label", text: this.localizedPeriodLabel(kind, pk) });
     headerEl.createSpan({ cls: "todo-plan-group-count", text: String(parentTasks.length) });
     const addBtn = headerEl.createSpan({ cls: "todo-plan-add-btn", text: "+" });
     addBtn.title = "新建任务";
@@ -2576,7 +2618,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         const sg = container.createDiv({ cls: "todo-plan-subgroup" });
         const sh = sg.createDiv({ cls: "todo-plan-subgroup-header" });
         const sa = sh.createSpan({ cls: "todo-plan-group-arrow", text: "▼" });
-        sh.createSpan({ cls: "todo-plan-subgroup-label", text: subGroupLabel(subKind, sk) });
+        sh.createSpan({ cls: "todo-plan-subgroup-label", text: this.localizedSubGroupLabel(subKind, sk) });
         sh.createSpan({ cls: "todo-plan-group-count", text: String(subTasks.length) });
         const sab = sh.createSpan({ cls: "todo-plan-add-btn", text: "+" }); sab.title = "新建任务";
         const sb = sg.createDiv({ cls: "todo-plan-group-body" }); sb.dataset.periodKey = sk;
@@ -2589,6 +2631,38 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       }
     }
   }
+
+  private localizedPeriodLabel(kind: PlanKind, key: string): string {
+    if (!isEnglish()) return periodLabel(kind, key);
+    switch (kind) {
+      case "year": return `${key} Year Plan`;
+      case "quarter": {
+        const parts = key.split("-Q");
+        return `${parts[0]} Q${parts[1]} Quarter Plan`;
+      }
+      case "month": {
+        const parts = key.split("-");
+        const date = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+        const month = new Intl.DateTimeFormat("en-US", { month: "long" }).format(date);
+        return `${month} ${parts[0]} Month Plan`;
+      }
+      case "week": {
+        const parts = key.split("-W");
+        return `${parts[0]} W${parts[1]} Week Plan`;
+      }
+      default: return periodLabel(kind, key);
+    }
+  }
+
+  private localizedSubGroupLabel(kind: PlanKind, key: string): string {
+    if (!isEnglish()) return subGroupLabel(kind, key);
+    switch (kind) {
+      case "quarter": return `Q${key.split("-Q")[1]} Quarter Plan`;
+      case "week": return `W${key.split("-W")[1]} Week Plan`;
+      default: return this.localizedPeriodLabel(kind, key);
+    }
+  }
+
   private async renderLifePlanView(): Promise<void> {
     this.taskListEl.empty();
     const birthday = this.plugin.settings.birthday;
@@ -2652,7 +2726,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
             const chip = tagRow.createSpan({ cls: "todo-life-card-tag" });
             const chipIcon = chip.createSpan({ cls: "todo-life-card-tag-icon" });
             setIcon(chipIcon, tag.icon);
-            chip.createSpan({ text: tag.name });
+            chip.createSpan({ text: systemTagName(tag) });
           });
         }
         card.addEventListener("click", async () => {
@@ -2691,7 +2765,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
             const chip = tagRow.createSpan({ cls: "todo-life-card-tag" });
             const chipIcon = chip.createSpan({ cls: "todo-life-card-tag-icon" });
             setIcon(chipIcon, tag.icon);
-            chip.createSpan({ text: tag.name });
+            chip.createSpan({ text: systemTagName(tag) });
           });
         }
         card.addEventListener("click", async () => {
@@ -2718,18 +2792,18 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
 
   private getScheduleTitle(): string {
-    const dowNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+    const dowNames = isEnglish() ? ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] : ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
     switch (this.scheduleMode) {
       case "month":
-        return this.scheduleYear + "年" + (this.scheduleMonth + 1) + "月";
+        return isEnglish() ? new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(new Date(this.scheduleYear, this.scheduleMonth, 1)) : this.scheduleYear + "年" + (this.scheduleMonth + 1) + "月";
       case "day": {
         const d = new Date(this.scheduleYear, this.scheduleMonth, this.scheduleDate);
-        return (this.scheduleMonth + 1) + "月" + this.scheduleDate + "日" + "|" + dowNames[d.getDay()];
+        return isEnglish() ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(d) + "|" + dowNames[d.getDay()] : (this.scheduleMonth + 1) + "月" + this.scheduleDate + "日" + "|" + dowNames[d.getDay()];
       }
       case "week": {
         const d = new Date(this.scheduleYear, this.scheduleMonth, this.scheduleDate);
         const wn = getISOWeekNumber(d);
-        return this.scheduleYear + "年" + "|" + "第" + wn + "周";
+        return isEnglish() ? this.scheduleYear + "|Week " + wn : this.scheduleYear + "年" + "|" + "第" + wn + "周";
       }
     }
   }
@@ -2744,6 +2818,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     } else {
       el.textContent = parts.join("");
     }
+    localizeDom(this.taskListEl);
+    localizeDom(el);
   }
 
   private normalizeScheduleDate(): void {
@@ -2959,7 +3035,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   }
 
   private renderMonthView(container: HTMLDivElement): void {
-    const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+    const weekdays = isEnglish() ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] : ["日", "一", "二", "三", "四", "五", "六"];
     const weekdaysEl = container.createDiv({ cls: "todo-schedule-weekdays" });
     for (const wd of weekdays) { weekdaysEl.createSpan({ text: wd }); }
     const grid = container.createDiv({ cls: "todo-schedule-grid" });
@@ -2997,7 +3073,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const dow = i % 7;
       if (dow === 0 || dow === 6) cell.addClass("todo-schedule-weekend");
       cell.createDiv({ cls: "todo-schedule-cell-date", text: String(dayNum) });
-      if (this.plugin.settings.showLunarCalendar) {
+      if (!isEnglish() && this.plugin.settings.showLunarCalendar) {
         const [yStr, mStr, dStr] = dateStr.split("-");
         const lunarText = getLunarDisplayText(+yStr, +mStr, +dStr);
         const lunarCls = "todo-schedule-cell-lunar" + (isLunarSpecialDay(+yStr, +mStr, +dStr) ? " todo-lunar-festival" : "");
@@ -3174,7 +3250,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     ));
     let gridEl: HTMLDivElement;
     const allday = view.createDiv({ cls: "todo-day-allday" });
-    allday.createSpan({ cls: "todo-day-allday-label", text: "全天" });
+    allday.createSpan({ cls: "todo-day-allday-label", text: isEnglish() ? "All day" : "全天" });
     for (const t of alldayTasks) {
       const card = allday.createDiv({ cls: "todo-day-allday-card" });
       card.style.backgroundColor = this.getTaskBlockColor(t);
@@ -3303,7 +3379,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const dow = refDate.getDay() || 7;
     const weekStart = new Date(refDate);
     weekStart.setDate(refDate.getDate() - dow + 1);
-    const dowNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+    const dowNames = isEnglish() ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
     const today = new Date();
 
     const view = container.createDiv({ cls: "todo-schedule-week-view" });
@@ -3323,7 +3399,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       col.createDiv({ cls: "todo-week-dow", text: dowNames[i] });
       const dateNum = col.createDiv({ cls: "todo-week-date-num", text: String(d.getDate()) });
       if (isToday) { dateNum.addClass("todo-schedule-today"); }
-      if (this.plugin.settings.showLunarCalendar) {
+      if (!isEnglish() && this.plugin.settings.showLunarCalendar) {
         const lunarText = getLunarDisplayText(d.getFullYear(), d.getMonth() + 1, d.getDate());
         const lunarCls = "todo-week-lunar" + (isLunarSpecialDay(d.getFullYear(), d.getMonth() + 1, d.getDate()) ? " todo-lunar-festival" : "");
         col.createSpan({ cls: lunarCls, text: lunarText });
@@ -3335,7 +3411,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const datedAllday = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.dueDate && this.isAllDayTask(t));
     const undatedMyDay = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.myDayDate && !t.startDate && !t.dueDate);
     const alldayRow = thead.createDiv({ cls: "todo-week-allday" });
-    alldayRow.createDiv({ cls: "todo-week-allday-label", text: "全天" });
+    alldayRow.createDiv({ cls: "todo-week-allday-label", text: isEnglish() ? "All day" : "全天" });
     for (let i = 0; i < 7; i++) {
       const d = new Date(weekStart);
       d.setDate(d.getDate() + i);
@@ -4036,7 +4112,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       g.total++;
       if (task.isCompleted) g.completed++;
     }
-    const qDataFixed = Array.from(qGroups.entries()).map(([name, v]) => ({ label: name, total: v.total, completed: v.completed, color: v.color }));
+    const qDataFixed = Array.from(qGroups.entries()).map(([name, v]) => ({ label: name === "未分类" ? (isEnglish() ? "Uncategorized" : name) : systemTagName(allTags.find(t => t.name === name) || { name, isDefault: false }), total: v.total, completed: v.completed, color: v.color }));
     const qSection = container.createDiv({ cls: "todo-review-section" });
     qSection.createDiv({ cls: "todo-review-section-title", text: "四象限分布" });
     renderDistributionBar(qSection, qDataFixed);
@@ -4055,7 +4131,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       g.total++;
       if (task.isCompleted) g.completed++;
     }
-    const dDataFixed = Array.from(dGroups.entries()).map(([name, v]) => ({ label: name, total: v.total, completed: v.completed, color: v.color }));
+    const dDataFixed = Array.from(dGroups.entries()).map(([name, v]) => ({ label: name === "未分类" ? (isEnglish() ? "Uncategorized" : name) : systemTagName(allTags.find(t => t.name === name) || { name, isDefault: false }), total: v.total, completed: v.completed, color: v.color }));
     const dSection = container.createDiv({ cls: "todo-review-section" });
     dSection.createDiv({ cls: "todo-review-section-title", text: "领域分布" });
     renderDistributionBar(dSection, dDataFixed);

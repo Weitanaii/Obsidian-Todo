@@ -16,6 +16,7 @@ import { GroupService } from "./src/services/GroupService";
 import { TodoView, VIEW_TYPE_TODO } from "./src/views/TodoView";
 import { TodoNavView, VIEW_TYPE_TODO_NAV } from "./src/views/TodoNavView";
 import { StatsService } from "./src/services/StatsService";
+import { setLanguage } from "./src/i18n";
 
 export default class ObsidianTodoPlugin extends Plugin {
   settings: ObsidianTodoSettings;
@@ -33,6 +34,7 @@ export default class ObsidianTodoPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings();
+    setLanguage(this.settings.language);
     logger.info("Obsidian Todo loaded");
 
     this.taskService = new TaskService(this.app.vault, this.settings.todoFolder);
@@ -82,12 +84,19 @@ export default class ObsidianTodoPlugin extends Plugin {
 
     // Auto-open sidebar nav and main view on startup
     this.app.workspace.onLayoutReady(async () => {
-      // Ensure sidebar nav view exists
-      const navLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TODO_NAV);
-      if (!navLeaves.length) {
-        const navLeaf = await this.app.workspace.ensureSideLeaf(VIEW_TYPE_TODO_NAV, "left", { active: false, reveal: true });
-        if (navLeaf) {
-          await navLeaf.setViewState({ type: VIEW_TYPE_TODO_NAV, active: false });
+      // The desktop view already contains its own navigation; the side navigation is mobile-only.
+      const isMobile = window.innerWidth <= 600 || document.body.hasClass("is-mobile");
+      if (isMobile) {
+        const navLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TODO_NAV);
+        if (!navLeaves.length) {
+          const navLeaf = await this.app.workspace.ensureSideLeaf(VIEW_TYPE_TODO_NAV, "left", { active: false, reveal: true });
+          if (navLeaf) {
+            await navLeaf.setViewState({ type: VIEW_TYPE_TODO_NAV, active: false });
+          }
+        }
+      } else {
+        for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_TODO_NAV)) {
+          leaf.detach();
         }
       }
       // Open main todo view
@@ -147,8 +156,21 @@ export default class ObsidianTodoPlugin extends Plugin {
     for (const leaf of leaves) {
       const view = leaf.view;
       if (view instanceof TodoView && typeof view.refreshAll === "function") {
+        if (typeof view.refreshLanguageLabels === "function") view.refreshLanguageLabels();
         await view.refreshAll();
         return;
+      }
+    }
+  }
+
+  async refreshLanguage(): Promise<void> {
+    setLanguage(this.settings.language);
+    await this.refreshView();
+    if (window.innerWidth <= 600 || document.body.hasClass("is-mobile")) {
+      const navLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TODO_NAV);
+      for (const leaf of navLeaves) {
+        const view = leaf.view;
+        if (view instanceof TodoNavView) await view.renderNav();
       }
     }
   }

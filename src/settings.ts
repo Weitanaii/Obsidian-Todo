@@ -4,8 +4,10 @@ import type { ViewNav } from "./views/TodoView";
 import type { PlanKind } from "./models/Task";
 import { logger, LogLevel } from "./utils/logger";
 import type { SortConfig } from "./utils/sort";
+import { isEnglish, localizeDom, setLanguage, systemTagName, t, type TodoLanguage } from "./i18n";
 
 export interface ObsidianTodoSettings {
+  language: TodoLanguage;
   todoFolder: string;
   defaultListName: string;
   logLevel: string;
@@ -28,6 +30,7 @@ export interface ObsidianTodoSettings {
 }
 
 export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
+  language: "zh",
   todoFolder: "todo",
   defaultListName: "Tasks",
   logLevel: "INFO",
@@ -129,16 +132,33 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
     // --- Display Settings ---
     this.settingGroup(containerEl, "显示设置", "界面显示选项", (group) => {
       new Setting(group)
-        .setName("显示农历")
-        .setDesc("在日历、日程视图和日期选择器中显示农历日期、节日和节气")
-        .addToggle((toggle) =>
-          toggle
-            .setValue(this.plugin.settings.showLunarCalendar)
-            .onChange(async (value) => {
-              this.plugin.settings.showLunarCalendar = value;
-              await this.plugin.saveSettings();
-            })
-        );
+        .setName(t("语言"))
+        .setDesc(t("选择插件界面语言"))
+        .addDropdown((dropdown) => dropdown
+          .addOption("zh", t("中文"))
+          .addOption("en", t("英文"))
+          .setValue(this.plugin.settings.language)
+          .onChange(async (value) => {
+            this.plugin.settings.language = value as TodoLanguage;
+            setLanguage(this.plugin.settings.language);
+            await this.plugin.saveSettings();
+            await this.plugin.refreshLanguage();
+            this.display();
+          }));
+
+      if (!isEnglish()) {
+        new Setting(group)
+          .setName(t("显示农历"))
+          .setDesc(t("在日历、日程视图和日期选择器中显示农历日期、节日和节气"))
+          .addToggle((toggle) =>
+            toggle
+              .setValue(this.plugin.settings.showLunarCalendar)
+              .onChange(async (value) => {
+                this.plugin.settings.showLunarCalendar = value;
+                await this.plugin.saveSettings();
+              })
+          );
+      }
     });
 
     // --- Tag Management ---
@@ -210,8 +230,10 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
                 await this.plugin.resetAllData();
               }
             })
-        );
+      );
     });
+
+    localizeDom(containerEl);
   }
 
   private settingGroup(containerEl: HTMLElement, title: string, desc: string | undefined, render: (body: HTMLElement) => void): void {
@@ -260,7 +282,7 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
       const left = item.createDiv({ cls: "todo-setting-tag-left" });
       const iconEl = left.createSpan({ cls: "todo-setting-tag-icon" });
       setIcon(iconEl, tag.icon);
-      left.createSpan({ cls: "todo-setting-tag-name", text: tag.name });
+      left.createSpan({ cls: "todo-setting-tag-name", text: systemTagName(tag) });
 
       if (editable) {
         const actions = item.createDiv({ cls: "todo-setting-tag-actions" });

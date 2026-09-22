@@ -4022,6 +4022,7 @@
 .todo-layout[data-mobile-panel="detail"] .todo-main{display:none!important}
 /* Obsidian's .view-content padding has higher specificity; keep the mobile nav clear of the top toolbar. */
 .view-content.todo-sidebar-nav{padding:32px 0 8px!important}
+.todo-sidebar-nav{display:flex;flex-direction:column}
 .todo-sidebar-nav-sep{height:1px;background:var(--background-modifier-border);margin:8px 12px}
 .todo-sidebar-nav .todo-nav-item{display:flex;align-items:center;gap:8px;padding:6px 16px;cursor:pointer;font-size:14px}
 .todo-sidebar-nav > .todo-nav-item{font-size:var(--nav-item-size,14px)}
