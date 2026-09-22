@@ -1496,13 +1496,15 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     };
 
     prevBtn.addEventListener("click", async () => {
-      const d = new Date(+viewDate.split("-")[0], +viewDate.split("-")[1] - 1, +viewDate.split("-")[2]);
+      const currentDate = this.myDayViewDate || localTodayStr();
+      const d = new Date(+currentDate.split("-")[0], +currentDate.split("-")[1] - 1, +currentDate.split("-")[2]);
       d.setDate(d.getDate() - 1);
       this.myDayViewDate = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
       await refreshMyDay();
     });
     nextBtn.addEventListener("click", async () => {
-      const d = new Date(+viewDate.split("-")[0], +viewDate.split("-")[1] - 1, +viewDate.split("-")[2]);
+      const currentDate = this.myDayViewDate || localTodayStr();
+      const d = new Date(+currentDate.split("-")[0], +currentDate.split("-")[1] - 1, +currentDate.split("-")[2]);
       d.setDate(d.getDate() + 1);
       this.myDayViewDate = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
       await refreshMyDay();

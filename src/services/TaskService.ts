@@ -51,6 +51,13 @@ export class TaskService {
         ...t,
         status: (t as any).status ?? "active",
       }));
+      // 数据迁移：重复实例的我的一天日期应与实例截止日期同步
+      this.tasks = this.tasks.map(t => {
+        if (t.recurrenceGroupId && !t.isRecurrenceSource && !t.myDayDate && t.dueDate) {
+          return { ...t, myDayDate: extractLocalDate(t.dueDate) };
+        }
+        return t;
+      });
 
       // 数据迁移：仅修复 startDate 完全等于 dueDate 的旧 bug（startDate 被设为 dueDate 的情况）
       // 不再强制覆盖已有正确时间的实例
@@ -429,6 +436,7 @@ export class TaskService {
         relatedPaths: [...template.relatedPaths],
         relatedFolders: [...template.relatedFolders],
         myDayGroup: template.myDayGroup,
+        myDayDate: dueDateOnly,
         recurrence: template.recurrence,
         recurrenceGroupId: template.recurrenceGroupId,
         recurrenceEndDate: template.recurrenceEndDate,
@@ -522,6 +530,7 @@ export class TaskService {
         relatedPaths: [...source.relatedPaths],
         relatedFolders: [...source.relatedFolders],
         myDayGroup: source.myDayGroup,
+        myDayDate: dueStr,
         recurrence: source.recurrence,
         recurrenceGroupId: groupId,
         recurrenceEndDate: source.recurrenceEndDate,
