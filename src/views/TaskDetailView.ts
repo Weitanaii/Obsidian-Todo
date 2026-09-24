@@ -354,13 +354,29 @@ export class TaskDetailView {
     };
     const row = parent.createDiv({ cls: "todo-prop-row" });
     const iconEl = row.createDiv({ cls: "todo-prop-icon" });
-    setIcon(iconEl, icons[task.status] || icons.active);
-    const textEl = row.createDiv({ cls: "todo-prop-text is-set", text: t(labels[task.status] || labels.active) });
+    const displayCompleted = task.isCompleted;
+    setIcon(iconEl, displayCompleted ? "check-circle-2" : (icons[task.status] || icons.active));
+    const textEl = row.createDiv({ cls: "todo-prop-text is-set", text: t(displayCompleted ? "已完成" : (labels[task.status] || labels.active)) });
     textEl.addEventListener("click", (ev) => {
       const menu = new Menu();
-      menu.addItem((item) => item.setTitle(t("进行中")).setIcon("play-circle").setChecked(task.status === "active").onClick(() => void this.saveChanges({ status: "active" })));
-      menu.addItem((item) => item.setTitle(t("搁置")).setIcon("pause-circle").setChecked(task.status === "shelved").onClick(() => void this.saveChanges({ status: "shelved" })));
-      menu.addItem((item) => item.setTitle(t("放弃")).setIcon("x-circle").setChecked(task.status === "abandoned").onClick(() => void this.saveChanges({ status: "abandoned" })));
+      menu.addItem((item) => item
+        .setTitle(t("已完成"))
+        .setIcon("check-circle-2")
+        .setChecked(task.isCompleted)
+        .onClick(async () => {
+          if (task.isCompleted) {
+            await this.plugin.taskService.uncomplete(task.id);
+          } else {
+            await this.plugin.taskService.complete(task.id);
+          }
+          this.onTaskUpdated?.(task.id);
+          const updated = this.getTask();
+          if (updated) this.applyValues(updated);
+        }));
+      menu.addSeparator();
+      menu.addItem((item) => item.setTitle(t("进行中")).setIcon("play-circle").setChecked(!task.isCompleted && task.status === "active").onClick(() => void this.saveChanges({ status: "active" })));
+      menu.addItem((item) => item.setTitle(t("搁置")).setIcon("pause-circle").setChecked(!task.isCompleted && task.status === "shelved").onClick(() => void this.saveChanges({ status: "shelved" })));
+      menu.addItem((item) => item.setTitle(t("放弃")).setIcon("x-circle").setChecked(!task.isCompleted && task.status === "abandoned").onClick(() => void this.saveChanges({ status: "abandoned" })));
       const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
       menu.showAtPosition({ x: rect.left, y: rect.bottom });
     });

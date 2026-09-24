@@ -2947,12 +2947,14 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const container = this.taskListEl.createDiv({ cls: "todo-life-timeline" });
     for (const [age, tasks] of ageGroups) {
       const isCurrent = age === curAge;
+      const timeState = age < curAge ? "past" : (age > curAge ? "future" : "current");
       const year = birthdayYear + age;
-      const node = container.createDiv({ cls: "todo-life-node" + (isCurrent ? " is-current" : "") });
+      const node = container.createDiv({ cls: "todo-life-node is-" + timeState });
       node.setAttribute("data-age-key", String(age));
       const ageCol = node.createDiv({ cls: "todo-life-age-col" });
-      ageCol.createDiv({ cls: "todo-life-age-num", text: String(age) });
-      ageCol.createDiv({ cls: "todo-life-age-label", text: "\u5c81" });
+      const ageMain = ageCol.createDiv({ cls: "todo-life-age-main" });
+      ageMain.createSpan({ cls: "todo-life-age-num", text: String(age) });
+      ageMain.createSpan({ cls: "todo-life-age-label", text: "\u5c81" });
       ageCol.createDiv({ cls: "todo-life-age-year", text: String(year) + "\u5e74" });
       const lineCol = node.createDiv({ cls: "todo-life-line-col" });
       lineCol.createDiv({ cls: "todo-life-dot" + (isCurrent ? " todo-life-dot-current" : "") });

@@ -2163,15 +2163,32 @@
   line-height: 1;
   color: var(--text-normal);
 }
+.todo-life-age-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
 .todo-life-age-label {
   font-size: 12px;
   color: var(--text-muted);
-  margin-top: 1px;
+  margin-left: 2px;
 }
 .todo-life-age-year {
   font-size: 11px;
   color: var(--text-faint);
   margin-top: 2px;
+}
+.todo-life-age-state {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 5px;
+  padding: 1px 5px;
+  border-radius: var(--radius-s);
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
 }
 .todo-life-age-na {
   font-size: 13px;
@@ -2211,6 +2228,42 @@
   width: 2px;
   background: var(--background-modifier-border);
   transform: translateX(-50%);
+}
+.todo-life-node.is-past .todo-life-age-num,
+.todo-life-node.is-past .todo-life-age-year,
+.todo-life-node.is-past .todo-life-age-state {
+  color: var(--text-faint);
+}
+.todo-life-node.is-past .todo-life-card {
+  opacity: .72;
+  filter: saturate(.72);
+}
+.todo-life-node.is-past .todo-life-dot {
+  border-color: var(--text-faint);
+  background: var(--background-secondary);
+}
+.todo-life-node.is-past .todo-life-line-col::after {
+  background: var(--text-faint);
+}
+.todo-life-node.is-current .todo-life-age-num,
+.todo-life-node.is-current .todo-life-age-state {
+  color: var(--interactive-accent);
+}
+.todo-life-node.is-current .todo-life-age-state {
+  background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+}
+.todo-life-node.is-current .todo-life-card {
+  border-color: color-mix(in srgb, var(--interactive-accent) 48%, var(--background-modifier-border));
+}
+.todo-life-node.is-future .todo-life-age-num {
+  color: var(--text-normal);
+}
+.todo-life-node.is-future .todo-life-age-state {
+  color: var(--text-muted);
+  background: var(--background-secondary-alt);
+}
+.todo-life-node.is-future .todo-life-dot {
+  border-color: var(--interactive-accent-hover);
 }
 .todo-life-node:last-child .todo-life-line-col::after {
   display: none;
