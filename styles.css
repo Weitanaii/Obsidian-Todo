@@ -16,8 +16,21 @@
 
 .todo-layout .todo-nav {
   border-right: 1px solid var(--background-modifier-border);
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
   padding: 0;
+}
+
+.todo-layout .todo-nav > .todo-nav-section:first-child {
+  flex-shrink: 0;
+}
+
+.todo-layout .todo-nav > .todo-nav-list-section {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .todo-layout .todo-main {
@@ -275,6 +288,10 @@
   flex-shrink: 0;
   display: flex;
   justify-content: space-between;
+  position: sticky;
+  bottom: 0;
+  background: var(--background-primary);
+  z-index: 2;
 }
 
 .todo-nav-settings-btn {
@@ -709,7 +726,12 @@
   justify-content: center;
   padding: 10px 14px;
   flex-shrink: 0;
+  margin-top: auto;
   position: relative;
+  position: sticky;
+  bottom: 0;
+  background: var(--background-primary);
+  z-index: 2;
 }
 
 .todo-detail-created {
@@ -731,6 +753,14 @@
 .todo-detail-delete:hover {
   color: var(--text-error);
   background-color: var(--background-modifier-hover);
+}
+
+@media (min-width: 601px) {
+  /* Extend the desktop footer through the sticky scroll boundary. */
+  .todo-layout-detail-open .todo-detail-bottom {
+    bottom: -2px;
+    margin-bottom: -2px;
+  }
 }
 
 .todo-task-selected {
@@ -779,29 +809,6 @@
 .todo-ai-refresh-button:hover{color:var(--text-normal)}
 .todo-ai-refresh-button.is-loading svg{animation:todo-ai-spin .8s linear infinite}
 @keyframes todo-ai-spin{to{transform:rotate(360deg)}}
-
-@media (max-width: 600px) {
-  .todo-layout-detail-open {
-    grid-template-columns: 1fr;
-  }
-
-  .todo-detail {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    top: auto;
-    max-height: 90vh;
-    height: 90vh;
-    border-left: none;
-    border-top: 1px solid var(--background-modifier-border);
-    border-radius: 16px 16px 0 0;
-    box-shadow: 0 -10px 30px rgba(0,0,0,0.2);
-    z-index: 1000;
-    overflow: auto;
-    overscroll-behavior: contain;
-  }
-}
 
 /* ========== DatePickerModal ========== */
 
@@ -4042,10 +4049,14 @@
 .todo-nav{display:none!important}
 .todo-main{display:flex!important}
 .todo-layout[data-mobile-panel="detail"] .todo-detail{display:flex!important}
-.todo-layout[data-mobile-panel="detail"] .todo-main{display:none!important}
+.todo-layout[data-mobile-panel="detail"] .todo-main{display:flex!important}
+.todo-layout[data-mobile-panel="detail"] .todo-detail{display:none!important}
+.todo-detail-sidebar-host.todo-detail{display:flex!important;position:relative!important;inset:auto!important;width:auto!important;height:100%!important;min-height:0!important;max-height:none!important;min-width:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;opacity:1!important;overflow:hidden!important;padding:0!important}
+.todo-detail-sidebar-host .todo-detail-related{min-height:0;overflow-y:auto}
+.todo-detail-sidebar-host .todo-detail-bottom{margin-top:auto;position:sticky;bottom:0;transform:translateY(-5px);background:var(--background-primary);z-index:2}
 /* Obsidian's .view-content padding has higher specificity; keep the mobile nav clear of the top toolbar. */
 .view-content.todo-sidebar-nav{padding:32px 0 8px!important}
-.todo-sidebar-nav{display:flex;flex-direction:column}
+.todo-sidebar-nav{display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden}
 .todo-sidebar-nav-sep{height:1px;background:var(--background-modifier-border);margin:8px 12px}
 .todo-sidebar-nav .todo-nav-item{display:flex;align-items:center;gap:8px;padding:6px 16px;cursor:pointer;font-size:14px}
 .todo-sidebar-nav > .todo-nav-item{font-size:var(--nav-item-size,14px)}
@@ -4063,14 +4074,18 @@
 .todo-sidebar-nav .todo-nav-group-name{font-size:inherit}
 .todo-sidebar-nav .todo-nav-group-arrow{font-size:9px;transition:transform .15s}
 .todo-sidebar-nav .todo-nav-group-arrow.collapsed{transform:rotate(-90deg)}
-.todo-sidebar-nav .todo-nav-section{margin-top:8px;padding:0!important}
+.todo-sidebar-nav .todo-nav-section{margin-top:8px;padding:0!important;min-height:0;overflow-y:auto}
+.todo-sidebar-nav > .todo-sidebar-nav-list-section{flex:1;min-height:0;overflow-y:auto}
 .todo-sidebar-nav .todo-quadrant-item .todo-nav-icon{display:inline-flex;width:20px;justify-content:center}
 .todo-sidebar-nav .todo-plan-item .todo-nav-icon{display:inline-flex;width:20px;justify-content:center}
 .todo-sidebar-nav .todo-nav-add{display:flex;align-items:center;gap:8px;padding:6px 16px;cursor:pointer;font-size:13px;color:var(--text-muted)}
 .todo-sidebar-nav .todo-nav-add:hover{background:var(--background-modifier-hover);color:var(--text-normal)}
+.todo-sidebar-nav .todo-nav-settings{position:sticky;bottom:0;transform:translateY(0);background:var(--background-primary);z-index:2}
+.todo-plan-add-btn{display:inline-flex!important}
+.todo-relation-item-remove{display:inline-flex!important}
+.todo-related-item-remove{opacity:1!important}
 .todo-mobile-back{display:flex}
-.todo-detail-close{display:none!important}
-.todo-ai-detail-panel .todo-detail-close{display:inline-flex!important;margin-left:auto!important}
+.todo-detail-close{display:inline-flex!important;margin-left:auto!important}
 .todo-task-header{gap:2px}
 .todo-task-header{padding-right:8px}
 .todo-header-title{max-width:140px}

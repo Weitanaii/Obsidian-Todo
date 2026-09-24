@@ -131,7 +131,7 @@ export class TodoNavView extends ItemView {
     // Lists separator
     this.contentEl.createDiv({ cls: "todo-sidebar-nav-sep" });
     // Lists
-    const listSection = this.contentEl.createDiv({ cls: "todo-nav-section" });
+    const listSection = this.contentEl.createDiv({ cls: "todo-nav-section todo-sidebar-nav-list-section" });
     const lists = this.plugin.listService.getActive().filter((l: any) => !l.isDefault);
     const groups = this.plugin.groupService.getAll();
     const ungrouped = lists.filter((l: any) => !l.groupId);

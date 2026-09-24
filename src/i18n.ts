@@ -81,6 +81,7 @@ const translations: Record<string, string> = {
   "围绕月度目标": "Around the monthly goal",
   "请先选择至少一个推荐": "Select at least one suggestion first",
   "已保存": "Saved",
+  "日推荐只能创建普通任务": "Daily suggestions can only create regular tasks",
   "跳过重复或无效项": "duplicate or invalid items skipped",
   "AI 规划": "AI Planning",
   "控制 AI 推荐的每日和每周容量": "Controls daily and weekly capacity for AI suggestions",

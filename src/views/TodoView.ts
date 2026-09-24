@@ -97,6 +97,7 @@ import { extractLocalDate } from "../utils/recurrence";
 import { localTodayStr, currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent, getParentPeriodKey, ageFromDueDate, currentAge, getISOWeekNumber, getISOWeekRange } from "../utils/period";
 import { TaskDetailView } from "./TaskDetailView";
 import { AIRecommendationView } from "./AIRecommendationView";
+import { VIEW_TYPE_TODO_DETAIL } from "./TodoDetailSidebarView";
 import { sortTasks, getMyDayGroupFromTime } from "../utils/sort";
 import type { SortConfig, SortField, SortDirection } from "../utils/sort";
 import { renderStatCard, renderDistributionBar, renderStackedBarChart, renderMonthCalendar, renderBarChart, renderYearHeatmap } from "../utils/chart";
@@ -227,6 +228,8 @@ export class TodoView extends ItemView {
   private quickInputEl!: HTMLInputElement;
   private quickContainerEl!: HTMLDivElement;
   private detailEl!: HTMLDivElement;
+  private mobileDetailRoot: HTMLElement | null = null;
+  private mobileDetailLeaf: WorkspaceLeaf | null = null;
   private detailView!: TaskDetailView;
   private aiView!: AIRecommendationView;
   private planContainerEl!: HTMLDivElement;
@@ -273,6 +276,10 @@ export class TodoView extends ItemView {
   private _onDragMove: ((ev: MouseEvent) => void) | null = null;
   private _onDragEnd: ((ev: MouseEvent) => void) | null = null;
   private _lastDragMoved = false;
+  private touchStartX: number | null = null;
+  private touchStartY: number | null = null;
+  private _onTouchStart: ((ev: TouchEvent) => void) | null = null;
+  private _onTouchEnd: ((ev: TouchEvent) => void) | null = null;
   private scheduleScrollTarget: "now" | { taskId: string } | "preserve" = "now";
 
   constructor(leaf: WorkspaceLeaf, plugin: TodoPluginLike) {
@@ -300,6 +307,37 @@ export class TodoView extends ItemView {
     const layout = container.createDiv({ cls: "todo-layout" });
     this.layoutEl = layout;
     layout.dataset.mobilePanel = "main";
+    this._onTouchStart = (ev: TouchEvent) => {
+      if (!this.isMobile() || !ev.touches.length) return;
+      this.touchStartX = ev.touches[0].clientX;
+      this.touchStartY = ev.touches[0].clientY;
+    };
+    this._onTouchEnd = (ev: TouchEvent) => {
+      if (!this.isMobile() || this.touchStartX === null || this.touchStartY === null || !ev.changedTouches.length) return;
+      const touch = ev.changedTouches[0];
+      const dx = touch.clientX - this.touchStartX;
+      const dy = touch.clientY - this.touchStartY;
+      this.touchStartX = null;
+      this.touchStartY = null;
+      if (dx > -60 || Math.abs(dx) < Math.abs(dy)) return;
+      // The shared detail root can be replaced by task/goal details while the
+      // AI view instance still exists. Check the rendered panel as the source
+      // of truth so a stale provider state cannot block mobile gestures.
+      if (this.detailEl?.hasClass("todo-ai-detail-panel")) return;
+      const selectedId = this.plugin.settings.selectedTaskId;
+      const selected = selectedId ? this.plugin.taskService.getAll().find((task) => task.id === selectedId) : undefined;
+      if (selected) {
+        this.detailView.clearHistory();
+        this.detailView.open(selected.id);
+        this.layoutEl.addClass("todo-layout-detail-open");
+      } else {
+        this.detailView.openEmpty();
+        this.layoutEl.addClass("todo-layout-detail-open");
+      }
+      this.showMobilePanel("detail");
+    };
+    layout.addEventListener("touchstart", this._onTouchStart, { passive: true });
+    layout.addEventListener("touchend", this._onTouchEnd, { passive: true });
     (this.plugin as any).todoView = this;
     const nav = layout.createDiv({ cls: "todo-nav" });
     const main = layout.createDiv({ cls: "todo-main" });
@@ -417,7 +455,7 @@ export class TodoView extends ItemView {
       });
     });
 
-    this.listNavEl = nav.createDiv({ cls: "todo-nav-section" });
+    this.listNavEl = nav.createDiv({ cls: "todo-nav-section todo-nav-list-section" });
     this.listItemsEl = this.listNavEl.createDiv({ cls: "todo-nav-lists" });
 
     const addListBtn = this.listNavEl.createDiv({ cls: "todo-nav-add", text: "+ 新建列表" });
@@ -478,7 +516,12 @@ export class TodoView extends ItemView {
     });
 
     this.detailEl = layout.createDiv({ cls: "todo-detail" });
-    this.detailView = new TaskDetailView(this.app, this.plugin, this.detailEl, (taskId) => {
+    let detailRoot: HTMLElement = this.detailEl;
+    if (this.isMobileEnvironment()) {
+      const sidebarRoot = await this.openMobileDetailSidebar();
+      if (sidebarRoot) detailRoot = sidebarRoot;
+    }
+    this.detailView = new TaskDetailView(this.app, this.plugin, detailRoot, (taskId) => {
       this.refreshDetailIfActive(taskId);
       if (this.plugin.settings.activeViewNav === "plan" && (this.activePlanKind === "year" || this.activePlanKind === "month")) {
         void this.renderGoalDashboard(this.activePlanKind);
@@ -498,7 +541,7 @@ export class TodoView extends ItemView {
     }, () => {
       this.showMobilePanel("detail");
     });
-    this.aiView = new AIRecommendationView(this.plugin, this.detailEl, () => {
+    this.aiView = new AIRecommendationView(this.plugin, detailRoot, () => {
       const layout = this.containerEl.querySelector(".todo-layout");
       if (layout) layout.removeClass("todo-layout-detail-open");
       this.showMobilePanel("main");
@@ -526,11 +569,17 @@ export class TodoView extends ItemView {
     const accept = async (item: AIRecommendation): Promise<void> => {
       const error = validateRecommendation(item);
       if (error) { new Notice(error); return; }
+      if (mode === "myday" && item.planKind) {
+        new Notice(t("日推荐只能创建普通任务"));
+        return;
+      }
       const duplicate = this.plugin.taskService.getAll().some((task) => !task.isDeleted && isSimilar(task.title, item.title) && (mode === "month" ? task.planPeriodKey === item.planPeriodKey : task.myDayDate === item.myDayDate));
       if (duplicate) { new Notice(t("跳过重复或无效项")); return; }
       if (item.sourceTaskId) await this.plugin.taskService.update(item.sourceTaskId, { myDayDate: item.myDayDate, myDayGroup: item.myDayGroup, startDate: item.startDate, dueDate: item.dueDate });
       else await this.plugin.taskService.create({ title: item.title, note: item.note, listId: item.listId, tags: item.tags, isImportant: item.isImportant, myDayDate: item.myDayDate ?? null, myDayGroup: item.myDayGroup ?? "allday", startDate: item.startDate ?? null, dueDate: item.dueDate ?? null, planKind: item.planKind, planPeriodKey: item.planPeriodKey, parentId: item.parentId });
-      await this.refreshAll();
+      // Refresh the main task area without calling refreshAll(), which closes
+      // the active detail/AI sidebar as part of its reset flow.
+      await this.refreshAfterAIAccept();
       new Notice(t("已保存"));
     };
     const generate = async () => {
@@ -552,6 +601,8 @@ export class TodoView extends ItemView {
     if (this._onDragMove) document.removeEventListener("mousemove", this._onDragMove);
     if (this._onDragEnd) document.removeEventListener("mouseup", this._onDragEnd);
     if (this.goalKeyHandler) { document.removeEventListener("keydown", this.goalKeyHandler); this.goalKeyHandler = null; }
+    if (this._onTouchStart) this.layoutEl?.removeEventListener("touchstart", this._onTouchStart);
+    if (this._onTouchEnd) this.layoutEl?.removeEventListener("touchend", this._onTouchEnd);
     this.containerEl.empty();
   }
 
@@ -588,12 +639,81 @@ export class TodoView extends ItemView {
   }
 
   
-  private isMobile(): boolean { return this.layoutEl && this.layoutEl.clientWidth <= 600; }
+  private isMobileEnvironment(): boolean {
+    return window.innerWidth <= 600 || document.body.hasClass("is-mobile");
+  }
+
+  private async refreshAfterAIAccept(): Promise<void> {
+    const nav = this.plugin.settings.activeViewNav;
+    await this.renderLists();
+    if (nav === "plan" && this.activePlanKind) {
+      if (this.activePlanKind === "life") await this.renderLifePlanView();
+      else if (this.activePlanKind === "year" || this.activePlanKind === "month") await this.renderGoalDashboard(this.activePlanKind);
+      else await this.renderPlanView(this.activePlanKind);
+    } else if (nav === "schedule") {
+      this.taskListEl.empty();
+      this.renderScheduleView();
+    } else if (nav === "trash") {
+      this.taskListEl.empty();
+      this.renderTrashView();
+    } else {
+      await this.renderTasks(this.plugin.settings.selectedListId ? "list" : nav);
+    }
+    localizeDom(this.containerEl);
+  }
+
+  private isMobile(): boolean {
+    return this.isMobileEnvironment() || (!!this.layoutEl && this.layoutEl.clientWidth <= 600);
+  }
+
+  private async openMobileDetailSidebar(): Promise<HTMLElement | null> {
+    if (!this.isMobileEnvironment()) return this.detailEl;
+    const workspace = this.app.workspace as any;
+    let leaf = workspace.getLeavesOfType(VIEW_TYPE_TODO_DETAIL)[0] as WorkspaceLeaf | undefined;
+    if (!leaf && typeof workspace.ensureSideLeaf === "function") {
+      leaf = await workspace.ensureSideLeaf(VIEW_TYPE_TODO_DETAIL, "right", { active: false, reveal: false });
+    }
+    if (!leaf) return null;
+    if (typeof leaf.setViewState === "function") {
+      await leaf.setViewState({ type: VIEW_TYPE_TODO_DETAIL, active: false });
+    }
+    this.mobileDetailLeaf = leaf;
+    const root = (leaf.view as { contentEl?: HTMLElement } | undefined)?.contentEl;
+    if (root) {
+      root.addClass("todo-detail-sidebar-host");
+      this.mobileDetailRoot = root;
+    }
+    return root ?? null;
+  }
+
+  private revealMobileDetailSidebar(): void {
+    if (!this.isMobileEnvironment() || !this.mobileDetailLeaf) return;
+    const workspace = this.app.workspace as any;
+    const rightSplit = workspace.rightSplit;
+    if (rightSplit && typeof rightSplit.expand === "function") rightSplit.expand();
+    if (typeof workspace.revealLeaf === "function") workspace.revealLeaf(this.mobileDetailLeaf);
+  }
+
+  private collapseMobileDetailSidebar(): void {
+    if (!this.isMobileEnvironment()) return;
+    const rightSplit = (this.app.workspace as any).rightSplit;
+    if (rightSplit && typeof rightSplit.collapse === "function") rightSplit.collapse();
+  }
+
+  attachMobileDetailRoot(root: HTMLElement): void {
+    this.mobileDetailRoot = root;
+  }
+
+  detachMobileDetailRoot(root: HTMLElement): void {
+    if (this.mobileDetailRoot === root) this.mobileDetailRoot = null;
+  }
 
   private showMobilePanel(panel: "nav" | "main" | "detail"): void {
     if (!this.layoutEl) return;
     this.mobilePanel = panel;
     this.layoutEl.dataset.mobilePanel = panel;
+    if (panel === "detail") this.revealMobileDetailSidebar();
+    else this.collapseMobileDetailSidebar();
   }
 
   onPaneMenu(menu: Menu, source: string): void {
@@ -1840,6 +1960,22 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
 
     const { activeViewNav, selectedListId } = this.plugin.settings;
+
+    // Mobile quick-input uses this prompt path. Keep plan creation identical
+    // to the desktop quick-input path so goals are not saved as plain tasks.
+    if (activeViewNav === "plan" && this.activePlanKind) {
+      const kind = this.activePlanKind;
+      if (kind === "life") {
+        await this.plugin.taskService.create({ title: title.trim(), planKind: "life" });
+        await this.renderLifePlanView();
+      } else {
+        await this.plugin.taskService.create({ title: title.trim(), planKind: kind, planPeriodKey: this.goalPeriodKey ?? currentPeriodKey(kind) });
+        if (kind === "year" || kind === "month") await this.renderGoalDashboard(kind);
+        else await this.renderPlanView(kind);
+      }
+      return;
+    }
+
     let listId = selectedListId || undefined;
 
     if (!listId) {
@@ -2380,6 +2516,10 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
             const addBtn = sgHeader.createSpan({ cls: "todo-goal-subgroup-add", text: " ＋" });
             addBtn.addEventListener("click", (ev) => {
               ev.stopPropagation();
+              if (this.isMobile()) {
+                void this.promptPlanCreate(subKind, sk, goal.id, goal.tags ? [...goal.tags] : []);
+                return;
+              }
               if (sgHeader.dataset.addOpen === "1") return;
               sgHeader.dataset.addOpen = "1";
               const inputWrap = document.createElement("div");
@@ -2460,21 +2600,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
             }),
         );
 
-        // Add / remove from My Day
-        menu.addItem((item) =>
-          item
-            .setTitle(goal.myDayDate ? "\u4ECE\u201C\u6211\u7684\u4E00\u5929\u201D\u79FB\u9664" : "\u6DFB\u52A0\u5230\u201C\u6211\u7684\u4E00\u5929\u201D")
-            .setIcon(goal.myDayDate ? "calendar-minus" : "calendar-plus")
-            .onClick(async () => {
-              if (goal.myDayDate) {
-                await this.plugin.taskService.update(goal.id, { myDayDate: null });
-              } else {
-                const today = localTodayStr();
-                await this.plugin.taskService.update(goal.id, { myDayDate: today, startDate: today + "T07:00:00", dueDate: today + "T23:30:00" });
-              }
-              this.refreshGoalCardAndStats(goal.id, kind);
-            }),
-        );
+
 
         menu.addSeparator();
 
@@ -3791,6 +3917,10 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   private setupPlanAddButton(btn: HTMLElement, bodyEl: HTMLElement, kind: PlanKind, periodKey: string): void {
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
+      if (this.isMobile()) {
+        void this.promptPlanCreate(kind, periodKey);
+        return;
+      }
       if (bodyEl.style.display === "none") {
         bodyEl.style.display = "";
         const arrow = bodyEl.parentElement?.querySelector(".todo-plan-group-arrow");
@@ -3832,6 +3962,23 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     });
   }
 
+  private async promptPlanCreate(kind: PlanKind, periodKey: string, parentId?: string, tags?: string[]): Promise<void> {
+    const title = await new PromptModal(this.app, "输入任务标题").openAndGetValue();
+    if (!title?.trim()) return;
+    await this.plugin.taskService.create({
+      title: title.trim(),
+      planKind: kind,
+      planPeriodKey: periodKey,
+      ...(parentId ? { parentId } : {}),
+      ...(tags ? { tags } : {}),
+    });
+    if (this.activePlanKind === "year" || this.activePlanKind === "month") {
+      await this.renderGoalDashboard(this.activePlanKind);
+    } else if (this.activePlanKind) {
+      await this.renderPlanView(this.activePlanKind);
+    }
+  }
+
   private closeDetailIfTarget(taskId: string): void {
     if (this.detailView?.isActive() && this.detailView.getTaskId() === taskId) {
       this.closeDetail();
@@ -3854,6 +4001,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   private closeDetail(): void {
     this.plugin.settings.selectedTaskId = null;
     void this.plugin.saveSettings();
+    this.aiView?.close();
     this.detailView?.close();
     const layout = this.containerEl.querySelector(".todo-layout");
     if (layout) layout.removeClass("todo-layout-detail-open");

@@ -7,6 +7,7 @@ export class AIRecommendationView {
   private plugin: TodoPluginLike;
   private root: HTMLElement;
   private onClose?: () => void;
+  private active = false;
 
   constructor(plugin: TodoPluginLike, root: HTMLElement, onClose?: () => void) {
     this.plugin = plugin;
@@ -15,6 +16,7 @@ export class AIRecommendationView {
   }
 
   open(items: AIRecommendation[], onRefresh: () => Promise<void>, onAccept: (item: AIRecommendation) => Promise<void>): void {
+    this.active = true;
     this.root.empty();
     this.root.addClass("todo-detail-active", "todo-ai-detail-panel");
     const header = this.root.createDiv({ cls: "todo-detail-header" });
@@ -43,10 +45,13 @@ export class AIRecommendationView {
   }
 
   close(): void {
+    this.active = false;
     this.root.empty();
     this.root.removeClass("todo-detail-active", "todo-ai-detail-panel");
     this.onClose?.();
   }
+
+  isOpen(): boolean { return this.active; }
 
   private renderCard(container: HTMLElement, item: AIRecommendation, items: AIRecommendation[], onAccept: (item: AIRecommendation) => Promise<void>): void {
     const card = container.createDiv({ cls: "todo-ai-card" });

@@ -15,6 +15,7 @@ import { GroupService } from "./src/services/GroupService";
 
 import { TodoView, VIEW_TYPE_TODO } from "./src/views/TodoView";
 import { TodoNavView, VIEW_TYPE_TODO_NAV } from "./src/views/TodoNavView";
+import { TodoDetailSidebarView, VIEW_TYPE_TODO_DETAIL } from "./src/views/TodoDetailSidebarView";
 import { StatsService } from "./src/services/StatsService";
 import { setLanguage } from "./src/i18n";
 
@@ -50,6 +51,7 @@ export default class ObsidianTodoPlugin extends Plugin {
     this.addSettingTab(new ObsidianTodoSettingTab(this.app, this));
     this.registerView(VIEW_TYPE_TODO, (leaf) => new TodoView(leaf, this));
     this.registerView(VIEW_TYPE_TODO_NAV, (leaf) => new TodoNavView(leaf, this));
+    this.registerView(VIEW_TYPE_TODO_DETAIL, (leaf) => new TodoDetailSidebarView(leaf, this));
 
     this.addRibbonIcon("check-square", "Obsidian Todo", async () => {
       await this.activateView();
