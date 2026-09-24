@@ -15,6 +15,10 @@ export class AIRecommendationView {
     this.onClose = onClose;
   }
 
+  setRoot(root: HTMLElement): void {
+    this.root = root;
+  }
+
   open(items: AIRecommendation[], onRefresh: () => Promise<void>, onAccept: (item: AIRecommendation) => Promise<void>): void {
     this.active = true;
     this.root.empty();

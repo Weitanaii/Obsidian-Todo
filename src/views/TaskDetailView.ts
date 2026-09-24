@@ -1,4 +1,4 @@
-import { App, Modal, Notice, setIcon, TFile, TFolder } from "obsidian";
+import { App, Menu, Modal, Notice, setIcon, TFile, TFolder } from "obsidian";
 import type { TodoPluginLike } from "./TodoView";
 import type { Task, PlanKind } from "../models/Task";
 import type { DomainTag } from "../models/Tag";
@@ -7,6 +7,14 @@ import { formatRecurrenceDisplay } from "../utils/recurrence";
 import { localTodayStr, getPeriodKeyForDate, getParentPeriodKey, ageFromDueDate, currentAge } from "../utils/period";
 import { getLunarDisplayText, isLunarSpecialDay } from "../utils/lunar";
 import { isEnglish, localizeDom, systemTagName, t } from "../i18n";
+
+export interface ScheduleSidebarItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  isCompleted: boolean;
+  status?: string;
+}
 
 export class TaskDetailView {
   private app: App;
@@ -21,10 +29,12 @@ export class TaskDetailView {
   private onTaskUpdated?: (taskId: string) => void;
   private onClose?: () => void;
   private onNavigateToTask?: (taskId: string) => void;
+  private onScheduleItemNavigate?: (taskId: string) => void;
   private onOpen?: () => void;
   private historyStack: { taskId: string; title: string }[] = [];
+  private scheduleSummary: { title: string; items: ScheduleSidebarItem[] } | null = null;
 
-  constructor(app: App, plugin: TodoPluginLike, root: HTMLElement, onTaskUpdated?: (taskId: string) => void, onClose?: () => void, onNavigateToTask?: (taskId: string) => void, onOpen?: () => void) {
+  constructor(app: App, plugin: TodoPluginLike, root: HTMLElement, onTaskUpdated?: (taskId: string) => void, onClose?: () => void, onNavigateToTask?: (taskId: string) => void, onOpen?: () => void, onScheduleItemNavigate?: (taskId: string) => void) {
     this.app = app;
     this.plugin = plugin;
     this.root = root;
@@ -32,6 +42,7 @@ export class TaskDetailView {
     this.onClose = onClose;
     this.onNavigateToTask = onNavigateToTask;
     this.onOpen = onOpen;
+    this.onScheduleItemNavigate = onScheduleItemNavigate;
     this.root.addClass("todo-detail-panel");
     this.renderEmpty();
   }
@@ -42,6 +53,7 @@ export class TaskDetailView {
   getTaskId(): string | null { return this.taskId; }
 
   open(taskId: string): void {
+    this.scheduleSummary = null;
     this.taskId = taskId;
     void this.renderCurrentTask();
     this.onOpen?.();
@@ -49,11 +61,26 @@ export class TaskDetailView {
 
   close(): void {
     this.taskId = null;
+    this.scheduleSummary = null;
     this.renderEmpty();
+  }
+
+  setRoot(root: HTMLElement): void {
+    if (this.root === root) return;
+    this.root = root;
+    this.root.addClass("todo-detail-panel");
+    if (this.scheduleSummary) {
+      this.openScheduleSummary(this.scheduleSummary.title, this.scheduleSummary.items);
+    } else if (this.taskId) {
+      void this.renderCurrentTask();
+    } else {
+      this.renderEmpty();
+    }
   }
 
   openEmpty(): void {
     this.taskId = null;
+    this.scheduleSummary = null;
     this.historyStack = [];
     this.root.empty();
     this.root.addClass("todo-detail-active");
@@ -68,6 +95,55 @@ export class TaskDetailView {
     });
   }
 
+  openScheduleSummary(title: string, items: ScheduleSidebarItem[]): void {
+    this.renderScheduleSummary(title, items, true);
+  }
+
+  updateScheduleSummary(title: string, items: ScheduleSidebarItem[]): void {
+    if (!this.scheduleSummary) return;
+    this.renderScheduleSummary(title, items, false);
+  }
+
+  private renderScheduleSummary(title: string, items: ScheduleSidebarItem[], notifyOpen: boolean): void {
+    this.scheduleSummary = { title, items };
+    this.taskId = null;
+    this.historyStack = [];
+    this.root.empty();
+    this.root.removeClass("todo-ai-detail-panel");
+    this.root.addClass("todo-detail-active", "todo-schedule-sidebar");
+
+    const header = this.root.createDiv({ cls: "todo-detail-header" });
+    const closeBtn = header.createEl("button", { cls: "todo-detail-close" });
+    setIcon(closeBtn, "x");
+    closeBtn.setAttribute("aria-label", t("关闭"));
+    closeBtn.setAttribute("title", t("关闭"));
+    closeBtn.addEventListener("click", () => {
+      this.close();
+      this.onClose?.();
+    });
+
+    this.root.createDiv({ cls: "todo-schedule-sidebar-title", text: title });
+    const list = this.root.createDiv({ cls: "todo-schedule-sidebar-list" });
+    if (items.length === 0) {
+      list.createDiv({ cls: "todo-detail-empty", text: t("暂无任务") });
+    } else {
+      for (const item of items) {
+        const row = list.createDiv({ cls: "todo-schedule-sidebar-item" + (item.isCompleted ? " completed" : "") });
+        const mark = row.createSpan({ cls: "todo-schedule-sidebar-item-mark" });
+        setIcon(mark, item.isCompleted ? "check-circle-2" : "circle");
+        const body = row.createDiv({ cls: "todo-schedule-sidebar-item-body" });
+        body.createDiv({ cls: "todo-schedule-sidebar-item-title", text: item.title });
+        if (item.subtitle) body.createDiv({ cls: "todo-schedule-sidebar-item-subtitle", text: item.subtitle });
+        row.addEventListener("click", () => {
+          this.clearHistory();
+          this.onScheduleItemNavigate?.(item.id);
+        });
+      }
+    }
+    localizeDom(this.root);
+    if (notifyOpen) this.onOpen?.();
+  }
+
   refresh(task: Task): void {
     if (task.id !== this.taskId) return;
     this.applyValues(task);
@@ -75,7 +151,7 @@ export class TaskDetailView {
 
   private renderEmpty(): void {
     this.root.empty();
-    this.root.removeClass("todo-detail-active", "todo-ai-detail-panel");
+    this.root.removeClass("todo-detail-active", "todo-ai-detail-panel", "todo-schedule-sidebar");
     const empty = this.root.createDiv({ cls: "todo-detail-empty" });
     empty.createDiv({ cls: "todo-detail-empty-title", text: "选择一个任务查看详情" });
     empty.createDiv({ cls: "todo-detail-empty-desc", text: "点击列表中的任务后，可在此处编辑标题、备注、日期、重复规则等属性。" });
@@ -86,7 +162,7 @@ export class TaskDetailView {
     const task = this.getTask();
     if (!task) { this.renderEmpty(); return; }
     this.root.empty();
-    this.root.removeClass("todo-ai-detail-panel");
+    this.root.removeClass("todo-ai-detail-panel", "todo-schedule-sidebar");
     this.root.addClass("todo-detail-active");    // --- Header ---
     const header = this.root.createDiv({ cls: "todo-detail-header" });
     // Back button (only when navigation history exists)
@@ -262,6 +338,31 @@ export class TaskDetailView {
       displayText: "\u5df2\u5728\u201c\u6211\u7684\u4e00\u5929\u201d\u4e2d",
       onClick: () => { void this.saveChanges({ myDayDate: task.myDayDate ? null : localTodayStr() }); },
       onClear: () => { void this.saveChanges({ myDayDate: null }); },
+    });
+  }
+
+  private createStatusRow(parent: HTMLElement, task: Task): void {
+    const labels: Record<string, string> = {
+      active: "进行中",
+      shelved: "已搁置",
+      abandoned: "已放弃",
+    };
+    const icons: Record<string, string> = {
+      active: "play-circle",
+      shelved: "pause-circle",
+      abandoned: "x-circle",
+    };
+    const row = parent.createDiv({ cls: "todo-prop-row" });
+    const iconEl = row.createDiv({ cls: "todo-prop-icon" });
+    setIcon(iconEl, icons[task.status] || icons.active);
+    const textEl = row.createDiv({ cls: "todo-prop-text is-set", text: t(labels[task.status] || labels.active) });
+    textEl.addEventListener("click", (ev) => {
+      const menu = new Menu();
+      menu.addItem((item) => item.setTitle(t("进行中")).setIcon("play-circle").setChecked(task.status === "active").onClick(() => void this.saveChanges({ status: "active" })));
+      menu.addItem((item) => item.setTitle(t("搁置")).setIcon("pause-circle").setChecked(task.status === "shelved").onClick(() => void this.saveChanges({ status: "shelved" })));
+      menu.addItem((item) => item.setTitle(t("放弃")).setIcon("x-circle").setChecked(task.status === "abandoned").onClick(() => void this.saveChanges({ status: "abandoned" })));
+      const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+      menu.showAtPosition({ x: rect.left, y: rect.bottom });
     });
   }
 
@@ -460,7 +561,8 @@ export class TaskDetailView {
     }
     return ids;
   }
-    private renderPropertyRows(container: HTMLElement, task: Task): void {
+  private renderPropertyRows(container: HTMLElement, task: Task): void {
+    this.createStatusRow(container, task);
     if (task.planKind === 'life') {
       this.createAgeRow(container, task);
       this.createTagRow(container, task, true);

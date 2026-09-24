@@ -83,6 +83,25 @@
   overflow-y: auto;
   padding: 8px 0 0 0;
 }
+.todo-task-list.todo-goal-active,
+.todo-task-list.todo-review-active {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: 0;
+}
+.todo-goal-active .todo-goal-sticky-header,
+.todo-review-active .todo-review-sticky-header {
+  flex: 0 0 auto;
+}
+.todo-goal-scroll-content,
+.todo-review-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 
 .todo-task-item {
   display: flex;
@@ -313,6 +332,28 @@
   color: var(--text-normal);
   background-color: var(--background-modifier-active-hover);
 }
+
+.todo-list-submenu {
+  position: fixed;
+  display: none;
+  min-width: 180px;
+  max-width: 280px;
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--menu-background);
+  border: var(--border-width) solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-s);
+  z-index: 10000;
+}
+.todo-list-submenu.is-visible{display:block}
+.todo-list-submenu-item{display:flex;align-items:center;gap:8px;min-height:28px;padding:4px 8px;border-radius:var(--radius-s);cursor:pointer;white-space:nowrap;color:var(--text-normal);font-size:var(--font-ui-small)}
+.todo-list-submenu-item:hover{background:var(--background-modifier-hover)}
+.todo-list-submenu-item-icon{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;flex:0 0 16px;color:var(--text-muted)}
+.todo-list-submenu-item-icon svg{width:16px;height:16px}
+.todo-list-submenu-item-label{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.todo-list-submenu-label{padding:6px 8px 3px;color:var(--text-faint);font-size:var(--font-ui-smaller);font-weight:600}
 
 .todo-list-rename-input {
   width: 100%;
@@ -549,6 +590,59 @@
 .todo-detail-header .todo-detail-close:hover {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
+}
+.todo-schedule-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.todo-schedule-sidebar-title {
+  padding: 4px 14px 12px;
+  font-size: var(--font-ui-medium);
+  font-weight: 600;
+  color: var(--text-normal);
+  flex-shrink: 0;
+}
+.todo-schedule-sidebar-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 8px 12px;
+}
+.todo-schedule-sidebar-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 8px;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+.todo-schedule-sidebar-item:hover {
+  background: var(--background-modifier-hover);
+}
+.todo-schedule-sidebar-item-mark {
+  display: inline-flex;
+  flex: 0 0 16px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.todo-schedule-sidebar-item-body {
+  min-width: 0;
+  flex: 1;
+}
+.todo-schedule-sidebar-item-title {
+  color: var(--text-normal);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.todo-schedule-sidebar-item.completed .todo-schedule-sidebar-item-title {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.todo-schedule-sidebar-item-subtitle {
+  margin-top: 3px;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
 }
 
 .todo-detail-back {
@@ -2924,6 +3018,18 @@
 /* ===== T-801: Review (统计分析) ===== */
 .todo-review-container {
   padding: 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+}
+.todo-review-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--background-primary);
+  padding-top: 1px;
 }
 .todo-review-header {
   display: flex;
@@ -3894,6 +4000,7 @@
   margin-left: 16px;
   margin-right: 16px;
 }/* ===== Goal Plan Navigator (step 2) ===== */
+.todo-goal-sticky-header{position:sticky;top:0;z-index:3;background:var(--background-primary);padding-top:1px}
 .todo-goal-nav{display:flex;align-items:center;gap:10px;padding:8px 0 12px}
 .todo-goal-nav-btn{min-width:36px;min-height:36px;border-radius:8px;border:1px solid var(--background-modifier-border);background:var(--background-secondary);color:var(--text-normal);cursor:pointer}
 .todo-goal-nav-btn:hover{background:var(--background-modifier-hover)}
@@ -3916,6 +4023,15 @@
 .todo-goal-card{padding:8px 12px;border-radius:8px;background:var(--background-secondary);border:1px solid var(--background-modifier-border);cursor:pointer;display:flex;flex-direction:column;gap:4px}
 .todo-goal-card:hover{background:var(--background-modifier-hover)}
 .todo-goal-card-overdue{border-color:var(--text-error)}
+.todo-goal-card-shelved{border-color:color-mix(in srgb, var(--text-warning) 55%, var(--background-modifier-border));opacity:.82}
+.todo-goal-card-abandoned{border-color:color-mix(in srgb, var(--text-error) 45%, var(--background-modifier-border));opacity:.68}
+.todo-goal-card-shelved .todo-goal-card-title{color:var(--text-warning)}
+.todo-goal-card-abandoned .todo-goal-card-title{text-decoration:line-through;color:var(--text-muted)}
+.todo-goal-status-badge{flex:0 0 auto;padding:2px 6px;border-radius:var(--radius-s);font-size:10px;font-weight:600;white-space:nowrap}
+.todo-goal-status-badge.is-shelved{color:var(--text-warning);background:color-mix(in srgb, var(--text-warning) 14%, transparent)}
+.todo-goal-status-badge.is-abandoned{color:var(--text-error);background:color-mix(in srgb, var(--text-error) 12%, transparent)}
+.todo-goal-restore-btn{display:inline-flex;align-items:center;justify-content:center;flex:0 0 24px;width:24px;height:24px;padding:0;border:0;border-radius:var(--radius-s);background:transparent;color:var(--text-accent);cursor:pointer}
+.todo-goal-restore-btn:hover{background:var(--background-modifier-hover)}
 .todo-goal-progress{position:relative;height:8px;flex:1 1 160px;background:var(--background-modifier-border);border-radius:8px}
 .todo-goal-progress-fill{height:100%;border-radius:8px;background:linear-gradient(90deg,var(--interactive-accent),color-mix(in srgb,var(--interactive-accent) 70%,var(--background-secondary)))}
 .todo-goal-progress-text{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text-normal)}
@@ -4103,6 +4219,78 @@
 .todo-review-stat-icon{font-size:14px!important;margin-bottom:2px!important}
 .todo-review-stat-value{font-size:16px!important}
 .todo-review-stat-label{font-size:9px!important}
+}
+
+/* Prefer one row; wrap only when the available width cannot fit every card. */
+.todo-goal-stats-row,
+.todo-review-stats-row {
+  display: flex !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+  overflow: visible !important;
+}
+.todo-goal-stat-card,
+.todo-review-stat-card {
+  flex: 1 1 96px !important;
+  min-width: 96px !important;
+  width: auto !important;
+}
+@media (max-width: 600px) {
+  .todo-goal-stats-row,
+  .todo-review-stats-row {
+    flex-wrap: wrap !important;
+    overflow: visible !important;
+    gap: 2px !important;
+  }
+  .todo-goal-stat-card,
+  .todo-review-stat-card {
+    flex: 0 0 calc(25% - 2px) !important;
+    min-width: 0 !important;
+    padding: 8px 8px !important;
+  }
+  .todo-goal-stat-card:nth-child(1),
+  .todo-goal-stat-card:nth-child(2),
+  .todo-goal-stat-card:nth-child(7),
+  .todo-review-stat-card:nth-child(1),
+  .todo-review-stat-card:nth-child(2),
+  .todo-review-stat-card:nth-child(6) {
+    flex-basis: calc(33.333% - 2px) !important;
+  }
+  .todo-goal-stat-card:nth-child(7),
+  .todo-review-stat-card:nth-child(6) {
+    order: 3;
+  }
+  .todo-goal-stat-card:nth-child(1),
+  .todo-review-stat-card:nth-child(1) {
+    order: 1;
+  }
+  .todo-goal-stat-card:nth-child(2),
+  .todo-review-stat-card:nth-child(2) {
+    order: 2;
+  }
+  .todo-goal-stat-card:nth-child(3),
+  .todo-goal-stat-card:nth-child(4),
+  .todo-goal-stat-card:nth-child(5),
+  .todo-goal-stat-card:nth-child(6),
+  .todo-review-stat-card:nth-child(3),
+  .todo-review-stat-card:nth-child(4),
+  .todo-review-stat-card:nth-child(5),
+  .todo-review-stat-card:nth-child(7) {
+    order: 4;
+  }
+  .todo-goal-stat-top {
+    gap: 8px !important;
+  }
+  .todo-goal-stat-value,
+  .todo-review-stat-value {
+    font-size: 16px !important;
+  }
+  .todo-goal-stat-label,
+  .todo-review-stat-label {
+    font-size: 10px !important;
+    line-height: 1.3 !important;
+    white-space: nowrap;
+  }
 }
 
 .is-mobile .obsidian-todo-nav-sidebar{display:none!important}

@@ -21,6 +21,16 @@ export interface ReviewStats {
   dailyTrend: { date: string; count: number; rate: number; uncompleted: number }[];
 }
 
+export interface StatusSummary {
+  total: number;
+  completed: number;
+  active: number;
+  shelved: number;
+  abandoned: number;
+  overdue: number;
+  completionRate: number;
+}
+
 export class StatsService {
   private taskService: TaskService;
   private tagService: TagService;
@@ -30,6 +40,35 @@ export class StatsService {
     this.taskService = taskService;
     this.tagService = tagService;
     this.listService = listService;
+  }
+
+  getStatusSummary(start: string, end: string): StatusSummary {
+    const today = this.localToday();
+    const tasks = this.taskService.getAll().filter((task) => {
+      if (task.isDeleted || task.isRecurrenceTemplate) return false;
+      if (task.isCompleted && task.completedAt) {
+        const completedDate = extractLocalDate(task.completedAt);
+        return completedDate >= start && completedDate <= end;
+      }
+      if (!task.dueDate) return false;
+      const dueDate = extractLocalDate(task.dueDate);
+      return dueDate >= start && dueDate <= end;
+    });
+    const completed = tasks.filter((task) => task.isCompleted);
+    const active = tasks.filter((task) => !task.isCompleted && task.status === "active");
+    const shelved = tasks.filter((task) => !task.isCompleted && task.status === "shelved");
+    const abandoned = tasks.filter((task) => !task.isCompleted && task.status === "abandoned");
+    const overdue = active.filter((task) => task.dueDate && extractLocalDate(task.dueDate) < today).length;
+    const denominator = completed.length + active.length;
+    return {
+      total: tasks.length,
+      completed: completed.length,
+      active: active.length,
+      shelved: shelved.length,
+      abandoned: abandoned.length,
+      overdue,
+      completionRate: denominator > 0 ? Math.round((completed.length / denominator) * 100) : 0,
+    };
   }
 
   getDayStats(date: string): ReviewStats {

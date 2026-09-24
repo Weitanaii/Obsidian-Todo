@@ -94,8 +94,8 @@ import { App, ItemView, Menu, Modal, Notice, setIcon, WorkspaceLeaf } from "obsi
 import type ObsidianTodoPlugin from "../../main";
 import { Task, MyDayGroup, PlanKind } from "../models/Task";
 import { extractLocalDate } from "../utils/recurrence";
-import { localTodayStr, currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent, getParentPeriodKey, ageFromDueDate, currentAge, getISOWeekNumber, getISOWeekRange } from "../utils/period";
-import { TaskDetailView } from "./TaskDetailView";
+import { localTodayStr, currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent, getParentPeriodKey, getPeriodKeyForDate, ageFromDueDate, currentAge, getISOWeekNumber, getISOWeekRange } from "../utils/period";
+import { TaskDetailView, ScheduleSidebarItem } from "./TaskDetailView";
 import { AIRecommendationView } from "./AIRecommendationView";
 import { VIEW_TYPE_TODO_DETAIL } from "./TodoDetailSidebarView";
 import { sortTasks, getMyDayGroupFromTime } from "../utils/sort";
@@ -180,6 +180,7 @@ export interface TodoPluginLike {
     getWeekStats(year: number, week: number): any;
     getMonthStats(year: number, month: number): any;
     getYearStats(year: number): any;
+    getStatusSummary(start: string, end: string): { total: number; completed: number; active: number; shelved: number; abandoned: number; overdue: number; completionRate: number };
     calcStreak(fromDate: string): number;
     calcMaxStreak(startDate: string, endDate: string): number;
   };
@@ -240,6 +241,7 @@ export class TodoView extends ItemView {
   private expandedGoalIds = new Set<string>();
   private goalKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private scheduleMode: "day" | "week" | "month" = "month";
+  private scheduleSidebarOpen = false;
   private scheduleYear!: number;
   private scheduleMonth!: number;
   private scheduleDate!: number;
@@ -324,17 +326,20 @@ export class TodoView extends ItemView {
       // AI view instance still exists. Check the rendered panel as the source
       // of truth so a stale provider state cannot block mobile gestures.
       if (this.detailEl?.hasClass("todo-ai-detail-panel")) return;
-      const selectedId = this.plugin.settings.selectedTaskId;
-      const selected = selectedId ? this.plugin.taskService.getAll().find((task) => task.id === selectedId) : undefined;
-      if (selected) {
-        this.detailView.clearHistory();
-        this.detailView.open(selected.id);
-        this.layoutEl.addClass("todo-layout-detail-open");
-      } else {
-        this.detailView.openEmpty();
-        this.layoutEl.addClass("todo-layout-detail-open");
-      }
-      this.showMobilePanel("detail");
+       if (this.plugin.settings.activeViewNav === "schedule") {
+         this.openScheduleSidebar();
+       } else {
+         const selectedId = this.plugin.settings.selectedTaskId;
+         const selected = selectedId ? this.plugin.taskService.getAll().find((task) => task.id === selectedId) : undefined;
+         if (selected) {
+           this.detailView.clearHistory();
+           this.detailView.open(selected.id);
+         } else {
+           this.detailView.openEmpty();
+         }
+       }
+       this.layoutEl.addClass("todo-layout-detail-open");
+       this.showMobilePanel("detail");
     };
     layout.addEventListener("touchstart", this._onTouchStart, { passive: true });
     layout.addEventListener("touchend", this._onTouchEnd, { passive: true });
@@ -430,6 +435,8 @@ export class TodoView extends ItemView {
       qItem.addEventListener("click", async () => {
         this.plugin.settings.selectedQuadrant = qd.key;
         this.plugin.settings.activeViewNav = "all";
+        this.plugin.settings.activePlanKind = null;
+        this.activePlanKind = null;
         await this.plugin.saveSettings();
         this.plugin.settings.selectedListId = null;
         qList.querySelectorAll(".todo-nav-item").forEach((el) => el.removeClass("active"));
@@ -533,6 +540,7 @@ export class TodoView extends ItemView {
         void this.renderTasks(view);
       }
     }, () => {
+      this.scheduleSidebarOpen = false;
       const layout = this.containerEl.querySelector(".todo-layout");
       if (layout) layout.removeClass("todo-layout-detail-open");
       this.showMobilePanel("main");
@@ -540,6 +548,8 @@ export class TodoView extends ItemView {
       void this.navigateToTask(targetId);
     }, () => {
       this.showMobilePanel("detail");
+    }, (taskId) => {
+      void this.navigateFromScheduleSidebar(taskId);
     });
     this.aiView = new AIRecommendationView(this.plugin, detailRoot, () => {
       const layout = this.containerEl.querySelector(".todo-layout");
@@ -549,6 +559,8 @@ export class TodoView extends ItemView {
 
     this.plugin.settings.selectedTaskId = null;
 
+    // Restore persisted plan state before navigation normalizes the view.
+    this.activePlanKind = this.plugin.settings.activePlanKind || null;
     await this.activateNav(this.plugin.settings.activeViewNav);
     await this.renderLists();
 
@@ -702,6 +714,8 @@ export class TodoView extends ItemView {
 
   attachMobileDetailRoot(root: HTMLElement): void {
     this.mobileDetailRoot = root;
+    this.detailView?.setRoot(root);
+    this.aiView?.setRoot(root);
   }
 
   detachMobileDetailRoot(root: HTMLElement): void {
@@ -712,6 +726,7 @@ export class TodoView extends ItemView {
     if (!this.layoutEl) return;
     this.mobilePanel = panel;
     this.layoutEl.dataset.mobilePanel = panel;
+    if (panel !== "detail") this.scheduleSidebarOpen = false;
     if (panel === "detail") this.revealMobileDetailSidebar();
     else this.collapseMobileDetailSidebar();
   }
@@ -903,6 +918,10 @@ private async activateNav(nav: ViewNav): Promise<void> {
     this.myDayViewDate = null;
     this.plugin.settings.activeViewNav = nav;
     this.plugin.settings.selectedListId = null;
+    if (nav !== "plan") {
+      this.activePlanKind = null;
+      this.plugin.settings.activePlanKind = null;
+    }
     if (nav === "review") {
       this.plugin.settings.selectedQuadrant = null;
       this.sortBtnEl.style.display = "none";
@@ -1009,7 +1028,13 @@ private async activateNav(nav: ViewNav): Promise<void> {
 
   private async activateList(listId: string): Promise<void> {
     this.closeDetail();
+    // A regular list is outside plan mode. Clear both runtime and persisted
+    // state so quick-create creates a normal task in the selected list.
+    this.plugin.settings.activeViewNav = "all";
     this.plugin.settings.selectedListId = listId;
+    this.plugin.settings.selectedQuadrant = null;
+    this.plugin.settings.activePlanKind = null;
+    this.activePlanKind = null;
     await this.plugin.saveSettings();
 
     Object.entries(this.navEls).forEach(([, el]) => el.removeClass("active"));
@@ -1392,6 +1417,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
       return;
     }
     this.sortBtnEl.style.display = "";
+    this.taskListEl.removeClass("todo-goal-active");
     this.quickContainerEl.style.display = this.plugin.settings.activeViewNav === "inbox" ? "none" : "";
     this.taskListEl.empty();
 
@@ -2218,13 +2244,16 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
   private async renderGoalDashboard(kind: "year"|"month"): Promise<void> {
     this.taskListEl.empty();
+    this.taskListEl.addClass("todo-goal-active");
     const curNow = currentPeriodKey(kind);
     if (!this.goalPeriodKey || (kind === "year" && this.goalPeriodKey.length !== 4) || (kind === "month" && this.goalPeriodKey.length !== 7)) {
       this.goalPeriodKey = curNow;
     }
     if (this.goalKeyHandler) { document.removeEventListener("keydown", this.goalKeyHandler); this.goalKeyHandler = null; }
 
-    const nav = this.taskListEl.createDiv({ cls: "todo-goal-nav" });
+    const stickyHeader = this.taskListEl.createDiv({ cls: "todo-goal-sticky-header" });
+    const goalContent = this.taskListEl.createDiv({ cls: "todo-goal-scroll-content" });
+    const nav = stickyHeader.createDiv({ cls: "todo-goal-nav" });
     const prevBtn = nav.createEl("button", { cls: "todo-goal-nav-btn", text: "◀" });
     prevBtn.setAttribute("aria-label", "上一周期");
     const labelEl = nav.createSpan({ cls: "todo-goal-nav-label", text: kind === "year" ? this.goalPeriodKey + " 年" : this.goalPeriodKey });
@@ -2274,17 +2303,20 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     };
     document.addEventListener("keydown", this.goalKeyHandler);
 
-    const prevScrollTop = this.taskListEl.scrollTop;
+    const prevScrollTop = goalContent.scrollTop;
     const goalAllTasks = this.plugin.taskService.getAll();
     const periodTasks = goalAllTasks.filter((t) => t.planKind === kind && t.planPeriodKey === this.goalPeriodKey && !t.isDeleted && !t.isRecurrenceTemplate);
     const totalCount = periodTasks.length;
     const completedCount = periodTasks.filter((t) => t.isCompleted).length;
-    const inProgressCount = totalCount - completedCount;
+    const inProgressCount = periodTasks.filter((t) => !t.isCompleted && t.status === "active").length;
+    const shelvedCount = periodTasks.filter((t) => !t.isCompleted && t.status === "shelved").length;
+    const abandonedCount = periodTasks.filter((t) => !t.isCompleted && t.status === "abandoned").length;
     const todayStr = localTodayStr();
-    const overdueCount = periodTasks.filter((t) => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < todayStr).length;
-    const completionRate = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
+    const overdueCount = periodTasks.filter((t) => !t.isCompleted && t.status === "active" && t.dueDate && extractLocalDate(t.dueDate) < todayStr).length;
+    const completionDenominator = completedCount + inProgressCount;
+    const completionRate = completionDenominator === 0 ? 0 : Math.round((completedCount / completionDenominator) * 100);
 
-    const statsRow = this.taskListEl.createDiv({ cls: "todo-goal-stats-row" });
+    const statsRow = stickyHeader.createDiv({ cls: "todo-goal-stats-row" });
     const addStatCard = (label: string, value: string, icon: string, extraCls?: string) => {
       const card = statsRow.createDiv({ cls: "todo-goal-stat-card" + (extraCls ? " " + extraCls : "") });
       const top = card.createDiv({ cls: "todo-goal-stat-top" });
@@ -2296,6 +2328,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     addStatCard("目标数", String(totalCount), "list-checks", "todo-goal-stat-total");
     addStatCard("已完成", String(completedCount), "check-circle-2", "todo-goal-stat-completed");
     addStatCard("进行中", String(inProgressCount), "timer", "todo-goal-stat-inprogress");
+    addStatCard("已搁置", String(shelvedCount), "pause-circle", "todo-goal-stat-shelved");
+    addStatCard("已放弃", String(abandonedCount), "x-circle", "todo-goal-stat-abandoned");
     addStatCard("逾期", String(overdueCount), "alert-triangle", overdueCount > 0 ? "todo-goal-stat-overdue" : "todo-goal-stat-overdue-empty");
     addStatCard("完成率", completionRate + "%", "pie-chart", completionRate >= 100 ? "todo-goal-stat-rate-full" : undefined);
     localizeDom(this.taskListEl);
@@ -2305,7 +2339,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const quarterKey = getParentPeriodKey("month", this.goalPeriodKey);
       if (quarterKey) {
         const quarterTasks = this.plugin.taskService.getByPlanKindAndPeriod("quarter", quarterKey);
-        const qSection = this.taskListEl.createDiv({ cls: "todo-goal-quarter-section" });
+        const qSection = goalContent.createDiv({ cls: "todo-goal-quarter-section" });
         const qLabel = qSection.createDiv({ cls: "todo-goal-quarter-label", text: isEnglish() ? this.localizedSubGroupLabel("quarter", quarterKey) + " Goals" : subGroupLabel("quarter", quarterKey) + " 目标" });
         const qScroll = qSection.createDiv({ cls: "todo-goal-quarter-scroll" });
         for (const qt of quarterTasks) {
@@ -2353,10 +2387,10 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const sorted = periodTasks.slice().sort((a, b) => (b.isImportant ? 1 : 0) - (a.isImportant ? 1 : 0));
 
     if (this.plugin.settings.goalViewMode === "list") {
-      const contentEl = this.taskListEl.createDiv({ cls: "todo-goal-list-content" });
+      const contentEl = goalContent.createDiv({ cls: "todo-goal-list-content" });
       this.renderGoalListContent(kind, contentEl);
     } else {
-    const cards = this.taskListEl.createDiv({ cls: "todo-goal-cards" });
+    const cards = goalContent.createDiv({ cls: "todo-goal-cards" });
     const goalScrollTarget = cards.createDiv({ cls: "todo-goal-scroll-target" });
     goalScrollTarget.style.height = "0px";
 
@@ -2386,7 +2420,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       }
       const goalTags = (goal.tags || []).map((id) => goalAllTags.find((t) => t.id === id)).filter((t): t is NonNullable<typeof t> => !!t);
 
-      const card = cards.createDiv({ cls: "todo-goal-card" + (overdue ? " todo-goal-card-overdue" : "") });
+      const statusClass = goal.status === "shelved" ? " todo-goal-card-shelved" : goal.status === "abandoned" ? " todo-goal-card-abandoned" : "";
+      const card = cards.createDiv({ cls: "todo-goal-card" + (overdue ? " todo-goal-card-overdue" : "") + statusClass });
       card.setAttribute("data-goal-id", goal.id);
       card.tabIndex = 0;
       card.setAttribute("role", "button");
@@ -2416,6 +2451,19 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         this.refreshGoalCardAndStats(goal.id, kind);
       });
       row1.createSpan({ cls: "todo-goal-card-title", text: goal.title });
+      if (!goal.isCompleted && goal.status !== "active") {
+        const statusEl = row1.createSpan({ cls: "todo-goal-status-badge" + (goal.status === "shelved" ? " is-shelved" : " is-abandoned") });
+        statusEl.setText(goal.status === "shelved" ? t("已搁置") : t("已放弃"));
+        const restoreBtn = row1.createEl("button", { cls: "todo-goal-restore-btn" });
+        setIcon(restoreBtn, "play-circle");
+        restoreBtn.setAttribute("aria-label", t("恢复为进行中"));
+        restoreBtn.setAttribute("title", t("恢复为进行中"));
+        restoreBtn.addEventListener("click", async (ev) => {
+          ev.stopPropagation();
+          await this.plugin.taskService.update(goal.id, { status: "active" });
+          await this.renderGoalDashboard(kind);
+        });
+      }
       if (parent || goalTags.length > 0) {
         const right = row1.createDiv({ cls: "todo-goal-card-right" });
         if (parent) {
@@ -2604,41 +2652,53 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
         menu.addSeparator();
 
-        // Status: shelved
-        if (goal.status !== "shelved") {
+        // Status actions follow the current state.
+        if (goal.status === "active") {
           menu.addItem((item) =>
             item
               .setTitle("\u6401\u7F6E\u76EE\u6807")
               .setIcon("pause-circle")
               .onClick(async () => {
                 await this.plugin.taskService.update(goal.id, { status: "shelved" });
-                this.refreshGoalCardAndStats(goal.id, kind);
+                await this.renderGoalDashboard(kind);
               }),
           );
-        }
-
-        // Status: abandoned
-        if (goal.status !== "abandoned") {
           menu.addItem((item) =>
             item
               .setTitle("\u653E\u5F03\u76EE\u6807")
               .setIcon("x-circle")
               .onClick(async () => {
                 await this.plugin.taskService.update(goal.id, { status: "abandoned" });
-                this.refreshGoalCardAndStats(goal.id, kind);
+                await this.renderGoalDashboard(kind);
               }),
           );
-        }
-
-        // Restore to active
-        if (goal.status === "shelved" || goal.status === "abandoned") {
+        } else if (goal.status === "shelved") {
           menu.addItem((item) =>
             item
               .setTitle("\u6062\u590D\u4E3A\u8FDB\u884C\u4E2D")
               .setIcon("play-circle")
               .onClick(async () => {
                 await this.plugin.taskService.update(goal.id, { status: "active" });
-                this.refreshGoalCardAndStats(goal.id, kind);
+                await this.renderGoalDashboard(kind);
+              }),
+          );
+          menu.addItem((item) =>
+            item
+              .setTitle("\u653E\u5F03\u76EE\u6807")
+              .setIcon("x-circle")
+              .onClick(async () => {
+                await this.plugin.taskService.update(goal.id, { status: "abandoned" });
+                await this.renderGoalDashboard(kind);
+              }),
+          );
+        } else if (goal.status === "abandoned") {
+          menu.addItem((item) =>
+            item
+              .setTitle("\u6062\u590D\u4E3A\u8FDB\u884C\u4E2D")
+              .setIcon("play-circle")
+              .onClick(async () => {
+                await this.plugin.taskService.update(goal.id, { status: "active" });
+                await this.renderGoalDashboard(kind);
               }),
           );
         }
@@ -2670,14 +2730,14 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const sentinel = cards.createDiv({ cls: "todo-goal-sentinel" });
       const obs = new IntersectionObserver((entries) => {
         if (entries.some((e) => e.isIntersecting)) { appendBatch(); if (goalIdx >= sorted.length) { obs.disconnect(); sentinel.remove(); } }
-      }, { root: this.taskListEl });
+        }, { root: goalContent });
       obs.observe(sentinel);
     }
 
     const firstCard = cards.querySelector(".todo-goal-card") as HTMLElement | null;
     const targetEl = firstCard ?? statsRow;
     if (prevScrollTop > 0) {
-      this.taskListEl.scrollTop = prevScrollTop;
+      goalContent.scrollTop = prevScrollTop;
     } else if (targetEl) {
       targetEl.scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -2746,9 +2806,12 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const periodTasks = goalAllTasks.filter((t) => t.planKind === kind && t.planPeriodKey === this.goalPeriodKey && !t.isDeleted && !t.isRecurrenceTemplate);
     const totalCount = periodTasks.length;
     const completedCount = periodTasks.filter((t) => t.isCompleted).length;
-    const inProgressCount = totalCount - completedCount;
-    const overdueCount = periodTasks.filter((t) => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < todayStr).length;
-    const completionRate = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100);
+    const inProgressCount = periodTasks.filter((t) => !t.isCompleted && t.status === "active").length;
+    const shelvedCount = periodTasks.filter((t) => !t.isCompleted && t.status === "shelved").length;
+    const abandonedCount = periodTasks.filter((t) => !t.isCompleted && t.status === "abandoned").length;
+    const overdueCount = periodTasks.filter((t) => !t.isCompleted && t.status === "active" && t.dueDate && extractLocalDate(t.dueDate) < todayStr).length;
+    const completionDenominator = completedCount + inProgressCount;
+    const completionRate = completionDenominator === 0 ? 0 : Math.round((completedCount / completionDenominator) * 100);
 
     const statsRow = this.taskListEl.querySelector(".todo-goal-stats-row") as HTMLElement | null;
     if (statsRow) {
@@ -2757,13 +2820,19 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       if (values[1]) values[1].setText(String(completedCount));
       if (values[2]) values[2].setText(String(inProgressCount));
       if (values[3]) {
-        values[3].setText(String(overdueCount));
-        const oc = values[3].closest(".todo-goal-stat-card") as HTMLElement | null;
-        if (oc) { oc.removeClass("todo-goal-stat-overdue"); oc.removeClass("todo-goal-stat-overdue-empty"); oc.addClass(overdueCount > 0 ? "todo-goal-stat-overdue" : "todo-goal-stat-overdue-empty"); }
+        values[3].setText(String(shelvedCount));
       }
       if (values[4]) {
-        values[4].setText(completionRate + "%");
-        const rc = values[4].closest(".todo-goal-stat-card") as HTMLElement | null;
+        values[4].setText(String(abandonedCount));
+      }
+      if (values[5]) {
+        values[5].setText(String(overdueCount));
+        const oc = values[5].closest(".todo-goal-stat-card") as HTMLElement | null;
+        if (oc) { oc.removeClass("todo-goal-stat-overdue"); oc.removeClass("todo-goal-stat-overdue-empty"); oc.addClass(overdueCount > 0 ? "todo-goal-stat-overdue" : "todo-goal-stat-overdue-empty"); }
+      }
+      if (values[6]) {
+        values[6].setText(completionRate + "%");
+        const rc = values[6].closest(".todo-goal-stat-card") as HTMLElement | null;
         if (rc) { rc.removeClass("todo-goal-stat-rate-full"); if (completionRate >= 100) rc.addClass("todo-goal-stat-rate-full"); }
       }
     }
@@ -3000,6 +3069,86 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     localizeDom(el);
   }
 
+  private async navigateFromScheduleSidebar(taskId: string): Promise<void> {
+    const task = this.plugin.taskService.getAll().find((item) => item.id === taskId);
+    if (!task) return;
+
+    this.scheduleSidebarOpen = false;
+    this.detailView.close();
+    const layout = this.containerEl.querySelector(".todo-layout");
+    if (layout) layout.removeClass("todo-layout-detail-open");
+    this.showMobilePanel("main");
+
+    if (this.scheduleMode === "day") {
+      await this.activateNav("myday");
+      const selectedDate = new Date(this.scheduleYear, this.scheduleMonth, this.scheduleDate);
+      this.myDayViewDate = selectedDate.getFullYear() + "-" + String(selectedDate.getMonth() + 1).padStart(2, "0") + "-" + String(selectedDate.getDate()).padStart(2, "0");
+      await this.renderTasks("myday");
+    } else if (task.planKind) {
+      await this.activatePlan(task.planKind);
+      this.expandPlanGroupForTask(task);
+    }
+
+    this.plugin.settings.selectedTaskId = taskId;
+    await this.plugin.saveSettings();
+    this.highlightSelectedTask(taskId);
+    this.scrollTaskIntoView(taskId);
+  }
+
+  private openScheduleSidebar(refreshOnly = false): void {
+    this.scheduleSidebarOpen = true;
+    const mode = this.scheduleMode;
+    if (!Number.isFinite(this.scheduleYear) || !Number.isFinite(this.scheduleMonth) || !Number.isFinite(this.scheduleDate)) {
+      const now = new Date();
+      this.scheduleYear = now.getFullYear();
+      this.scheduleMonth = now.getMonth();
+      this.scheduleDate = now.getDate();
+    }
+    const selectedDate = new Date(this.scheduleYear, this.scheduleMonth, this.scheduleDate);
+    const dateStr = selectedDate.getFullYear() + "-" + String(selectedDate.getMonth() + 1).padStart(2, "0") + "-" + String(selectedDate.getDate()).padStart(2, "0");
+    const allTasks = this.plugin.taskService.getAll().filter((task) => !task.isDeleted && !task.isRecurrenceTemplate);
+    let title = this.getScheduleTitle().replace("|", " ");
+    let items: ScheduleSidebarItem[] = [];
+
+    if (mode === "day") {
+      title = isEnglish() ? "Tasks for " + title : title + " 待办";
+      items = allTasks
+        .filter((task) => task.myDayDate === dateStr || (task.startDate && extractLocalDate(task.startDate) === dateStr) || (task.dueDate && extractLocalDate(task.dueDate) === dateStr))
+        .sort((a, b) => Number(a.isCompleted) - Number(b.isCompleted) || a.title.localeCompare(b.title))
+        .map((task) => ({
+          id: task.id,
+          title: task.title,
+          subtitle: task.dueDate ? task.dueDate.replace("T", " ").slice(0, 16) : (isEnglish() ? "My Day" : "我的一天"),
+          isCompleted: task.isCompleted,
+          status: task.status,
+        }));
+    } else {
+      const kind: PlanKind = mode === "week" ? "week" : "month";
+      const periodKey = getPeriodKeyForDate(selectedDate, kind);
+      title = isEnglish() ? (kind === "week" ? "Weekly goals" : "Monthly goals") : (kind === "week" ? "本周目标" : "本月目标");
+      items = allTasks
+        .filter((task) => task.planKind === kind && task.planPeriodKey === periodKey)
+        .sort((a, b) => Number(a.isCompleted) - Number(b.isCompleted) || a.title.localeCompare(b.title))
+        .map((task) => ({
+          id: task.id,
+          title: task.title,
+          subtitle: periodKey,
+          isCompleted: task.isCompleted,
+          status: task.status,
+        }));
+    }
+
+    this.plugin.settings.selectedTaskId = null;
+    if (refreshOnly) this.detailView.updateScheduleSummary(title, items);
+    else this.detailView.openScheduleSummary(title, items);
+  }
+
+  private refreshScheduleSidebarIfOpen(): void {
+    if (!this.isMobileEnvironment()) return;
+    if (!this.scheduleSidebarOpen) return;
+    this.openScheduleSidebar(true);
+  }
+
   private normalizeScheduleDate(): void {
     const d = new Date(this.scheduleYear, this.scheduleMonth, this.scheduleDate);
     this.scheduleYear = d.getFullYear();
@@ -3150,6 +3299,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const updateView = () => {
       this.updateScheduleTitle(titleEl);
       this.renderScheduleContent(contentEl);
+      this.refreshScheduleSidebarIfOpen();
     };
 
     prevBtn.addEventListener("click", () => {
@@ -3189,6 +3339,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         this.updateScheduleTitle(titleEl);
         this.scheduleScrollTarget = "now";
         this.renderScheduleContent(contentEl);
+        this.refreshScheduleSidebarIfOpen();
       });
     }
 
@@ -4034,6 +4185,32 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         }),
     );
 
+    menu.addSeparator();
+    if (task.status === "active") {
+      menu.addItem((item) => item.setTitle(t("搁置任务")).setIcon("pause-circle").onClick(async () => {
+        await this.plugin.taskService.update(task.id, { status: "shelved" });
+        await this.renderTasks(currentView);
+      }));
+      menu.addItem((item) => item.setTitle(t("放弃任务")).setIcon("x-circle").onClick(async () => {
+        await this.plugin.taskService.update(task.id, { status: "abandoned" });
+        await this.renderTasks(currentView);
+      }));
+    } else if (task.status === "shelved") {
+      menu.addItem((item) => item.setTitle(t("恢复为进行中")).setIcon("play-circle").onClick(async () => {
+        await this.plugin.taskService.update(task.id, { status: "active" });
+        await this.renderTasks(currentView);
+      }));
+      menu.addItem((item) => item.setTitle(t("放弃任务")).setIcon("x-circle").onClick(async () => {
+        await this.plugin.taskService.update(task.id, { status: "abandoned" });
+        await this.renderTasks(currentView);
+      }));
+    } else if (task.status === "abandoned") {
+      menu.addItem((item) => item.setTitle(t("恢复为进行中")).setIcon("play-circle").onClick(async () => {
+        await this.plugin.taskService.update(task.id, { status: "active" });
+        await this.renderTasks(currentView);
+      }));
+    }
+
     if (currentView !== 'plan') {
       menu.addItem((item) =>
         item
@@ -4122,20 +4299,27 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       });
     }
 
+    if (!task.planKind) {
+      menu.addItem((item) =>
+        item
+          .setTitle(t("添加到我的计划"))
+          .setIcon("calendar-plus")
+          .onClick(() => {
+            if (this.isMobile()) this.showAddToPlanMenu(task, currentView);
+          }),
+      );
+    }
+
     const lists = this.plugin.listService.getActive().filter((l) => l.id !== task.listId);
     if (lists.length) {
-      lists.forEach((list) => {
-        menu.addItem((item) =>
-          item
-            .setTitle(list.isDefault ? "移动到任务" : `移动到「${list.name}」`)
-            .setIcon("folder")
-            .onClick(async () => {
-              await this.plugin.taskService.update(task.id, { listId: list.id });
-              await this.renderLists();
-              await this.renderTasks(currentView);
-            }),
-        );
-      });
+      menu.addItem((item) =>
+        item
+          .setTitle(t("移动到列表..."))
+          .setIcon("folder")
+          .onClick(() => {
+            if (this.isMobile()) this.showMoveToListMenu(task, currentView, lists);
+          }),
+      );
     }
 
     menu.addSeparator();
@@ -4177,6 +4361,242 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     );
 
     menu.showAtMouseEvent(ev);
+    if (!this.isMobile()) {
+      this.attachDesktopPlanSubmenu(task, currentView);
+      this.attachDesktopListSubmenu(task, currentView, lists);
+    }
+  }
+
+  private attachDesktopListSubmenu(task: Task, currentView: ViewNav | "list" | "trash" | "schedule" | "review", lists: Array<{ id: string; name: string; isDefault: boolean; groupId: string | null; icon: string }>): void {
+    window.setTimeout(() => {
+      const menus = Array.from(document.querySelectorAll<HTMLElement>(".menu"));
+      const menu = menus.reverse().find((candidate) => candidate.offsetParent && Array.from(candidate.querySelectorAll<HTMLElement>(".menu-item")).some((item) => item.textContent?.includes(t("移动到列表..."))));
+      if (!menu) return;
+      const item = Array.from(menu.querySelectorAll<HTMLElement>(".menu-item")).find((candidate) => candidate.textContent?.includes(t("移动到列表...")));
+      if (!item) return;
+
+      const submenu = document.createElement("div");
+      submenu.className = "todo-list-submenu";
+      submenu.setAttribute("role", "menu");
+      document.body.appendChild(submenu);
+      let hideTimer: number | null = null;
+      const hide = () => {
+        if (hideTimer !== null) window.clearTimeout(hideTimer);
+        hideTimer = window.setTimeout(() => {
+          // Keep the submenu mounted while the parent menu is open so it can
+          // be reopened on a second hover. Clean it up after the parent closes.
+          if (menu.isConnected) submenu.classList.remove("is-visible");
+          else submenu.remove();
+        }, 120);
+      };
+      const keep = () => { if (hideTimer !== null) window.clearTimeout(hideTimer); };
+      const show = () => {
+        keep();
+        if (!submenu.isConnected) document.body.appendChild(submenu);
+        const rect = item.getBoundingClientRect();
+        submenu.style.left = `${Math.round(rect.right + 4)}px`;
+        submenu.style.top = `${Math.round(Math.min(rect.top, window.innerHeight - submenu.offsetHeight - 8))}px`;
+        submenu.classList.add("is-visible");
+      };
+      item.addEventListener("mouseenter", show);
+      item.addEventListener("mouseleave", hide);
+      submenu.addEventListener("mouseenter", keep);
+      submenu.addEventListener("mouseleave", hide);
+
+      const addList = (list: { id: string; name: string; isDefault: boolean; icon: string }): void => {
+        const button = document.createElement("div");
+        button.className = "todo-list-submenu-item";
+        const icon = document.createElement("div");
+        icon.className = "todo-list-submenu-item-icon";
+        setIcon(icon, list.icon || "list");
+        const label = document.createElement("div");
+        label.className = "todo-list-submenu-item-label";
+        label.textContent = list.isDefault ? "移动到任务" : list.name;
+        button.append(icon, label);
+        button.addEventListener("click", async () => {
+          await this.plugin.taskService.update(task.id, { listId: list.id });
+          submenu.remove();
+          menu.remove();
+          await this.renderLists();
+          await this.renderTasks(currentView);
+        });
+        submenu.appendChild(button);
+      };
+      const groups = this.plugin.groupService.getAll();
+      const grouped = new Map<string | null, typeof lists>();
+      for (const list of lists) {
+        const key = list.isDefault ? "__default__" : (list.groupId || null);
+        grouped.set(key, [...(grouped.get(key) || []), list]);
+      }
+      const addLabel = (label: string): void => {
+        const el = document.createElement("div");
+        el.className = "todo-list-submenu-label";
+        el.textContent = label;
+        submenu.appendChild(el);
+      };
+      const addGroup = (items: typeof lists): void => items.sort((a, b) => a.name.localeCompare(b.name)).forEach(addList);
+      const defaults = grouped.get("__default__") || [];
+      addGroup(defaults);
+      for (const group of groups.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))) {
+        const items = grouped.get(group.id) || [];
+        if (!items.length) continue;
+        addLabel(group.name);
+        addGroup(items);
+      }
+      const ungrouped = grouped.get(null) || [];
+      if (ungrouped.length) { addLabel(t("未分组")); addGroup(ungrouped); }
+    }, 0);
+  }
+
+  private getPlanTargetOptions(): Array<{ kind: PlanKind; label: string; icon: string }> {
+    return [
+      { kind: "week", label: t("添加到本周计划"), icon: "calendar-days" },
+      { kind: "month", label: t("添加到本月计划"), icon: "timer" },
+      { kind: "quarter", label: t("添加到本季度计划"), icon: "calendar" },
+      { kind: "year", label: t("添加到本年度计划"), icon: "calendar-check" },
+    ];
+  }
+
+  private async addTaskToPlan(task: Task, kind: PlanKind, currentView: ViewNav | "list" | "trash" | "schedule" | "review"): Promise<void> {
+    await this.plugin.taskService.update(task.id, {
+      planKind: kind,
+      planPeriodKey: currentPeriodKey(kind),
+    });
+    await this.renderLists();
+    await this.renderTasks(currentView);
+  }
+
+  private showAddToPlanMenu(task: Task, currentView: ViewNav | "list" | "trash" | "schedule" | "review"): void {
+    const submenu = new Menu();
+    submenu.addItem((item) => item
+      .setTitle(t("返回"))
+      .setIcon("arrow-left")
+      .onClick(() => {
+        const event = new MouseEvent("contextmenu", {
+          bubbles: true,
+          clientX: Math.round(window.innerWidth / 2),
+          clientY: Math.round(window.innerHeight / 2),
+        });
+        this.showTaskContextMenu(event, task, currentView);
+      }));
+    submenu.addSeparator();
+    for (const option of this.getPlanTargetOptions()) {
+      submenu.addItem((item) => item
+        .setTitle(option.label)
+        .setIcon(option.icon)
+        .onClick(() => { void this.addTaskToPlan(task, option.kind, currentView); }));
+    }
+    submenu.showAtPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  }
+
+  private attachDesktopPlanSubmenu(task: Task, currentView: ViewNav | "list" | "trash" | "schedule" | "review"): void {
+    window.setTimeout(() => {
+      const menus = Array.from(document.querySelectorAll<HTMLElement>(".menu"));
+      const menu = menus.reverse().find((candidate) => candidate.offsetParent && Array.from(candidate.querySelectorAll<HTMLElement>(".menu-item")).some((item) => item.textContent?.includes(t("添加到我的计划"))));
+      if (!menu) return;
+      const item = Array.from(menu.querySelectorAll<HTMLElement>(".menu-item")).find((candidate) => candidate.textContent?.includes(t("添加到我的计划")));
+      if (!item) return;
+
+      const submenu = document.createElement("div");
+      submenu.className = "todo-list-submenu";
+      submenu.setAttribute("role", "menu");
+      document.body.appendChild(submenu);
+      let hideTimer: number | null = null;
+      const hide = () => {
+        if (hideTimer !== null) window.clearTimeout(hideTimer);
+        hideTimer = window.setTimeout(() => {
+          if (menu.isConnected) submenu.classList.remove("is-visible");
+          else submenu.remove();
+        }, 120);
+      };
+      const keep = () => { if (hideTimer !== null) window.clearTimeout(hideTimer); };
+      const show = () => {
+        keep();
+        if (!submenu.isConnected) document.body.appendChild(submenu);
+        const rect = item.getBoundingClientRect();
+        submenu.style.left = `${Math.round(rect.right + 4)}px`;
+        submenu.style.top = `${Math.round(Math.min(rect.top, window.innerHeight - submenu.offsetHeight - 8))}px`;
+        submenu.classList.add("is-visible");
+      };
+      item.addEventListener("mouseenter", show);
+      item.addEventListener("mouseleave", hide);
+      submenu.addEventListener("mouseenter", keep);
+      submenu.addEventListener("mouseleave", hide);
+
+      for (const option of this.getPlanTargetOptions()) {
+        const button = document.createElement("div");
+        button.className = "todo-list-submenu-item";
+        const icon = document.createElement("div");
+        icon.className = "todo-list-submenu-item-icon";
+        setIcon(icon, option.icon);
+        const label = document.createElement("div");
+        label.className = "todo-list-submenu-item-label";
+        label.textContent = option.label;
+        button.append(icon, label);
+        button.addEventListener("click", async () => {
+          await this.addTaskToPlan(task, option.kind, currentView);
+          submenu.remove();
+          menu.remove();
+        });
+        submenu.appendChild(button);
+      }
+    }, 0);
+  }
+
+  private showMoveToListMenu(task: Task, currentView: ViewNav | "list" | "trash" | "schedule" | "review", lists: Array<{ id: string; name: string; isDefault: boolean; groupId: string | null; icon: string }>): void {
+    const submenu = new Menu();
+    const groups = this.plugin.groupService.getAll();
+
+    // The first-level task menu closes when an item is selected on mobile.
+    // Re-open it explicitly so users can return without dismissing the action flow.
+    submenu.addItem((item) => item
+      .setTitle(t("返回"))
+      .setIcon("arrow-left")
+      .onClick(() => {
+        const event = new MouseEvent("contextmenu", {
+          bubbles: true,
+          clientX: Math.round(window.innerWidth / 2),
+          clientY: Math.round(window.innerHeight / 2),
+        });
+        this.showTaskContextMenu(event, task, currentView);
+      }));
+    submenu.addSeparator();
+
+    const grouped = new Map<string | null, typeof lists>();
+    for (const list of lists) {
+      const key = list.isDefault ? "__default__" : (list.groupId || null);
+      const existing = grouped.get(key) || [];
+      existing.push(list);
+      grouped.set(key, existing);
+    }
+    const addListItems = (items: typeof lists): void => {
+      for (const list of items.sort((a, b) => a.name.localeCompare(b.name))) {
+        submenu.addItem((item) => item
+          .setTitle(list.isDefault ? "移动到任务" : list.name)
+          .setIcon(list.icon || "list")
+          .onClick(async () => {
+            await this.plugin.taskService.update(task.id, { listId: list.id });
+            await this.renderLists();
+            await this.renderTasks(currentView);
+          }));
+      }
+    };
+    const defaultLists = grouped.get("__default__") || [];
+    if (defaultLists.length) addListItems(defaultLists);
+    for (const group of groups.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))) {
+      const groupLists = grouped.get(group.id) || [];
+      if (!groupLists.length) continue;
+      if (submenu) submenu.addSeparator();
+      submenu.addItem((item) => item.setTitle(group.name).setIsLabel(true));
+      addListItems(groupLists);
+    }
+    const ungrouped = grouped.get(null) || [];
+    if (ungrouped.length) {
+      if (defaultLists.length || groups.some((group) => (grouped.get(group.id) || []).length)) submenu.addSeparator();
+      submenu.addItem((item) => item.setTitle(t("未分组")).setIsLabel(true));
+      addListItems(ungrouped);
+    }
+    submenu.showAtPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
   }
 
   private getReviewTitle(): string {
@@ -4227,8 +4647,9 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const container = this.taskListEl;
     container.empty();
     const wrap = container.createDiv({ cls: "todo-review-container" });
+    const stickyHeader = wrap.createDiv({ cls: "todo-review-sticky-header" });
 
-    const header = wrap.createDiv({ cls: "todo-review-header" });
+    const header = stickyHeader.createDiv({ cls: "todo-review-header" });
     const nav = header.createDiv({ cls: "todo-review-nav" });
     const prevBtn = nav.createEl("button", { cls: "todo-review-prev", text: "◀" });
     const titleEl = nav.createSpan({ cls: "todo-review-title", text: this.getReviewTitle() });
@@ -4287,6 +4708,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
   private renderReviewContent(container: HTMLDivElement): void {
     container.empty();
+    const stickyHeader = this.taskListEl.querySelector<HTMLElement>(".todo-review-sticky-header");
+    stickyHeader?.querySelectorAll<HTMLElement>(".todo-review-stats-row").forEach((el) => el.remove());
     const modeLabels: Record<string, string> = { day: "日", week: "周", month: "月", year: "年" };
     switch (this.reviewMode) {
       case "day":
@@ -4302,6 +4725,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         this.renderYearReview(container);
         break;
     }
+    const statsRow = container.querySelector<HTMLElement>(".todo-review-stats-row");
+    if (statsRow && stickyHeader) stickyHeader.appendChild(statsRow);
   }
 
 
@@ -4351,14 +4776,17 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const dateStr = this.reviewDateToStr();
     const stats = this.plugin.statsService.getDayStats(dateStr);
 
-    const todayDueCount = this.plugin.taskService.getAll().filter(t => t.dueDate && extractLocalDate(t.dueDate) === dateStr).length;
+    const summary = this.plugin.statsService.getStatusSummary(dateStr, dateStr);
     const statsRow = container.createDiv({ cls: "todo-review-stats-row" });
-    renderStatCard(statsRow, t("今日任务"), String(todayDueCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: dateStr, label: dateStr + " " + t("逾期任务"), dateField: "dueDate" }));
-    renderStatCard(statsRow, t("今日完成"), String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: dateStr, label: dateStr + " " + t("完成"), dateField: "completedAt" }));
-    renderStatCard(statsRow, t("完成率"), Math.round(stats.completionRate * 100) + "%", "bar-chart-2", "#91719E");
+    renderStatCard(statsRow, t("今日任务"), String(summary.total), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: dateStr, label: dateStr + " " + t("今日任务"), dateField: "dueDate" }));
+    renderStatCard(statsRow, t("今日完成"), String(summary.completed), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: dateStr, label: dateStr + " " + t("完成"), dateField: "completedAt" }));
+    renderStatCard(statsRow, t("进行中"), String(summary.active), "timer", "#6D91B6");
+    renderStatCard(statsRow, t("已搁置"), String(summary.shelved), "pause-circle", "#C19957");
+    renderStatCard(statsRow, t("已放弃"), String(summary.abandoned), "x-circle", "#9AA1A1");
+    renderStatCard(statsRow, t("完成率"), summary.completionRate + "%", "bar-chart-2", "#91719E");
     const yesterday = new Date(this.reviewYear, this.reviewMonth, this.reviewDate - 1);
     const yesterdayStr = yesterday.getFullYear() + "-" + String(yesterday.getMonth() + 1).padStart(2, "0") + "-" + String(yesterday.getDate()).padStart(2, "0");
-    const yesterdayOverdue = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) === yesterdayStr).length;
+    const yesterdayOverdue = this.plugin.statsService.getStatusSummary(yesterdayStr, yesterdayStr).overdue;
     renderStatCard(statsRow, t("昨日逾期"), String(yesterdayOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "date", value: yesterdayStr, label: yesterdayStr + " " + t("逾期任务"), dateField: "dueDate" }));
 
     // 今日任务按象限分组
@@ -4379,18 +4807,15 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const stats = this.plugin.statsService.getWeekStats(weekYear, wn);
 
     // 概览卡片
-    const weekDueCount = this.plugin.taskService.getAll().filter(t => t.dueDate && !t.isCompleted && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
-    const weekTotalCount = stats.completedCount + weekDueCount;
+    const summary = this.plugin.statsService.getStatusSummary(startStr, endStr);
     const statsRow = container.createDiv({ cls: "todo-review-stats-row" });
-    renderStatCard(statsRow, t("本周任务"), String(weekTotalCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本周任务"), dateField: "dueDate" }));
-    renderStatCard(statsRow, t("本周完成"), String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本周完成"), dateField: "completedAt" }));
-    const denom = stats.completedCount + weekDueCount;
-    const weekRate = denom > 0 ? Math.round(stats.completedCount / denom * 100) : 0;
-    renderStatCard(statsRow, t("完成率"), weekRate + "%", "bar-chart-2", "#91719E");
-    const today = new Date();
-    const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
-    const weekOverdue = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < todayStr && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
-    renderStatCard(statsRow, t("逾期任务"), String(weekOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "overdue", value: "", label: t("逾期任务") }));
+    renderStatCard(statsRow, t("本周任务"), String(summary.total), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本周任务"), dateField: "dueDate" }));
+    renderStatCard(statsRow, t("本周完成"), String(summary.completed), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本周完成"), dateField: "completedAt" }));
+    renderStatCard(statsRow, t("进行中"), String(summary.active), "timer", "#6D91B6");
+    renderStatCard(statsRow, t("已搁置"), String(summary.shelved), "pause-circle", "#C19957");
+    renderStatCard(statsRow, t("已放弃"), String(summary.abandoned), "x-circle", "#9AA1A1");
+    renderStatCard(statsRow, t("完成率"), summary.completionRate + "%", "bar-chart-2", "#91719E");
+    renderStatCard(statsRow, t("逾期任务"), String(summary.overdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "overdue", value: "", label: t("逾期任务") }));
 
     // 每日完成趋势堆叠柱状图
     const dayLabels = isEnglish() ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
@@ -4423,18 +4848,15 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     // 概览卡片
     const allTasks = this.plugin.taskService.getAll();
-    const monthDueCount = allTasks.filter(t => t.dueDate && !t.isCompleted && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
-    const monthTotalCount = stats.completedCount + monthDueCount;
+    const summary = this.plugin.statsService.getStatusSummary(startStr, endStr);
     const statsRow = container.createDiv({ cls: "todo-review-stats-row" });
-    renderStatCard(statsRow, t("本月任务"), String(monthTotalCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本月任务"), dateField: "dueDate" }));
-    renderStatCard(statsRow, t("本月完成"), String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本月完成"), dateField: "completedAt" }));
-    const denom = stats.completedCount + monthDueCount;
-    const monthRate = denom > 0 ? Math.round(stats.completedCount / denom * 100) : 0;
-    renderStatCard(statsRow, t("完成率"), monthRate + "%", "bar-chart-2", "#91719E");
-    const today = new Date();
-    const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
-    const monthOverdue = allTasks.filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < todayStr && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
-    renderStatCard(statsRow, t("逾期任务"), String(monthOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "overdue", value: "", label: t("逾期任务") }));
+    renderStatCard(statsRow, t("本月任务"), String(summary.total), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本月任务"), dateField: "dueDate" }));
+    renderStatCard(statsRow, t("本月完成"), String(summary.completed), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本月完成"), dateField: "completedAt" }));
+    renderStatCard(statsRow, t("进行中"), String(summary.active), "timer", "#6D91B6");
+    renderStatCard(statsRow, t("已搁置"), String(summary.shelved), "pause-circle", "#C19957");
+    renderStatCard(statsRow, t("已放弃"), String(summary.abandoned), "x-circle", "#9AA1A1");
+    renderStatCard(statsRow, t("完成率"), summary.completionRate + "%", "bar-chart-2", "#91719E");
+    renderStatCard(statsRow, t("逾期任务"), String(summary.overdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "overdue", value: "", label: t("逾期任务") }));
 
     // 月历热力图
     const calSection = container.createDiv({ cls: "todo-review-section" });
@@ -4479,18 +4901,15 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     // 概览卡片
     const allTasks = this.plugin.taskService.getAll();
-    const yearDueCount = allTasks.filter(t => t.dueDate && !t.isCompleted && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
-    const yearTotalCount = stats.completedCount + yearDueCount;
+    const summary = this.plugin.statsService.getStatusSummary(startStr, endStr);
     const statsRow = container.createDiv({ cls: "todo-review-stats-row" });
-    renderStatCard(statsRow, t("本年任务"), String(yearTotalCount), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本年任务"), dateField: "dueDate" }));
-    renderStatCard(statsRow, t("本年完成"), String(stats.completedCount), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本年完成"), dateField: "completedAt" }));
-    const denom = stats.completedCount + yearDueCount;
-    const yearRate = denom > 0 ? Math.round(stats.completedCount / denom * 100) : 0;
-    renderStatCard(statsRow, t("完成率"), yearRate + "%", "bar-chart-2", "#91719E");
-    const today = new Date();
-    const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
-    const yearOverdue = allTasks.filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < todayStr && extractLocalDate(t.dueDate) >= startStr && extractLocalDate(t.dueDate) <= endStr).length;
-    renderStatCard(statsRow, t("逾期任务"), String(yearOverdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "overdue", value: "", label: t("逾期任务") }));
+    renderStatCard(statsRow, t("本年任务"), String(summary.total), "calendar-check", "#6D91B6", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本年任务"), dateField: "dueDate" }));
+    renderStatCard(statsRow, t("本年完成"), String(summary.completed), "check-circle-2", "#41B974", () => this.navigateWithFilter({ type: "date", value: startStr, label: t("本年完成"), dateField: "completedAt" }));
+    renderStatCard(statsRow, t("进行中"), String(summary.active), "timer", "#6D91B6");
+    renderStatCard(statsRow, t("已搁置"), String(summary.shelved), "pause-circle", "#C19957");
+    renderStatCard(statsRow, t("已放弃"), String(summary.abandoned), "x-circle", "#9AA1A1");
+    renderStatCard(statsRow, t("完成率"), summary.completionRate + "%", "bar-chart-2", "#91719E");
+    renderStatCard(statsRow, t("逾期任务"), String(summary.overdue), "alert-triangle", "#BC6F67", () => this.navigateWithFilter({ type: "overdue", value: "", label: t("逾期任务") }));
 
     // GitHub 风格年热力图
     const heatSection = container.createDiv({ cls: "todo-review-section" });
