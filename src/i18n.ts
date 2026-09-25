@@ -162,6 +162,8 @@ const translations: Record<string, string> = {
   "重要": "Important",
   "未完成": "Active",
   "已完成": "Completed",
+  "全部": "All",
+  "状态筛选": "Status filter",
   "已过去": "Past",
   "当前": "Current",
   "未来": "Future",

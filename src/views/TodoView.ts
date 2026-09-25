@@ -217,6 +217,7 @@ export class TodoView extends ItemView {
   private taskListEl!: HTMLDivElement;
   private sortBtnEl!: HTMLButtonElement;
   private sortLabelEl!: HTMLSpanElement;
+  private filterBtnEl!: HTMLButtonElement;
   private aiBtnEl!: HTMLButtonElement;
   private headerIconEl!: HTMLSpanElement;
   private headerTitleEl!: HTMLSpanElement;
@@ -354,6 +355,11 @@ export class TodoView extends ItemView {
     setIcon(this.sortBtnEl, "arrow-up-down");
     this.sortLabelEl = this.sortBtnEl.createSpan({ text: this.getSortLabel(this.plugin.settings.sortConfig.primary.field) });
     this.sortBtnEl.addEventListener("click", (ev) => this.showSortMenu(ev));
+    this.filterBtnEl = taskHeader.createEl("button", { cls: "todo-sort-btn todo-filter-btn" }) as HTMLButtonElement;
+    setIcon(this.filterBtnEl, "filter");
+    this.filterBtnEl.title = t("状态筛选");
+    this.filterBtnEl.setAttribute("aria-label", t("状态筛选"));
+    this.filterBtnEl.addEventListener("click", (ev) => this.showStatusFilterMenu(ev));
     this.aiBtnEl = taskHeader.createEl("button", { cls: "todo-sort-btn todo-ai-btn" }) as HTMLButtonElement;
     setIcon(this.aiBtnEl, "lightbulb");
     this.aiBtnEl.style.display = "none";
@@ -878,13 +884,18 @@ export class TodoView extends ItemView {
     }
 
 
-    // Show AI button for myday, sort button for others
-    if (this.aiBtnEl && this.sortBtnEl) {
+    // Show AI button for myday, sort/filter buttons for task views
+    if (this.aiBtnEl && this.sortBtnEl && this.filterBtnEl) {
       const isMyday = activeViewNav === "myday" && !selectedListId;
       const isMonthlyPlan = activeViewNav === "plan" && this.activePlanKind === "month";
       const showAi = isMyday || isMonthlyPlan;
+      const isTaskView = !isMonthlyPlan && (isMyday || activeViewNav === "all" || activeViewNav === "inbox" || !!selectedListId);
       this.aiBtnEl.style.display = showAi ? "" : "none";
       this.aiBtnEl.title = t("AI 推荐");
+      this.filterBtnEl.style.display = isTaskView ? "" : "none";
+      this.filterBtnEl.style.marginLeft = isMyday ? "auto" : "4px";
+      this.filterBtnEl.title = t("状态筛选");
+      this.filterBtnEl.setAttribute("aria-label", t("状态筛选"));
       if (isMyday) this.sortBtnEl.style.display = "none";
     }
 
@@ -1403,6 +1414,52 @@ private async activateNav(nav: ViewNav): Promise<void> {
     menu.showAtMouseEvent(ev);
   }
 
+  private showStatusFilterMenu(ev: MouseEvent): void {
+    const options: Array<[TodoPluginLike["settings"]["taskFilterStatus"], string, string]> = [
+      ["active", "进行中", "circle-dot"],
+      ["all", "全部", "list"],
+      ["completed", "已完成", "check-circle-2"],
+      ["shelved", "已搁置", "pause-circle"],
+      ["abandoned", "已放弃", "x-circle"],
+    ];
+    const menu = new Menu();
+    for (const [status, label, icon] of options) {
+      menu.addItem((item) => item
+        .setTitle(t(label))
+        .setIcon(icon)
+        .setChecked(this.plugin.settings.taskFilterStatus === status)
+        .onClick(async () => {
+          this.plugin.settings.taskFilterStatus = status;
+          await this.plugin.saveSettings();
+          const view = this.plugin.settings.selectedListId ? "list" : this.plugin.settings.activeViewNav;
+          await this.renderTasks(view);
+        }));
+    }
+    menu.showAtMouseEvent(ev);
+  }
+
+  private applyTaskStatusFilter(tasks: Task[]): Task[] {
+    const status = this.plugin.settings.taskFilterStatus || "active";
+    if (status === "all") return tasks;
+    if (status === "completed") return tasks.filter((task) => task.isCompleted);
+    if (status === "shelved") return tasks.filter((task) => task.status === "shelved");
+    if (status === "abandoned") return tasks.filter((task) => task.status === "abandoned");
+    return tasks.filter((task) => !task.isCompleted && task.status === "active");
+  }
+
+  /**
+   * Microsoft To Do 风格的重复任务列表规则：
+   * 未来重复实例仍保留在数据中，供日程视图和重复系列逻辑使用，
+   * 但普通任务清单只展示今天及过去的实例，避免预生成实例占满列表。
+   */
+  private hideFutureRecurrenceInstances(tasks: Task[]): Task[] {
+    const today = localTodayStr();
+    return tasks.filter((task) => {
+      if (!task.recurrenceGroupId || task.isRecurrenceSource || !task.dueDate) return true;
+      return extractLocalDate(task.dueDate) <= today;
+    });
+  }
+
   private async renderTasks(view: ViewNav | "list"): Promise<void> {
     if (view === "plan" && this.activePlanKind) {
       this.sortBtnEl.style.display = "none";
@@ -1437,6 +1494,8 @@ private async activateNav(nav: ViewNav): Promise<void> {
       const listId = this.plugin.settings.selectedListId;
       tasks = listId ? this.plugin.taskService.getByListId(listId) : [];
     }
+
+    tasks = this.hideFutureRecurrenceInstances(this.applyTaskStatusFilter(tasks));
 
     const currentView = this.plugin.settings.selectedListId ? "list" : this.plugin.settings.activeViewNav;
 
@@ -1537,8 +1596,8 @@ private async activateNav(nav: ViewNav): Promise<void> {
     }
   }
 
-    private async renderQuadrantGroups(): Promise<void> {
-    const allTasks = this.plugin.taskService.getAll();
+  private async renderQuadrantGroups(): Promise<void> {
+    const allTasks = this.hideFutureRecurrenceInstances(this.applyTaskStatusFilter(this.plugin.taskService.getAll()));
     const quadTags = this.plugin.tagService.getQuadrantTags();
     const config = this.plugin.settings.sortConfig;
     const selected = this.plugin.settings.selectedQuadrant;
@@ -1692,6 +1751,10 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   refreshLanguageLabels(): void {
     if (this.sortLabelEl) {
       this.sortLabelEl.setText(this.getSortLabel(this.plugin.settings.sortConfig.primary.field));
+    }
+    if (this.filterBtnEl) {
+      this.filterBtnEl.title = t("状态筛选");
+      this.filterBtnEl.setAttribute("aria-label", t("状态筛选"));
     }
     const setItemLabel = (key: ViewNav, label: string) => {
       const item = this.navEls[key];
