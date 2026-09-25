@@ -244,8 +244,7 @@ export class TaskDetailView {
       deleteSeriesBtn.title = "删除整个系列";
       deleteSeriesBtn.addEventListener("click", async () => {
         const groupInstances = this.plugin.taskService.getGroupInstances(task.recurrenceGroupId!);
-        const uncompletedCount = groupInstances.filter(t => !t.isCompleted).length;
-        const confirmed = await new ConfirmModal(this.app, "将删除 " + uncompletedCount + " 个未完成实例，已完成的保留。确定继续？").openAndConfirm();
+        const confirmed = await new ConfirmModal(this.app, "将删除当前及未来的重复任务，过去记录保留。确定继续？").openAndConfirm();
         if (!confirmed) return;
         await this.plugin.taskService.deleteSeries(task.recurrenceGroupId!);
         new Notice("已删除整个重复系列");
@@ -455,16 +454,6 @@ export class TaskDetailView {
       },
     });
 
-    // 重复系列标识
-    if (task.recurrenceGroupId && task.recurrence) {
-      const seriesRow = parent.createDiv({ cls: "todo-prop-row todo-series-indicator" });
-      const iconEl = seriesRow.createDiv({ cls: "todo-prop-icon" });
-      setIcon(iconEl, "link");
-      const textEl = seriesRow.createDiv({ cls: "todo-prop-text is-set" });
-      textEl.textContent = "重复系列成员";
-      textEl.style.fontSize = "12px";
-      textEl.style.color = "var(--text-muted)";
-    }
   }
   private applyValues(task: Task): void {
     if (!this.root.hasClass("todo-detail-active")) return;
@@ -691,6 +680,24 @@ export class TaskDetailView {
   private async saveChanges(changes: Partial<Task>): Promise<void> {
     const taskId = this.taskId;
     if (!taskId) return;
+    const existingTask = this.getTask();
+    let syncFutureRecurrence = false;
+    if (existingTask?.recurrence && existingTask.recurrenceGroupId && !existingTask.isRecurrenceTemplate &&
+      (changes.startDate !== undefined || changes.dueDate !== undefined)) {
+      const nextStart = changes.startDate !== undefined ? changes.startDate : existingTask.startDate;
+      const nextDue = changes.dueDate !== undefined ? changes.dueDate : existingTask.dueDate;
+      if (nextStart !== existingTask.startDate || nextDue !== existingTask.dueDate) {
+        const choice = await new ConfirmModal(
+          this.app,
+          "是否将新的时间同步到后续未完成的重复任务？",
+          "同步后续任务",
+          "仅修改当前任务",
+          false,
+        ).openAndConfirm();
+        if (choice === null) return;
+        syncFutureRecurrence = choice;
+      }
+    }
 
     // Auto-derive planPeriodKey for life tasks when dueDate changes
     if (changes.dueDate !== undefined) {
@@ -721,7 +728,10 @@ export class TaskDetailView {
 
     // Quadrant mode: no listId auto-classification needed (aggregated view, tasks stay in original list)
 
-    const p = this.plugin.taskService.update(taskId, changes).then((updated) => {
+    const p = this.plugin.taskService.update(taskId, changes).then(async (updated) => {
+      if (updated && syncFutureRecurrence) {
+        await this.plugin.taskService.syncRecurrenceSchedule(taskId, updated.startDate, updated.dueDate);
+      }
       if (updated && this.taskId === taskId) this.applyValues(updated);
       if (this.pendingSave === p) this.pendingSave = null;
       this.onTaskUpdated?.(taskId);
@@ -761,7 +771,11 @@ export class TaskDetailView {
 
 
   private async deleteTask(task: Task): Promise<void> {
-    await this.plugin.taskService.delete(task.id);
+    if (task.recurrenceGroupId && task.recurrence) {
+      await this.plugin.taskService.deleteSeries(task.recurrenceGroupId, task.id);
+    } else {
+      await this.plugin.taskService.delete(task.id);
+    }
     new Notice("\u4efb\u52a1\u5df2\u5220\u9664");
     this.plugin.settings.selectedTaskId = null;
     await this.plugin.saveSettings();
@@ -772,33 +786,48 @@ export class TaskDetailView {
 
 class ConfirmModal extends Modal {
   private message: string;
-  private resolve!: (value: boolean) => void;
+  private confirmText: string;
+  private cancelText: string;
+  private warning: boolean;
+  private resolve!: (value: boolean | null) => void;
+  private settled = false;
 
-  constructor(app: App, message: string) {
+  constructor(app: App, message: string, confirmText = "确认", cancelText = "取消", warning = true) {
     super(app);
     this.message = t(message);
+    this.confirmText = t(confirmText);
+    this.cancelText = t(cancelText);
+    this.warning = warning;
   }
 
   onOpen(): void {
     const { contentEl } = this;
     contentEl.createEl("p", { text: this.message });
     const actions = contentEl.createDiv({ cls: "todo-prompt-actions" });
-    const cancelBtn = actions.createEl("button", { text: t("\u53d6\u6d88") });
-    const confirmBtn = actions.createEl("button", { text: t("\u5220\u9664"), cls: "mod-warning" });
+    const cancelBtn = actions.createEl("button", { text: this.cancelText });
+    const confirmBtn = actions.createEl("button", { text: this.confirmText, cls: this.warning ? "mod-warning" : "" });
     cancelBtn.addEventListener("click", () => this.finish(false));
     confirmBtn.addEventListener("click", () => this.finish(true));
   }
 
-  onClose(): void { this.contentEl.empty(); }
+  onClose(): void {
+    this.contentEl.empty();
+    if (!this.settled) {
+      this.settled = true;
+      this.resolve(null);
+    }
+  }
 
-  async openAndConfirm(): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
+  async openAndConfirm(): Promise<boolean | null> {
+    return new Promise<boolean | null>((resolve) => {
       this.resolve = resolve;
       this.open();
     });
   }
 
-  private finish(value: boolean): void {
+  private finish(value: boolean | null): void {
+    if (this.settled) return;
+    this.settled = true;
     this.resolve(value);
     this.close();
   }

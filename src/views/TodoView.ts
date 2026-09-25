@@ -96,6 +96,7 @@ import { Task, MyDayGroup, PlanKind } from "../models/Task";
 import { extractLocalDate } from "../utils/recurrence";
 import { localTodayStr, currentPeriodKey, periodLabel, subGroupLabel, periodKeySort, getSubPeriodKeysForParent, getParentPeriodKey, getPeriodKeyForDate, ageFromDueDate, currentAge, getISOWeekNumber, getISOWeekRange } from "../utils/period";
 import { TaskDetailView, ScheduleSidebarItem } from "./TaskDetailView";
+import type { RecurrenceSeriesService } from "../services/RecurrenceSeriesService";
 import { AIRecommendationView } from "./AIRecommendationView";
 import { VIEW_TYPE_TODO_DETAIL } from "./TodoDetailSidebarView";
 import { sortTasks, getMyDayGroupFromTime } from "../utils/sort";
@@ -135,6 +136,7 @@ export interface TodoPluginLike {
     getAll(): Task[];
     getByListId(listId: string): Task[];
     update(id: string, changes: Partial<Task>): Promise<Task | null>;
+    syncRecurrenceSchedule(taskId: string, startDate: string | null, dueDate: string | null): Promise<number>;
     create(fields: Partial<Task>): Promise<Task>;
     complete(id: string): Promise<Task | null>;
     uncomplete(id: string): Promise<Task | null>;
@@ -148,10 +150,11 @@ export interface TodoPluginLike {
     hardDelete(id: string): Promise<boolean>;
     emptyTrash(): Promise<number>;
     getGroupInstances(groupId: string): Task[];
-    deleteSeries(groupId: string): Promise<number>;
+    deleteSeries(groupId: string, taskId?: string): Promise<number>;
     setRecurrence(taskId: string, recurrence: string | null, endDate?: string | null): Promise<void>;
     stopRecurrence(groupId: string, fromTaskId?: string): Promise<number>;
   };
+  recurrenceSeriesService?: RecurrenceSeriesService;
   listService: {
     getById(id: string): { id: string; name: string; isDefault: boolean; groupId: string | null; icon: string } | undefined;
     getActive(): { id: string; name: string; isDefault: boolean; groupId: string | null; icon: string }[];
@@ -925,6 +928,7 @@ export class TodoView extends ItemView {
 
 private async activateNav(nav: ViewNav): Promise<void> {
     this.closeDetail();
+    this.taskListEl.removeClass("todo-life-active");
     if (nav !== "all") this.reviewFilter = null;
     this.myDayViewDate = null;
     this.plugin.settings.activeViewNav = nav;
@@ -993,7 +997,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
     if (nav === "plan" && this.activePlanKind) {
       this.plugin.settings.selectedQuadrant = null;
       this.sortBtnEl.style.display = "none";
-      this.quickContainerEl.style.display = "none";
+      this.updateQuickPlaceholder();
       await this.plugin.saveSettings();
       await this.renderLists();
       Object.entries(this.navEls).forEach(([, el]) => el.removeClass("active"));
@@ -1454,9 +1458,29 @@ private async activateNav(nav: ViewNav): Promise<void> {
    */
   private hideFutureRecurrenceInstances(tasks: Task[]): Task[] {
     const today = localTodayStr();
+    const grouped = new Map<string, Task[]>();
+    for (const task of tasks) {
+      if (task.recurrenceGroupId && !task.isRecurrenceSource && task.dueDate) {
+        const group = grouped.get(task.recurrenceGroupId) || [];
+        group.push(task);
+        grouped.set(task.recurrenceGroupId, group);
+      }
+    }
+    const showNextFuture = new Set<string>();
+    for (const [groupId, group] of grouped) {
+      const hasPendingCurrentOrPast = group.some((task) => {
+        const date = extractLocalDate(task.dueDate!);
+        return date <= today && !task.isCompleted;
+      });
+      if (hasPendingCurrentOrPast) continue;
+      const next = group
+        .filter((task) => extractLocalDate(task.dueDate!) > today && !task.isCompleted)
+        .sort((a, b) => extractLocalDate(a.dueDate!).localeCompare(extractLocalDate(b.dueDate!)))[0];
+      if (next) showNextFuture.add(next.id);
+    }
     return tasks.filter((task) => {
       if (!task.recurrenceGroupId || task.isRecurrenceSource || !task.dueDate) return true;
-      return extractLocalDate(task.dueDate) <= today;
+      return extractLocalDate(task.dueDate) <= today || showNextFuture.has(task.id);
     });
   }
 
@@ -1475,6 +1499,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
     }
     this.sortBtnEl.style.display = "";
     this.taskListEl.removeClass("todo-goal-active");
+    this.taskListEl.removeClass("todo-life-active");
     this.quickContainerEl.style.display = this.plugin.settings.activeViewNav === "inbox" ? "none" : "";
     this.taskListEl.empty();
 
@@ -1484,15 +1509,15 @@ private async activateNav(nav: ViewNav): Promise<void> {
 
     if (view === "myday" && !this.plugin.settings.selectedListId) {
       const viewDate = this.myDayViewDate || localTodayStr();
-      tasks = this.plugin.taskService.getAll().filter((t) => t.myDayDate === viewDate && !t.isDeleted && !t.isRecurrenceTemplate);
+      tasks = this.plugin.taskService.getAll().filter((t) => !t.planKind && t.myDayDate === viewDate && !t.isDeleted && !t.isRecurrenceTemplate);
     } else if (view === "all") {
       tasks = this.plugin.taskService.getAll().filter((t) => !t.planKind);
     } else if (view === "inbox") {
       const defaultList = this.plugin.listService.getDefault();
-      tasks = defaultList ? this.plugin.taskService.getInbox(defaultList.id) : [];
+      tasks = defaultList ? this.plugin.taskService.getInbox(defaultList.id).filter((t) => !t.planKind) : [];
     } else {
       const listId = this.plugin.settings.selectedListId;
-      tasks = listId ? this.plugin.taskService.getByListId(listId) : [];
+      tasks = listId ? this.plugin.taskService.getByListId(listId).filter((t) => !t.planKind) : [];
     }
 
     tasks = this.hideFutureRecurrenceInstances(this.applyTaskStatusFilter(tasks));
@@ -1597,7 +1622,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
   }
 
   private async renderQuadrantGroups(): Promise<void> {
-    const allTasks = this.hideFutureRecurrenceInstances(this.applyTaskStatusFilter(this.plugin.taskService.getAll()));
+    const allTasks = this.hideFutureRecurrenceInstances(this.applyTaskStatusFilter(this.plugin.taskService.getAll().filter((task) => !task.planKind)));
     const quadTags = this.plugin.tagService.getQuadrantTags();
     const config = this.plugin.settings.sortConfig;
     const selected = this.plugin.settings.selectedQuadrant;
@@ -2141,6 +2166,11 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
   private async activatePlan(kind: PlanKind): Promise<void> {
     this.closeDetail();
+    this.taskListEl.removeClass("todo-life-active");
+    this.taskListEl.removeClass("todo-goal-active");
+    this.taskListEl.removeClass("todo-review-active");
+    this.taskListEl.removeClass("todo-schedule-active");
+    this.taskListEl.removeClass("todo-trash-active");
     this.plugin.settings.activeViewNav = "plan";
     this.plugin.settings.selectedListId = null;
     this.plugin.settings.selectedQuadrant = null;
@@ -2233,6 +2263,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   }
 
   private async renderPlanView(kind: PlanKind): Promise<void> {
+    this.taskListEl.removeClass("todo-life-active");
+    this.taskListEl.removeClass("todo-goal-active");
     this.taskListEl.empty();
     const ts = this.plugin.taskService;
     const curKey = currentPeriodKey(kind);
@@ -2306,6 +2338,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
 
   private async renderGoalDashboard(kind: "year"|"month"): Promise<void> {
+    this.taskListEl.removeClass("todo-life-active");
     this.taskListEl.empty();
     this.taskListEl.addClass("todo-goal-active");
     const curNow = currentPeriodKey(kind);
@@ -2975,6 +3008,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
   private async renderLifePlanView(): Promise<void> {
     this.taskListEl.empty();
+    this.taskListEl.removeClass("todo-goal-active");
+    this.taskListEl.addClass("todo-life-active");
     const birthday = this.plugin.settings.birthday;
     if (!birthday) {
       const hint = this.taskListEl.createDiv({ cls: "todo-life-empty" });

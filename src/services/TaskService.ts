@@ -4,6 +4,8 @@ import { StorageService } from "./StorageService";
 import { logger } from "../utils/logger";
 import { localTodayStr } from "../utils/period";
 import { getNextOccurrenceDate, getPreGenerateCount, parseLocalDate, formatDateStr, extractLocalDate } from "../utils/recurrence";
+import type { RecurrenceSeriesService } from "./RecurrenceSeriesService";
+import { createRecurrenceSeries } from "../models/RecurrenceSeries";
 
 export interface TaskDatabase {
   tasks: Task[];
@@ -22,9 +24,11 @@ export class TaskService {
   private storage: StorageService;
   private tasks: Task[] = [];
   private loaded = false;
+  private recurrenceSeriesService?: RecurrenceSeriesService;
 
-  constructor(vault: Vault, folder: string) {
+  constructor(vault: Vault, folder: string, recurrenceSeriesService?: RecurrenceSeriesService) {
     this.storage = new StorageService(vault, folder);
+    this.recurrenceSeriesService = recurrenceSeriesService;
   }
 
   async init(): Promise<void> {
@@ -77,12 +81,14 @@ export class TaskService {
           delete (t as any).isMyDay;
           return t;
         });
+      await this.migrateLegacyRecurrenceSources();
       logger.info("Loaded", this.tasks.length, "tasks");
     } else {
       this.tasks = [];
       logger.info("No existing tasks, starting fresh");
     }
     this.loaded = true;
+    if (this.tasks.length > 0) await this.ensureRecurrenceInstances();
   }
 
   // ===== 查询方法（默认排除已删除）=====
@@ -215,6 +221,52 @@ export class TaskService {
     return this.tasks[index];
   }
 
+  /** 将重复任务当前实例的时间同步到未来未完成实例，保留每个实例自己的日期。 */
+  async syncRecurrenceSchedule(taskId: string, startDate: string | null, dueDate: string | null): Promise<number> {
+    this.ensureLoaded();
+    const task = this.tasks.find((item) => item.id === taskId);
+    if (!task || !task.recurrenceGroupId || task.isRecurrenceTemplate) return 0;
+    const currentDate = this.taskLocalDate(task);
+    if (!currentDate) return 0;
+
+    const timeOf = (value: string | null, defaultTime: string): string | null => {
+      if (!value) return null;
+      if (!value.includes("T")) return defaultTime;
+      return value.substring(value.indexOf("T"));
+    };
+    const startTime = timeOf(startDate, "T07:00:00");
+    const dueTime = timeOf(dueDate, "T23:30:00");
+    let startOffsetDays = 0;
+    if (startDate && dueDate) {
+      const start = parseLocalDate(startDate);
+      const due = parseLocalDate(dueDate);
+      startOffsetDays = Math.round((Date.UTC(start.y, start.m, start.d) - Date.UTC(due.y, due.m, due.d)) / 86400000);
+    }
+    let count = 0;
+    for (const instance of this.tasks) {
+      if (instance.id === taskId || instance.recurrenceGroupId !== task.recurrenceGroupId || instance.isRecurrenceTemplate || instance.isDeleted || instance.isCompleted) continue;
+      const instanceDate = this.taskLocalDate(instance);
+      if (!instanceDate || instanceDate <= currentDate) continue;
+      if (startDate === null) {
+        instance.startDate = null;
+      } else if (startTime) {
+        const dueParts = parseLocalDate(instance.dueDate || instanceDate);
+        const nextStart = new Date(dueParts.y, dueParts.m, dueParts.d + startOffsetDays);
+        instance.startDate = formatDateStr(nextStart.getFullYear(), nextStart.getMonth(), nextStart.getDate()) + startTime;
+      }
+      if (dueDate === null) {
+        instance.dueDate = null;
+      } else if (dueTime) {
+        const instanceDueDate = this.taskLocalDate(instance) || instanceDate;
+        instance.dueDate = instanceDueDate + dueTime;
+      }
+      instance.updatedAt = new Date().toISOString();
+      count++;
+    }
+    if (count > 0) await this.save();
+    return count;
+  }
+
   async complete(id: string): Promise<Task | null> {
     this.ensureLoaded();
     const task = this.tasks.find(t => t.id === id);
@@ -331,11 +383,53 @@ export class TaskService {
 
   // ===== 重复任务 =====
 
-  /**
-   * 设置/修改/清除任务的重复规则
-   * - recurrence 为 null → 清除重复（不影响已有实例）
-   * - recurrence 非 null → 将当前任务标记为母任务，预生成实例
-   */
+  private taskLocalDate(task: Task): string | null {
+    if (task.dueDate) return extractLocalDate(task.dueDate);
+    if (task.myDayDate) return task.myDayDate;
+    if (task.startDate) return extractLocalDate(task.startDate);
+    return null;
+  }
+
+  private async migrateLegacyRecurrenceSources(): Promise<void> {
+    const today = localTodayStr();
+    let changed = false;
+    for (const source of this.tasks.filter((task) => task.isRecurrenceSource && !task.isRecurrenceTemplate && task.recurrence && task.recurrenceGroupId)) {
+      source.isRecurrenceTemplate = true;
+      changed = true;
+      if (this.recurrenceSeriesService) {
+        await this.recurrenceSeriesService.upsert(createRecurrenceSeries({
+          id: source.recurrenceGroupId!, rule: source.recurrence!,
+          startDate: this.taskLocalDate(source) || today, endDate: source.recurrenceEndDate,
+          title: source.title, note: source.note, listId: source.listId,
+          tags: [...source.tags], isImportant: source.isImportant,
+        }));
+      }
+      const hasInstance = this.tasks.some((task) => task.recurrenceGroupId === source.recurrenceGroupId && !task.isRecurrenceTemplate && !task.isDeleted && this.taskLocalDate(task) !== null);
+      if (!hasInstance) {
+        const date = this.taskLocalDate(source) || today;
+        this.tasks.push(createTask({ ...source, id: crypto.randomUUID(), isRecurrenceTemplate: false, isRecurrenceSource: false, isCompleted: false, completedAt: null, myDayDate: date, startDate: source.startDate || date + "T07:00:00", dueDate: source.dueDate || date + "T23:30:00" }));
+      }
+    }
+    if (changed) await this.save();
+  }
+
+  /** 确保重复系列始终有当前或未来的未完成实例。 */
+  private async ensureRecurrenceInstances(): Promise<void> {
+    const today = localTodayStr();
+    const groups = new Set(this.tasks
+      .filter((task) => task.isRecurrenceSource && task.isRecurrenceTemplate && task.recurrence && task.recurrenceGroupId && !task.isDeleted)
+      .map((task) => task.recurrenceGroupId as string));
+    for (const groupId of groups) {
+      const instances = this.tasks.filter((task) => task.recurrenceGroupId === groupId && !task.isRecurrenceTemplate && !task.isDeleted);
+      const hasPending = instances.some((task) => {
+        const date = this.taskLocalDate(task);
+        return !task.isCompleted && !!date && date >= today;
+      });
+      if (!hasPending) await this.replenishInstances(groupId);
+    }
+  }
+
+  /** 设置重复规则。用户任务会转为内部模板，同时生成一个带日期的可执行实例。 */
   async setRecurrence(taskId: string, recurrence: string | null, endDate?: string | null): Promise<void> {
     this.ensureLoaded();
     const task = this.tasks.find(t => t.id === taskId);
@@ -352,6 +446,21 @@ export class TaskService {
       return;
     }
 
+    const today = localTodayStr();
+    if (!task.startDate && !task.dueDate) {
+      task.startDate = today + "T07:00:00";
+      task.dueDate = today + "T23:30:00";
+      task.myDayDate = today;
+    } else if (!task.dueDate) {
+      const startDate = extractLocalDate(task.startDate!);
+      task.dueDate = startDate + "T23:30:00";
+      task.myDayDate = task.myDayDate || startDate;
+    } else if (!task.startDate) {
+      const dueDate = extractLocalDate(task.dueDate);
+      task.startDate = dueDate + "T07:00:00";
+      task.myDayDate = task.myDayDate || dueDate;
+    }
+
     // 如果已有重复组且规则变化，删除旧的未完成实例（不含 source 自身）
     if (task.recurrenceGroupId && task.recurrence !== recurrence) {
       const oldInstances = this.tasks.filter(
@@ -361,15 +470,41 @@ export class TaskService {
         this.tasks = this.tasks.filter(t => !oldIds.has(t.id));
     }
 
-    // 标记原任务为重复系列源头（不隐藏，正常显示）
+    // 建立独立重复系列记录，任务文件只通过 recurrenceGroupId 关联系列。
     const groupId = task.recurrenceGroupId || crypto.randomUUID();
     task.recurrence = recurrence;
     task.isRecurrenceSource = true;
     task.recurrenceGroupId = groupId;
     task.recurrenceEndDate = endDate !== undefined ? endDate : task.recurrenceEndDate;
+    if (this.recurrenceSeriesService) {
+      await this.recurrenceSeriesService.upsert(createRecurrenceSeries({
+        id: groupId,
+        rule: recurrence,
+        startDate: extractLocalDate(task.dueDate!),
+        endDate: task.recurrenceEndDate,
+        title: task.title,
+        note: task.note,
+        listId: task.listId,
+        tags: [...task.tags],
+        isImportant: task.isImportant,
+      }));
+    }
     task.updatedAt = new Date().toISOString();
 
-    // 预生成未来实例（从原任务 dueDate 之后开始）
+    // 原记录仅作为内部模板，不再显示给用户；当前日期由独立实例表示。
+    task.isRecurrenceTemplate = true;
+    task.isRecurrenceSource = true;
+    const currentInstance = createTask({
+      ...task,
+      id: crypto.randomUUID(),
+      isRecurrenceTemplate: false,
+      isRecurrenceSource: false,
+      isCompleted: false,
+      completedAt: null,
+    });
+    this.tasks.push(currentInstance);
+
+    // 预生成未来实例（从当前实例之后开始）
     await this.generateRecurrenceInstances(task);
   }
 
@@ -473,14 +608,26 @@ export class TaskService {
     if (uncompleted.length >= threshold) return;
 
     // 找到最远一个实例的 dueDate 作为起点（用 parseLocalDate 兼容 UTC/本地格式）
-    let latestDate = new Date();
+    let latestDate: Date | null = null;
     for (const inst of instances) {
       if (inst.dueDate) {
         const ld = parseLocalDate(inst.dueDate);
         const d = new Date(ld.y, ld.m, ld.d);
-        if (d > latestDate) latestDate = d;
+        if (!latestDate || d > latestDate) latestDate = d;
       }
     }
+    if (!latestDate) {
+      const sourceDate = this.taskLocalDate(source);
+      if (sourceDate) {
+        const parsed = parseLocalDate(sourceDate);
+        latestDate = new Date(parsed.y, parsed.m, parsed.d);
+      } else {
+        latestDate = new Date();
+      }
+    }
+    const existingDates = new Set(
+      instances.map((instance) => this.taskLocalDate(instance)).filter((date): date is string => !!date),
+    );
 
     const needCount = totalCount - uncompleted.length;
     // 计算 startDate/dueDate 偏移（天数）
@@ -502,6 +649,7 @@ export class TaskService {
 
       const pad = (n: number) => String(n).padStart(2, "0");
       const dueStr = nextDue.getFullYear() + "-" + pad(nextDue.getMonth() + 1) + "-" + pad(nextDue.getDate());
+      if (existingDates.has(dueStr)) continue;
 
       // 继承源任务的时间段，仅全天任务用默认值
       const isAllDayDue = !source.dueDate || !source.dueDate.includes('T') || source.dueDate.endsWith('T00:00:00') || source.dueDate.endsWith('T23:30:00');
@@ -540,6 +688,7 @@ export class TaskService {
       });
 
       this.tasks.push(instance);
+      existingDates.add(dueStr);
     }
 
     await this.save();
@@ -569,14 +718,17 @@ export class TaskService {
    * - 删除母任务
    * @returns 删除的数量
    */
-  async deleteSeries(groupId: string): Promise<number> {
+  async deleteSeries(groupId: string, taskId?: string): Promise<number> {
     this.ensureLoaded();
     const now = new Date().toISOString();
+    const today = localTodayStr();
     let count = 0;
 
-    // 删除未完成的实例
+    // 删除当前及未来实例，保留过去实例（包括已完成历史）。
     for (const t of this.tasks) {
-      if (t.recurrenceGroupId === groupId && !t.isCompleted && !t.isDeleted) {
+      if (t.recurrenceGroupId !== groupId || t.isDeleted) continue;
+      const date = this.taskLocalDate(t);
+      if (t.id === taskId || t.isRecurrenceTemplate || !date || date >= today) {
         t.isDeleted = true;
         t.deletedAt = now;
         t.updatedAt = now;
@@ -584,16 +736,8 @@ export class TaskService {
       }
     }
 
-    // 删除母任务
-    const source = this.tasks.find(t => t.recurrenceGroupId === groupId && t.isRecurrenceSource && !t.isDeleted);
-    if (source) {
-      source.isDeleted = true;
-      source.deletedAt = now;
-      source.updatedAt = now;
-      count++;
-    }
-
     if (count > 0) await this.save();
+    await this.recurrenceSeriesService?.remove(groupId);
     logger.info("Deleted series:", groupId, "removed", count);
     return count;
   }
@@ -604,38 +748,40 @@ export class TaskService {
   async stopRecurrence(groupId: string, fromTaskId?: string): Promise<number> {
     this.ensureLoaded();
     const now = new Date().toISOString();
+    const today = localTodayStr();
     let deletedCount = 0;
 
-    // 硬删除同组中未完成、未删除、非源头的实例
+    // 取消重复只删除未来实例，当前任务和过去实例保留。
     const deletedIds = new Set<string>();
     for (const t of this.tasks) {
-      if (t.recurrenceGroupId !== groupId || t.isRecurrenceSource || t.isCompleted || t.isDeleted) continue;
-      deletedIds.add(t.id);
-      deletedCount++;
+      if (t.recurrenceGroupId !== groupId || t.isRecurrenceTemplate || t.isDeleted) continue;
+      const date = this.taskLocalDate(t);
+      if (date && date > today) {
+        deletedIds.add(t.id);
+        deletedCount++;
+      }
     }
 
     if (deletedIds.size > 0) this.tasks = this.tasks.filter(t => !deletedIds.has(t.id));
 
-    // 清除源任务的重复规则，变回普通任务
-    const source = this.tasks.find(t => t.recurrenceGroupId === groupId && t.isRecurrenceSource && !t.isDeleted);
+    // 当前选中的实例变回普通任务，过去实例保留历史字段。
+    const current = fromTaskId ? this.tasks.find((t) => t.id === fromTaskId && !t.isDeleted) : undefined;
+    if (current) {
+      current.isRecurrenceSource = false;
+      current.recurrence = null;
+      current.recurrenceGroupId = null;
+      current.recurrenceEndDate = null;
+      current.updatedAt = now;
+    }
+    const source = this.tasks.find((t) => t.recurrenceGroupId === groupId && t.isRecurrenceTemplate && !t.isDeleted);
     if (source) {
-      source.isRecurrenceSource = false;
-      source.recurrence = null;
-      source.recurrenceGroupId = null;
-      source.recurrenceEndDate = null;
+      source.isDeleted = true;
+      source.deletedAt = now;
       source.updatedAt = now;
     }
 
-    // 清除剩余未完成实例的重复字段（之前的实例，不再触发补充）
-    for (const t of this.tasks) {
-      if (t.recurrenceGroupId === groupId && !t.isDeleted && !t.isCompleted) {
-        t.recurrence = null;
-        t.recurrenceGroupId = null;
-        t.updatedAt = now;
-      }
-    }
-
-    if (deletedCount > 0 || source) await this.save();
+    if (deletedCount > 0 || current || source) await this.save();
+    await this.recurrenceSeriesService?.remove(groupId);
     logger.info("Stopped recurrence for group:", groupId, "deleted:", deletedCount);
     return deletedCount;
   }

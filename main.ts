@@ -12,6 +12,7 @@ import { TaskService } from "./src/services/TaskService";
 import { ListService } from "./src/services/ListService";
 import { TagService } from "./src/services/TagService";
 import { GroupService } from "./src/services/GroupService";
+import { RecurrenceSeriesService } from "./src/services/RecurrenceSeriesService";
 
 import { TodoView, VIEW_TYPE_TODO } from "./src/views/TodoView";
 import { TodoNavView, VIEW_TYPE_TODO_NAV } from "./src/views/TodoNavView";
@@ -26,6 +27,7 @@ export default class ObsidianTodoPlugin extends Plugin {
   listService!: ListService;
   tagService!: TagService;
   groupService!: GroupService;
+  recurrenceSeriesService!: RecurrenceSeriesService;
   statsService!: StatsService;
   todoView?: TodoView;
   activateNav?: (nav: any) => Promise<void>;
@@ -38,8 +40,10 @@ export default class ObsidianTodoPlugin extends Plugin {
     setLanguage(this.settings.language);
     logger.info("Obsidian Todo loaded");
 
-    this.taskService = new TaskService(this.app.vault, this.settings.todoFolder);
     this.listService = new ListService(this.app.vault, this.settings.todoFolder, this.settings.defaultListName);
+    this.recurrenceSeriesService = new RecurrenceSeriesService(this.app.vault, this.settings.todoFolder);
+    await this.recurrenceSeriesService.init();
+    this.taskService = new TaskService(this.app.vault, this.settings.todoFolder, this.recurrenceSeriesService);
     await this.taskService.init();
     await this.listService.init();
     this.tagService = new TagService(this.app.vault, this.settings.todoFolder);
@@ -113,13 +117,14 @@ export default class ObsidianTodoPlugin extends Plugin {
   /** 全部重置：清空内存数据 → 删除磁盘文件（绕过 Vault 缓存）→ 重新初始化 → 刷新视图 */
   async resetAllData(): Promise<void> {
     const folder = this.settings.todoFolder;
-    const dataFiles = ["database.json", "lists.json", "tags.json", "groups.json"];
+    const dataFiles = ["database.json", "lists.json", "tags.json", "groups.json", "recurrence-series.json"];
 
     // 1. 清空所有服务的文件缓存，防止后续 init() 读到缓存中的旧数据
     this.taskService.clearCache();
     this.listService.clearCache();
     this.tagService.clearCache();
     this.groupService.clearCache();
+    this.recurrenceSeriesService.clearCache();
 
     // 2. 用 adapter.remove() 删除磁盘文件（绕过 Vault 的 TFile 元数据和事件系统）
     for (const f of dataFiles) {
@@ -134,6 +139,7 @@ export default class ObsidianTodoPlugin extends Plugin {
     }
 
     // 3. 重新初始化所有服务（文件已删 → read 返回 null → 创建默认数据）
+    await this.recurrenceSeriesService.init();
     await this.taskService.init();
     await this.listService.init();
     await this.tagService.init();

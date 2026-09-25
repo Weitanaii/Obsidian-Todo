@@ -84,7 +84,8 @@
   padding: 8px 0 0 0;
 }
 .todo-task-list.todo-goal-active,
-.todo-task-list.todo-review-active {
+.todo-task-list.todo-review-active,
+.todo-task-list.todo-life-active {
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -96,7 +97,8 @@
   flex: 0 0 auto;
 }
 .todo-goal-scroll-content,
-.todo-review-content {
+.todo-review-content,
+.todo-life-active .todo-life-timeline {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -189,6 +191,7 @@
 }
 
 .todo-quick-add {
+  flex: 0 0 auto;
   padding: 10px 14px;
   border-top: 1px solid var(--background-modifier-border);
 }
@@ -2138,6 +2141,10 @@
 /* ===== Life Plan Timeline (T-613) ===== */
 
 .todo-life-timeline {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 16px 12px;
 }
 .todo-life-node {
