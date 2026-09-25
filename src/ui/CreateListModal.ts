@@ -1,9 +1,11 @@
 import { App, Modal, setIcon } from "obsidian";
 import { t } from "../i18n";
+type ListTag = { id: string; name: string; color: string; icon: string; sortOrder?: number; isDefault?: boolean };
 
 export interface CreateListResult {
   name: string;
   icon: string;
+  tags: string[];
 }
 
 const LIST_ICONS: string[] = [
@@ -17,6 +19,7 @@ const LIST_ICONS: string[] = [
   "heart-pulse", "activity", "stethoscope", "pill", "hospital",
   "dumbbell", "footprints", "bike", "timer", "trophy",
   "briefcase", "building-2", "clipboard-list", "kanban", "list-checks",
+  "gamepad-2", "swords", "joystick", "dice-5",
   "piggy-bank", "banknote", "coins", "calculator", "receipt",
   "users", "user-round", "heart-handshake", "message-circle", "phone",
   "repeat", "calendar-check", "check-check", "circle-check", "alarm-clock",
@@ -28,11 +31,16 @@ export class CreateListModal extends Modal {
   private nameInput!: HTMLInputElement;
   private editName: string;
   private editIcon: string;
+  private availableTags: ListTag[];
+  private selectedTags: string[];
 
-  constructor(app: App, editList?: { name: string; icon?: string }) {
+  constructor(app: App, editList?: { name: string; icon?: string; tags?: string[] }, availableTags: ListTag[] = []) {
     super(app);
     this.editName = editList?.name || "";
     this.editIcon = editList?.icon || "list-checks";
+    // 列表只使用普通领域标签，四象限标签仅用于任务优先级分类。
+    this.availableTags = availableTags.filter((tag) => (tag.sortOrder ?? 4) >= 4);
+    this.selectedTags = [...(editList?.tags || [])];
     if (editList) this.selectedIcon = editList.icon || "list-checks";
   }
 
@@ -110,18 +118,36 @@ export class CreateListModal extends Modal {
     searchInput.addEventListener("input", () => renderGrid(searchInput.value));
     renderGrid("");
 
+    if (this.availableTags.length > 0) {
+      const tagGroup = contentEl.createDiv({ cls: "todo-create-list-group" });
+      tagGroup.createDiv({ cls: "todo-create-list-label", text: t("列表标签") });
+      const tagGrid = tagGroup.createDiv({ cls: "todo-create-list-tag-grid" });
+      for (const tag of this.availableTags) {
+        const item = tagGrid.createDiv({ cls: "todo-create-list-tag-item" + (this.selectedTags.includes(tag.id) ? " selected" : "") });
+        item.style.setProperty("--tag-color", tag.color);
+        const icon = item.createSpan({ cls: "todo-create-list-tag-icon" });
+        setIcon(icon, tag.icon);
+        item.createSpan({ text: tag.name });
+        item.addEventListener("click", () => {
+          if (this.selectedTags.includes(tag.id)) this.selectedTags = this.selectedTags.filter((id) => id !== tag.id);
+          else this.selectedTags = [...this.selectedTags, tag.id];
+          item.toggleClass("selected", this.selectedTags.includes(tag.id));
+        });
+      }
+    }
+
     // Actions
     const actions = contentEl.createDiv({ cls: "todo-create-list-actions" });
     const cancelBtn = actions.createEl("button", { text: t("取消") });
     const confirmBtn = actions.createEl("button", { text: this.editName ? t("保存") : t("创建"), cls: "mod-cta" });
 
     cancelBtn.addEventListener("click", () => this.finish(null));
-    confirmBtn.addEventListener("click", () => this.finish({ name: this.nameInput.value.trim(), icon: this.selectedIcon }));
+    confirmBtn.addEventListener("click", () => this.finish({ name: this.nameInput.value.trim(), icon: this.selectedIcon, tags: [...this.selectedTags] }));
 
     this.nameInput.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter") {
         ev.preventDefault();
-        this.finish({ name: this.nameInput.value.trim(), icon: this.selectedIcon });
+        this.finish({ name: this.nameInput.value.trim(), icon: this.selectedIcon, tags: [...this.selectedTags] });
       }
     });
 

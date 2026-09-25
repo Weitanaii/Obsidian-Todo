@@ -1,11 +1,15 @@
 
 class ConfirmModal extends Modal {
   private message: string;
+  private confirmText: string;
+  private warning: boolean;
   private resolve!: (value: boolean) => void;
 
-  constructor(app: App, message: string) {
+  constructor(app: App, message: string, confirmText = "删除", warning = true) {
     super(app);
     this.message = t(message);
+    this.confirmText = t(confirmText);
+    this.warning = warning;
   }
 
   onOpen(): void {
@@ -14,7 +18,7 @@ class ConfirmModal extends Modal {
 
     const actions = contentEl.createDiv({ cls: "todo-prompt-actions" });
     const cancelBtn = actions.createEl("button", { text: t("取消") });
-    const confirmBtn = actions.createEl("button", { text: t("删除"), cls: "mod-warning" });
+    const confirmBtn = actions.createEl("button", { text: this.confirmText, cls: this.warning ? "mod-warning" : "mod-cta" });
 
     cancelBtn.addEventListener("click", () => this.finish(false));
     confirmBtn.addEventListener("click", () => this.finish(true));
@@ -137,6 +141,7 @@ export interface TodoPluginLike {
     getByListId(listId: string): Task[];
     update(id: string, changes: Partial<Task>): Promise<Task | null>;
     syncRecurrenceSchedule(taskId: string, startDate: string | null, dueDate: string | null): Promise<number>;
+    syncRecurrenceProperties(taskId: string, changes: Partial<Task>): Promise<number>;
     create(fields: Partial<Task>): Promise<Task>;
     complete(id: string): Promise<Task | null>;
     uncomplete(id: string): Promise<Task | null>;
@@ -156,13 +161,13 @@ export interface TodoPluginLike {
   };
   recurrenceSeriesService?: RecurrenceSeriesService;
   listService: {
-    getById(id: string): { id: string; name: string; isDefault: boolean; groupId: string | null; icon: string } | undefined;
-    getActive(): { id: string; name: string; isDefault: boolean; groupId: string | null; icon: string }[];
+    getById(id: string): { id: string; name: string; isDefault: boolean; groupId: string | null; icon: string; tags: string[] } | undefined;
+    getActive(): { id: string; name: string; isDefault: boolean; groupId: string | null; icon: string; tags: string[] }[];
     getDefault(): { id: string; name: string } | undefined;
-    create(fields: { name: string; icon?: string }): Promise<{ id: string; name: string; icon: string }>;
+    create(fields: { name: string; icon?: string; tags?: string[] }): Promise<{ id: string; name: string; icon: string; tags: string[] }>;
     rename(id: string, name: string): Promise<{ id: string; name: string } | null>;
     delete(id: string): Promise<boolean>;
-    update(id: string, changes: { groupId?: string | null; name?: string; sortOrder?: number; icon?: string }): Promise<{ id: string; name: string; groupId: string | null; icon: string } | null>;
+    update(id: string, changes: { groupId?: string | null; name?: string; sortOrder?: number; icon?: string; tags?: string[] }): Promise<{ id: string; name: string; groupId: string | null; icon: string; tags: string[] } | null>;
   };
   tagService: {
     getAll(): { id: string; name: string; color: string; icon: string; isDefault: boolean; sortOrder: number }[];
@@ -748,10 +753,11 @@ export class TodoView extends ItemView {
     if (!list || list.isDefault) return;
     menu.addSeparator();
     menu.addItem((item) => item.setTitle("编辑列表").setIcon("pencil").onClick(async () => {
-      const modal = new CreateListModal(this.app, { name: list.name, icon: list.icon || "list" } as any);
+      const modal = new CreateListModal(this.app, { name: list.name, icon: list.icon || "list", tags: (this.plugin.listService.getById(listId)?.tags || []) }, this.plugin.tagService.getAll());
       const result = await modal.openAndGetValue();
       if (result) {
-        await this.plugin.listService.update(listId, { name: result.name, icon: result.icon });
+        await this.plugin.listService.update(listId, { name: result.name, icon: result.icon, tags: result.tags });
+        await this.syncListTags(listId, result.tags);
         this.updateHeaderInfo();
         await this.renderLists();
       }
@@ -892,7 +898,7 @@ export class TodoView extends ItemView {
       const isMyday = activeViewNav === "myday" && !selectedListId;
       const isMonthlyPlan = activeViewNav === "plan" && this.activePlanKind === "month";
       const showAi = isMyday || isMonthlyPlan;
-      const isTaskView = !isMonthlyPlan && (isMyday || activeViewNav === "all" || activeViewNav === "inbox" || !!selectedListId);
+      const isTaskView = !isMonthlyPlan && !isMyday && (activeViewNav === "all" || activeViewNav === "inbox" || !!selectedListId);
       this.aiBtnEl.style.display = showAi ? "" : "none";
       this.aiBtnEl.title = t("AI 推荐");
       this.filterBtnEl.style.display = isTaskView ? "" : "none";
@@ -1168,7 +1174,13 @@ private async activateNav(nav: ViewNav): Promise<void> {
 
     renameBtn.addEventListener("click", async (ev) => {
       ev.stopPropagation();
-      await this.renameListInline(list.id, list.name, row);
+      const modal = new CreateListModal(this.app, { name: list.name, icon: list.icon || "list", tags: (this.plugin.listService.getById(list.id)?.tags || []) }, this.plugin.tagService.getAll());
+      const result = await modal.openAndGetValue();
+      if (!result?.name.trim()) return;
+      await this.plugin.listService.update(list.id, { name: result.name.trim(), icon: result.icon, tags: result.tags });
+      await this.syncListTags(list.id, result.tags);
+      await this.renderLists();
+      if (this.plugin.settings.selectedListId === list.id) this.updateHeaderInfo();
     });
 
     deleteBtn.addEventListener("click", async (ev) => {
@@ -1972,12 +1984,12 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   }
 
   private async createListByInput(): Promise<void> {
-    const result = await new CreateListModal(this.app).openAndGetValue();
+    const result = await new CreateListModal(this.app, undefined, this.plugin.tagService.getAll()).openAndGetValue();
     if (!result?.name?.trim()) {
       return;
     }
 
-    const created = await this.plugin.listService.create({ name: result.name.trim(), icon: result.icon });
+    const created = await this.plugin.listService.create({ name: result.name.trim(), icon: result.icon, tags: result.tags });
     await this.renderLists();
     await this.activateList(created.id);
   }
@@ -2148,9 +2160,11 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     const isMyDay = activeViewNav === "myday" && !selectedListId;
     const todayStr = localTodayStr();
+    const listTags = this.plugin.listService.getById(listId)?.tags || [];
     await this.plugin.taskService.create({
       title,
       listId,
+      tags: [...listTags],
       myDayDate: isMyDay ? todayStr : null,
       startDate: isMyDay ? todayStr + "T07:00:00" : null,
       dueDate: isMyDay ? todayStr + "T23:30:00" : null,
@@ -2430,6 +2444,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     addStatCard("完成率", completionRate + "%", "pie-chart", completionRate >= 100 ? "todo-goal-stat-rate-full" : undefined);
     localizeDom(this.taskListEl);
 
+    let quarterDropZone: HTMLDivElement | null = null;
     // Monthly view: show quarterly goals as draggable cards
     if (kind === "month" && this.goalPeriodKey) {
       const quarterKey = getParentPeriodKey("month", this.goalPeriodKey);
@@ -2449,13 +2464,64 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           qCard.addEventListener("dragstart", (ev) => {
             ev.dataTransfer!.setData("text/plain", qt.id);
             qCard.addClass("dragging");
+            quarterDropZone?.addClass("is-active");
           });
-          qCard.addEventListener("dragend", () => { qCard.removeClass("dragging"); });
+          qCard.addEventListener("dragend", () => {
+            qCard.removeClass("dragging");
+            quarterDropZone?.removeClass("is-active");
+          });
         }
         if (quarterTasks.length === 0) {
           qScroll.createDiv({ cls: "todo-goal-quarter-empty", text: t("暂无季度目标") });
         }
       }
+    }
+
+    if (kind === "month") {
+      quarterDropZone = goalContent.createDiv({ cls: "todo-quarter-goal-drop-zone", text: t("释放以创建同名月度目标") });
+      quarterDropZone.addEventListener("dragover", (ev) => {
+        ev.preventDefault();
+        if (ev.dataTransfer) ev.dataTransfer.dropEffect = "copy";
+      });
+      quarterDropZone.addEventListener("drop", async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        quarterDropZone?.removeClass("is-active");
+        const dragId = ev.dataTransfer?.getData("text/plain");
+        const quarterGoal = this.plugin.taskService.getAll().find((task) => task.id === dragId && task.planKind === "quarter");
+        if (!quarterGoal || !this.goalPeriodKey) return;
+
+        const linkedMonthlyGoal = this.plugin.taskService.getChildrenOf(quarterGoal.id)
+          .find((task) => task.planKind === "month" && task.planPeriodKey === this.goalPeriodKey);
+        if (linkedMonthlyGoal) {
+          new Notice(t("该季度目标已关联当前月份目标"));
+          return;
+        }
+
+        const confirmed = await new ConfirmModal(
+          this.app,
+          "是否为当前月份创建同名月度目标，并关联此季度目标？",
+          "创建月度目标",
+          false,
+        ).openAndConfirm();
+        if (!confirmed) return;
+
+        const currentMonthGoals = this.plugin.taskService.getByPlanKindAndPeriod("month", this.goalPeriodKey);
+        const sameTitleGoal = currentMonthGoals.find((task) => task.title.trim().toLocaleLowerCase() === quarterGoal.title.trim().toLocaleLowerCase());
+        if (sameTitleGoal) {
+          await this.plugin.taskService.update(sameTitleGoal.id, { parentId: quarterGoal.id });
+        } else {
+          await this.plugin.taskService.create({
+            title: quarterGoal.title,
+            planKind: "month",
+            planPeriodKey: this.goalPeriodKey,
+            parentId: quarterGoal.id,
+            tags: [...quarterGoal.tags],
+            isImportant: quarterGoal.isImportant,
+          });
+        }
+        await this.renderGoalDashboard("month");
+      });
     }
 
 
@@ -3169,6 +3235,17 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     localizeDom(el);
   }
 
+  private async syncListTags(listId: string, listTags: string[]): Promise<void> {
+    const requiredTags = [...new Set(listTags)];
+    const tasks = this.plugin.taskService.getByListId(listId);
+    for (const task of tasks) {
+      const mergedTags = [...new Set([...(task.tags || []), ...requiredTags])];
+      if (mergedTags.length !== (task.tags || []).length) {
+        await this.plugin.taskService.update(task.id, { tags: mergedTags });
+      }
+    }
+  }
+
   private async navigateFromScheduleSidebar(taskId: string): Promise<void> {
     const task = this.plugin.taskService.getAll().find((item) => item.id === taskId);
     if (!task) return;
@@ -3652,8 +3729,14 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   private isAllDayTask(task: Task): boolean {
     // 无任何日期
     if (!task.startDate && !task.dueDate) return true;
-    // 有 dueDate 但无 startDate
-    if (task.dueDate && !task.startDate) return true;
+    // “我的一天”中的明确时段应进入时间轴，即使只有截止时间。
+    if (task.myDayGroup && task.myDayGroup !== "allday") return false;
+    // 只有截止日期且没有具体时段时才视为全天任务。
+    if (task.dueDate && !task.startDate) {
+      const due = new Date(task.dueDate);
+      if (!isNaN(due.getTime()) && due.getHours() !== 23 && due.getMinutes() !== 59 && due.getMinutes() !== 30) return false;
+      return true;
+    }
     // 有 dueDate，检查时间是否为全天标记
     if (task.dueDate) {
       const dueHasTime = task.dueDate.includes('T') && !task.dueDate.endsWith('T00:00:00') && !task.dueDate.endsWith('T23:30:00') && !task.dueDate.endsWith('T07:00:00');
@@ -4410,6 +4493,17 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       );
     }
 
+    // Plan goals can be moved between quarters or weeks. Keep the goal's
+    // other fields intact while re-linking it to the matching parent goal.
+    if (task.planKind === "quarter" || task.planKind === "week") {
+      menu.addItem((item) =>
+        item
+          .setTitle(t(task.planKind === "quarter" ? "移动到季度..." : "移动到周..."))
+          .setIcon("calendar-range")
+          .onClick(() => this.showMovePlanMenu(task, currentView)),
+      );
+    }
+
     const lists = this.plugin.listService.getActive().filter((l) => l.id !== task.listId);
     if (lists.length) {
       menu.addItem((item) =>
@@ -4464,7 +4558,129 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     if (!this.isMobile()) {
       this.attachDesktopPlanSubmenu(task, currentView);
       this.attachDesktopListSubmenu(task, currentView, lists);
+      this.attachDesktopPlanMoveSubmenu(task, currentView);
     }
+  }
+
+  private getPlanMoveOptions(task: Task): string[] {
+    if (task.planKind === "quarter") {
+      const years = new Set<string>();
+      for (const item of this.plugin.taskService.getAll()) {
+        if (!item.isDeleted && item.planKind === "year" && item.planPeriodKey) years.add(item.planPeriodKey);
+      }
+      years.add(currentPeriodKey("year"));
+      return Array.from(years).sort().flatMap((year) => getSubPeriodKeysForParent("year", year));
+    }
+    if (task.planKind === "week") {
+      const months = new Set<string>();
+      for (const item of this.plugin.taskService.getAll()) {
+        if (!item.isDeleted && item.planKind === "month" && item.planPeriodKey) months.add(item.planPeriodKey);
+      }
+      months.add(currentPeriodKey("month"));
+      return Array.from(months).sort().flatMap((month) => getSubPeriodKeysForParent("month", month));
+    }
+    return [];
+  }
+
+  private async movePlanTask(task: Task, targetKey: string, currentView: ViewNav | "list" | "trash" | "schedule" | "review"): Promise<void> {
+    if (!task.planKind || (task.planKind !== "quarter" && task.planKind !== "week")) return;
+    const parentKind: PlanKind = task.planKind === "quarter" ? "year" : "month";
+    const parentKey = getParentPeriodKey(task.planKind, targetKey);
+    const parent = parentKey ? this.plugin.taskService.getByPlanKindAndPeriod(parentKind, parentKey)[0] : undefined;
+    await this.plugin.taskService.update(task.id, {
+      planPeriodKey: targetKey,
+      parentId: parent?.id,
+    });
+    await this.renderLists();
+    if (currentView === "plan") {
+      if (this.activePlanKind === "year" || this.activePlanKind === "month") {
+        await this.renderGoalDashboard(this.activePlanKind);
+      } else {
+        await this.renderPlanView(this.activePlanKind || task.planKind);
+      }
+    } else {
+      await this.renderTasks(currentView);
+    }
+  }
+
+  private showMovePlanMenu(task: Task, currentView: ViewNav | "list" | "trash" | "schedule" | "review"): void {
+    const submenu = new Menu();
+    submenu.addItem((item) => item
+      .setTitle(t("返回"))
+      .setIcon("arrow-left")
+      .onClick(() => {
+        const event = new MouseEvent("contextmenu", {
+          bubbles: true,
+          clientX: Math.round(window.innerWidth / 2),
+          clientY: Math.round(window.innerHeight / 2),
+        });
+        this.showTaskContextMenu(event, task, currentView);
+      }));
+    submenu.addSeparator();
+    for (const key of this.getPlanMoveOptions(task)) {
+      submenu.addItem((item) => item
+        .setTitle(task.planKind === "quarter" ? this.localizedSubGroupLabel("quarter", key) : this.localizedSubGroupLabel("week", key))
+        .setIcon(task.planKind === "quarter" ? "calendar" : "calendar-days")
+        .setChecked(task.planPeriodKey === key)
+        .onClick(() => { void this.movePlanTask(task, key, currentView); }));
+    }
+    submenu.showAtPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  }
+
+  private attachDesktopPlanMoveSubmenu(task: Task, currentView: ViewNav | "list" | "trash" | "schedule" | "review"): void {
+    if (task.planKind !== "quarter" && task.planKind !== "week") return;
+    window.setTimeout(() => {
+      const menus = Array.from(document.querySelectorAll<HTMLElement>(".menu"));
+      const moveLabel = t(task.planKind === "quarter" ? "移动到季度..." : "移动到周...");
+      const menu = menus.reverse().find((candidate) => candidate.offsetParent && Array.from(candidate.querySelectorAll<HTMLElement>(".menu-item")).some((item) => item.textContent?.includes(moveLabel)));
+      if (!menu) return;
+      const item = Array.from(menu.querySelectorAll<HTMLElement>(".menu-item")).find((candidate) => candidate.textContent?.includes(moveLabel));
+      if (!item) return;
+
+      const submenu = document.createElement("div");
+      submenu.className = "todo-list-submenu";
+      submenu.setAttribute("role", "menu");
+      document.body.appendChild(submenu);
+      let hideTimer: number | null = null;
+      const hide = () => {
+        if (hideTimer !== null) window.clearTimeout(hideTimer);
+        hideTimer = window.setTimeout(() => {
+          if (menu.isConnected) submenu.classList.remove("is-visible");
+          else submenu.remove();
+        }, 120);
+      };
+      const keep = () => { if (hideTimer !== null) window.clearTimeout(hideTimer); };
+      const show = () => {
+        keep();
+        if (!submenu.isConnected) document.body.appendChild(submenu);
+        const rect = item.getBoundingClientRect();
+        submenu.style.left = `${Math.round(rect.right + 4)}px`;
+        submenu.style.top = `${Math.round(Math.min(rect.top, window.innerHeight - submenu.offsetHeight - 8))}px`;
+        submenu.classList.add("is-visible");
+      };
+      item.addEventListener("mouseenter", show);
+      item.addEventListener("mouseleave", hide);
+      submenu.addEventListener("mouseenter", keep);
+      submenu.addEventListener("mouseleave", hide);
+
+      for (const key of this.getPlanMoveOptions(task)) {
+        const button = document.createElement("div");
+        button.className = "todo-list-submenu-item";
+        const icon = document.createElement("div");
+        icon.className = "todo-list-submenu-item-icon";
+        setIcon(icon, task.planKind === "quarter" ? "calendar" : "calendar-days");
+        const label = document.createElement("div");
+        label.className = "todo-list-submenu-item-label";
+        label.textContent = task.planKind === "quarter" ? this.localizedSubGroupLabel("quarter", key) : this.localizedSubGroupLabel("week", key);
+        button.append(icon, label);
+        button.addEventListener("click", async () => {
+          await this.movePlanTask(task, key, currentView);
+          submenu.remove();
+          menu.remove();
+        });
+        submenu.appendChild(button);
+      }
+    }, 0);
   }
 
   private attachDesktopListSubmenu(task: Task, currentView: ViewNav | "list" | "trash" | "schedule" | "review", lists: Array<{ id: string; name: string; isDefault: boolean; groupId: string | null; icon: string }>): void {

@@ -267,6 +267,40 @@ export class TaskService {
     return count;
   }
 
+  /** 将重复任务的系列属性同步到未来未完成实例，不修改每个实例自己的日期或完成状态。 */
+  async syncRecurrenceProperties(taskId: string, changes: Partial<Task>): Promise<number> {
+    this.ensureLoaded();
+    const task = this.tasks.find((item) => item.id === taskId);
+    if (!task || !task.recurrenceGroupId || task.isRecurrenceTemplate) return 0;
+    const currentDate = this.taskLocalDate(task);
+    if (!currentDate) return 0;
+
+    const propertyChanges: Partial<Task> = {};
+    const syncFields: Array<keyof Task> = [
+      "title", "note", "listId", "tags", "isImportant", "status",
+      "relatedPaths", "relatedFolders", "planKind", "planPeriodKey", "parentId",
+    ];
+    for (const field of syncFields) {
+      if (changes[field] !== undefined) {
+        const value = changes[field];
+        (propertyChanges as Record<string, unknown>)[field] = Array.isArray(value) ? [...value] : value;
+      }
+    }
+    if (Object.keys(propertyChanges).length === 0) return 0;
+
+    let count = 0;
+    for (const instance of this.tasks) {
+      if (instance.id === taskId || instance.recurrenceGroupId !== task.recurrenceGroupId || instance.isRecurrenceTemplate || instance.isDeleted || instance.isCompleted) continue;
+      const instanceDate = this.taskLocalDate(instance);
+      if (!instanceDate || instanceDate <= currentDate) continue;
+      Object.assign(instance, propertyChanges);
+      instance.updatedAt = new Date().toISOString();
+      count++;
+    }
+    if (count > 0) await this.save();
+    return count;
+  }
+
   async complete(id: string): Promise<Task | null> {
     this.ensureLoaded();
     const task = this.tasks.find(t => t.id === id);

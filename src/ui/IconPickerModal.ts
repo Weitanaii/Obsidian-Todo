@@ -11,6 +11,7 @@ const LIST_ICONS: string[] = [
   "heart-pulse", "activity", "stethoscope", "pill", "hospital",
   "dumbbell", "footprints", "bike", "timer", "trophy",
   "briefcase", "building-2", "clipboard-list", "kanban", "list-checks",
+  "gamepad-2", "swords", "joystick", "dice-5",
   "piggy-bank", "banknote", "coins", "calculator", "receipt",
   "users", "user-round", "heart-handshake", "message-circle", "phone",
   "repeat", "calendar-check", "check-check", "circle-check", "alarm-clock",

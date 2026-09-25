@@ -682,6 +682,7 @@ export class TaskDetailView {
     if (!taskId) return;
     const existingTask = this.getTask();
     let syncFutureRecurrence = false;
+    let syncFutureRecurrenceProperties = false;
     if (existingTask?.recurrence && existingTask.recurrenceGroupId && !existingTask.isRecurrenceTemplate &&
       (changes.startDate !== undefined || changes.dueDate !== undefined)) {
       const nextStart = changes.startDate !== undefined ? changes.startDate : existingTask.startDate;
@@ -697,6 +698,13 @@ export class TaskDetailView {
         if (choice === null) return;
         syncFutureRecurrence = choice;
       }
+    }
+    if (existingTask?.recurrence && existingTask.recurrenceGroupId && !existingTask.isRecurrenceTemplate) {
+      const recurrenceFields: Array<keyof Task> = [
+        "title", "note", "listId", "tags", "isImportant", "status",
+        "relatedPaths", "relatedFolders", "planKind", "planPeriodKey", "parentId",
+      ];
+      syncFutureRecurrenceProperties = recurrenceFields.some((field) => changes[field] !== undefined && changes[field] !== existingTask[field]);
     }
 
     // Auto-derive planPeriodKey for life tasks when dueDate changes
@@ -731,6 +739,9 @@ export class TaskDetailView {
     const p = this.plugin.taskService.update(taskId, changes).then(async (updated) => {
       if (updated && syncFutureRecurrence) {
         await this.plugin.taskService.syncRecurrenceSchedule(taskId, updated.startDate, updated.dueDate);
+      }
+      if (updated && syncFutureRecurrenceProperties) {
+        await this.plugin.taskService.syncRecurrenceProperties(taskId, changes);
       }
       if (updated && this.taskId === taskId) this.applyValues(updated);
       if (this.pendingSave === p) this.pendingSave = null;

@@ -28,7 +28,7 @@ export class ListService {
     await this.storage.init();
     const store = await this.storage.read<ListStore>(STORE_FILENAME);
     if (store && store.lists) {
-      this.lists = store.lists;
+      this.lists = store.lists.map((list) => ({ ...list, tags: Array.isArray(list.tags) ? list.tags : [] }));
       logger.info("Loaded", this.lists.length, "lists");
     } else {
       this.lists = [];
