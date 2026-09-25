@@ -235,20 +235,7 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
       );
     });
 
-    this.settingGroup(containerEl, t("AI 规划"), t("控制 AI 推荐的每日和每周容量"), (group) => {
-      new Setting(group)
-        .setName(t("计划强度"))
-        .setDesc(t("轻量、稳健或高强度会影响推荐任务容量，不会改变任务优先级"))
-        .addDropdown((dropdown) => dropdown
-          .addOption("light", t("轻量"))
-          .addOption("balanced", t("稳健"))
-          .addOption("high", t("高强度"))
-          .setValue(this.plugin.settings.planningIntensity)
-          .onChange(async (value) => {
-            this.plugin.settings.planningIntensity = value as "light" | "balanced" | "high";
-            await this.plugin.saveSettings();
-          }));
-    });
+    // AI 规划设置暂时隐藏，保留 planningIntensity 配置字段，待 AI provider 与规则完善后重新开放。
 
     localizeDom(containerEl);
   }
