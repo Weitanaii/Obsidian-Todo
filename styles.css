@@ -2178,6 +2178,7 @@
   font-size: 11px;
   color: var(--text-faint);
   margin-top: 2px;
+  white-space: nowrap;
 }
 .todo-life-age-state {
   display: inline-flex;
@@ -2331,8 +2332,17 @@
     width: 44px;
     padding-right: 8px;
   }
+  .todo-life-age-main {
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    white-space: nowrap;
+  }
   .todo-life-age-num {
     font-size: 20px;
+  }
+  .todo-life-age-label {
+    margin-left: 2px;
   }
 }
 .todo-life-add-row {

@@ -1,7 +1,7 @@
 {
   "id": "obsidian-todo",
   "name": "Obsidian Todo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minAppVersion": "1.0.0",
   "description": "A Microsoft To-Do style task management plugin for Obsidian. Manage tasks with lists, My Day, priorities, sub-tasks, and more.",
   "author": "Weitanaii",
