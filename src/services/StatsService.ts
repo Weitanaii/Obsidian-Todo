@@ -45,7 +45,7 @@ export class StatsService {
   getStatusSummary(start: string, end: string): StatusSummary {
     const today = this.localToday();
     const tasks = this.taskService.getAll().filter((task) => {
-      if (task.isDeleted || task.isRecurrenceTemplate) return false;
+      if (!this.isIncludedInStats(task) || task.isDeleted || task.isRecurrenceTemplate) return false;
       if (task.isCompleted && task.completedAt) {
         const completedDate = extractLocalDate(task.completedAt);
         return completedDate >= start && completedDate <= end;
@@ -55,11 +55,18 @@ export class StatsService {
       return dueDate >= start && dueDate <= end;
     });
     const completed = tasks.filter((task) => task.isCompleted);
-    const active = tasks.filter((task) => !task.isCompleted && task.status === "active");
+    const overdueTasks = tasks.filter((task) =>
+      !task.isCompleted &&
+      task.status === "active" &&
+      task.dueDate &&
+      extractLocalDate(task.dueDate) < today,
+    );
+    const overdueIds = new Set(overdueTasks.map((task) => task.id));
+    const active = tasks.filter((task) => !task.isCompleted && task.status === "active" && !overdueIds.has(task.id));
     const shelved = tasks.filter((task) => !task.isCompleted && task.status === "shelved");
     const abandoned = tasks.filter((task) => !task.isCompleted && task.status === "abandoned");
-    const overdue = active.filter((task) => task.dueDate && extractLocalDate(task.dueDate) < today).length;
-    const denominator = completed.length + active.length;
+    const overdue = overdueTasks.length;
+    const denominator = completed.length + active.length + overdue;
     return {
       total: tasks.length,
       completed: completed.length,
@@ -77,7 +84,7 @@ export class StatsService {
     const active = this.getActiveTasks();
     const today = this.localToday();
     const overdue = this.getOverdueTasks(today);
-    const myDayTasks = this.taskService.getAll().filter(t => t.myDayDate === date);
+    const myDayTasks = this.taskService.getAll().filter(t => this.isIncludedInStats(t) && t.myDayDate === date);
     const myDayCompleted = myDayTasks.filter(t => t.isCompleted && t.completedAt && extractLocalDate(t.completedAt) === date).length;
 
     const completedCount = completed.length;
@@ -173,7 +180,7 @@ export class StatsService {
     const d = new Date(fromDate + "T00:00:00");
     while (true) {
       const dateStr = this.dateToStr(d);
-      const hasCompleted = allTasks.some(t => t.isCompleted && !t.isDeleted && !t.isRecurrenceTemplate && t.completedAt && extractLocalDate(t.completedAt) === dateStr);
+      const hasCompleted = allTasks.some(t => this.isIncludedInStats(t) && t.isCompleted && !t.isDeleted && !t.isRecurrenceTemplate && t.completedAt && extractLocalDate(t.completedAt) === dateStr);
       if (!hasCompleted) break;
       streak++;
       d.setDate(d.getDate() - 1);
@@ -189,7 +196,7 @@ export class StatsService {
     const allTasks = this.taskService.getAllIncludingDeleted();
     while (d <= end) {
       const dateStr = this.dateToStr(d);
-      const hasCompleted = allTasks.some(t => t.isCompleted && !t.isDeleted && !t.isRecurrenceTemplate && t.completedAt && extractLocalDate(t.completedAt) === dateStr);
+      const hasCompleted = allTasks.some(t => this.isIncludedInStats(t) && t.isCompleted && !t.isDeleted && !t.isRecurrenceTemplate && t.completedAt && extractLocalDate(t.completedAt) === dateStr);
       if (hasCompleted) { current++; if (current > maxStreak) maxStreak = current; } else { current = 0; }
       d.setDate(d.getDate() + 1);
     }
@@ -198,25 +205,25 @@ export class StatsService {
 
   private getCompletedTasks(start: string, end: string): Task[] {
     return this.taskService.getAllIncludingDeleted().filter(t =>
-      t.isCompleted && !t.isDeleted && !t.isRecurrenceTemplate && t.completedAt &&
+      this.isIncludedInStats(t) && t.isCompleted && !t.isDeleted && !t.isRecurrenceTemplate && t.completedAt &&
       (() => { const d = extractLocalDate(t.completedAt); return d >= start && d <= end; })()
     );
   }
 
   private getAllInPeriod(start: string, end: string): Task[] {
     return this.taskService.getAllIncludingDeleted().filter(t =>
-      !t.isDeleted && !t.isRecurrenceTemplate &&
+      this.isIncludedInStats(t) && !t.isDeleted && !t.isRecurrenceTemplate &&
       (() => { const d = extractLocalDate(t.createdAt); return d >= start && d <= end; })()
     );
   }
 
   private getActiveTasks(): Task[] {
-    return this.taskService.getAll().filter(t => !t.isCompleted);
+    return this.taskService.getAll().filter(t => this.isIncludedInStats(t) && !t.isCompleted);
   }
 
   private getOverdueTasks(beforeDate: string): Task[] {
     return this.taskService.getAll().filter(t =>
-      !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < beforeDate
+      this.isIncludedInStats(t) && !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) < beforeDate
     );
   }
 
@@ -244,7 +251,7 @@ export class StatsService {
     const trend: { date: string; count: number; rate: number; uncompleted: number }[] = [];
     const d = new Date(start + "T00:00:00");
     const endDate = new Date(end + "T00:00:00");
-    const allTasks = this.taskService.getAll();
+    const allTasks = this.taskService.getAll().filter(t => this.isIncludedInStats(t));
     while (d <= endDate) {
       const dateStr = this.dateToStr(d);
       const dayCompleted = completed.filter(t => t.completedAt && extractLocalDate(t.completedAt) === dateStr).length;
@@ -259,6 +266,10 @@ export class StatsService {
   private localToday(): string {
     const now = new Date();
     return now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
+  }
+
+  private isIncludedInStats(task: Task): boolean {
+    return task.planKind !== "life";
   }
 
   private dateToStr(d: Date): string {
