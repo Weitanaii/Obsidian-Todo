@@ -10,7 +10,6 @@ export interface Task {
   note: string;
   isCompleted: boolean;
   isImportant: boolean;
-  myDayDate: string | null;
   myDayGroup: MyDayGroup;
   startDate: string | null;
   dueDate: string | null;
@@ -46,7 +45,6 @@ export function createTask(overrides: Partial<Task> = {}): Task {
     note: "",
     isCompleted: false,
     isImportant: false,
-    myDayDate: null,
     myDayGroup: "allday",
     startDate: null,
     dueDate: null,

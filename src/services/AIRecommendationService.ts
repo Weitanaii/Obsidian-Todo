@@ -12,7 +12,6 @@ export interface AIRecommendation {
   tags: string[];
   isImportant: boolean;
   durationMinutes: number;
-  myDayDate?: string;
   myDayGroup?: MyDayGroup;
   startDate?: string | null;
   dueDate?: string | null;
@@ -86,12 +85,13 @@ export class LocalAIProvider implements AIProvider {
   async recommendMyDay(context: RecommendationContext): Promise<AIRecommendation[]> {
     const date = context.date ?? toDateOnly(new Date());
     const current = context.tasks.filter((task) => !task.isDeleted && !task.isCompleted);
-    const existing = current.filter((task) => task.myDayDate === date);
+    const taskDate = (task: Task): string | null => task.dueDate ? extractLocalDate(task.dueDate) : task.startDate ? extractLocalDate(task.startDate) : null;
+    const existing = current.filter((task) => taskDate(task) === date);
     const capacity = CAPACITY[context.intensity].day;
     let used = existing.reduce((sum, task) => sum + estimateDuration(task), 0);
     const result: AIRecommendation[] = [];
     const sorted = current
-      .filter((task) => task.myDayDate !== date && (!task.planKind || task.planKind === "week"))
+      .filter((task) => taskDate(task) !== date && (!task.planKind || task.planKind === "week"))
       .sort((a, b) => {
         const importance = Number(b.isImportant) - Number(a.isImportant);
         if (importance) return importance;
@@ -111,7 +111,7 @@ export class LocalAIProvider implements AIProvider {
         const title = segmentCount > 1 ? `${task.title} · ${segment + 1}/${segmentCount}` : task.title;
         result.push({
           id: crypto.randomUUID(), title, note: task.note, listId: task.listId, tags: [...task.tags],
-          isImportant: task.isImportant, durationMinutes: segmentMinutes, myDayDate: segmentDate, myDayGroup: group,
+          isImportant: task.isImportant, durationMinutes: segmentMinutes, myDayGroup: group,
           startDate: segmentDate + (group === "morning" ? "T09:00:00" : group === "afternoon" ? "T14:00:00" : "T18:00:00"),
           dueDate: segmentDate + (group === "morning" ? "T10:00:00" : group === "afternoon" ? "T15:00:00" : "T19:00:00"),
           parentId: task.planKind === "week" ? task.id : task.parentId,
@@ -157,7 +157,9 @@ export function validateRecommendation(item: AIRecommendation): string | null {
   if (!item.title.trim()) return "任务标题不能为空";
   if (item.durationMinutes <= 0 || item.durationMinutes > 1440) return "任务时长不合法";
   if (item.planKind === "week" && (!item.planPeriodKey || !item.weekStart || !item.weekEnd)) return "周任务缺少周期信息";
-  if (item.myDayDate && !/^\d{4}-\d{2}-\d{2}$/.test(item.myDayDate)) return "日期格式不合法";
+  for (const value of [item.startDate, item.dueDate]) {
+    if (value && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) return "日期格式不合法";
+  }
   return null;
 }
 

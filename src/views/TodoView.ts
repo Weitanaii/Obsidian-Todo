@@ -599,10 +599,11 @@ export class TodoView extends ItemView {
         new Notice(t("日推荐只能创建普通任务"));
         return;
       }
-      const duplicate = this.plugin.taskService.getAll().some((task) => !task.isDeleted && isSimilar(task.title, item.title) && (mode === "month" ? task.planPeriodKey === item.planPeriodKey : task.myDayDate === item.myDayDate));
+      const itemDate = item.startDate ? extractLocalDate(item.startDate) : item.dueDate ? extractLocalDate(item.dueDate) : null;
+      const duplicate = this.plugin.taskService.getAll().some((task) => !task.isDeleted && isSimilar(task.title, item.title) && (mode === "month" ? task.planPeriodKey === item.planPeriodKey : this.getTaskMyDayDate(task) === itemDate));
       if (duplicate) { new Notice(t("跳过重复或无效项")); return; }
-      if (item.sourceTaskId) await this.plugin.taskService.update(item.sourceTaskId, { myDayDate: item.myDayDate, myDayGroup: item.myDayGroup, startDate: item.startDate, dueDate: item.dueDate });
-      else await this.plugin.taskService.create({ title: item.title, note: item.note, listId: item.listId, tags: item.tags, isImportant: item.isImportant, myDayDate: item.myDayDate ?? null, myDayGroup: item.myDayGroup ?? "allday", startDate: item.startDate ?? null, dueDate: item.dueDate ?? null, planKind: item.planKind, planPeriodKey: item.planPeriodKey, parentId: item.parentId });
+      if (item.sourceTaskId) await this.plugin.taskService.update(item.sourceTaskId, { myDayGroup: item.myDayGroup, startDate: item.startDate, dueDate: item.dueDate });
+      else await this.plugin.taskService.create({ title: item.title, note: item.note, listId: item.listId, tags: item.tags, isImportant: item.isImportant, myDayGroup: item.myDayGroup ?? "allday", startDate: item.startDate ?? null, dueDate: item.dueDate ?? null, planKind: item.planKind, planPeriodKey: item.planPeriodKey, parentId: item.parentId });
       // Refresh the main task area without calling refreshAll(), which closes
       // the active detail/AI sidebar as part of its reset flow.
       await this.refreshAfterAIAccept();
@@ -1496,6 +1497,10 @@ private async activateNav(nav: ViewNav): Promise<void> {
     });
   }
 
+  private getTaskMyDayDate(task: Task): string | null {
+    return task.dueDate ? extractLocalDate(task.dueDate) : task.startDate ? extractLocalDate(task.startDate) : null;
+  }
+
   private async renderTasks(view: ViewNav | "list"): Promise<void> {
     if (view === "plan" && this.activePlanKind) {
       this.sortBtnEl.style.display = "none";
@@ -1521,7 +1526,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
 
     if (view === "myday" && !this.plugin.settings.selectedListId) {
       const viewDate = this.myDayViewDate || localTodayStr();
-      tasks = this.plugin.taskService.getAll().filter((t) => !t.planKind && t.myDayDate === viewDate && !t.isDeleted && !t.isRecurrenceTemplate);
+      tasks = this.plugin.taskService.getAll().filter((t) => !t.planKind && this.getTaskMyDayDate(t) === viewDate && !t.isDeleted && !t.isRecurrenceTemplate);
     } else if (view === "all") {
       tasks = this.plugin.taskService.getAll().filter((t) => !t.planKind);
     } else if (view === "inbox") {
@@ -1532,7 +1537,11 @@ private async activateNav(nav: ViewNav): Promise<void> {
       tasks = listId ? this.plugin.taskService.getByListId(listId).filter((t) => !t.planKind) : [];
     }
 
-    tasks = this.hideFutureRecurrenceInstances(this.applyTaskStatusFilter(tasks));
+    // “我的一天”不使用全局状态筛选：它必须同时显示当天的进行中、已完成、搁置和放弃任务。
+    // 其他任务视图继续沿用状态筛选设置。
+    tasks = view === "myday"
+      ? this.hideFutureRecurrenceInstances(tasks)
+      : this.hideFutureRecurrenceInstances(this.applyTaskStatusFilter(tasks));
 
     const currentView = this.plugin.settings.selectedListId ? "list" : this.plugin.settings.activeViewNav;
 
@@ -1733,7 +1742,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     const refreshMyDay = async () => {
       this.taskListEl.empty();
-      const newTasks = this.plugin.taskService.getAll().filter((t) => t.myDayDate === (this.myDayViewDate || localTodayStr()) && !t.isDeleted && !t.isRecurrenceTemplate);
+      const newTasks = this.plugin.taskService.getAll().filter((t) => this.getTaskMyDayDate(t) === (this.myDayViewDate || localTodayStr()) && !t.isDeleted && !t.isRecurrenceTemplate);
       await this.renderMyDayGroups(newTasks);
     };
 
@@ -1758,7 +1767,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     // Auto-update myDayGroup based on time for tasks with dates
     for (const t of tasks) {
-      if (t.myDayDate && (t.startDate || t.dueDate)) {
+      if (t.startDate || t.dueDate) {
         const autoGroup = getMyDayGroupFromTime(t.startDate, t.dueDate);
         if (autoGroup !== (t.myDayGroup || "allday")) {
           t.myDayGroup = autoGroup;
@@ -2117,7 +2126,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       .create({
         title: title.trim(),
         listId,
-        myDayDate: activeViewNav === "myday" && !selectedListId ? localTodayStr() : null,
+        startDate: activeViewNav === "myday" && !selectedListId ? (this.myDayViewDate || localTodayStr()) + "T07:00:00" : null,
+        dueDate: activeViewNav === "myday" && !selectedListId ? (this.myDayViewDate || localTodayStr()) + "T23:30:00" : null,
       })
       .then(async () => {
         await this.renderLists();
@@ -2159,15 +2169,14 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     }
 
     const isMyDay = activeViewNav === "myday" && !selectedListId;
-    const todayStr = localTodayStr();
+    const selectedDate = this.myDayViewDate || localTodayStr();
     const listTags = this.plugin.listService.getById(listId)?.tags || [];
     await this.plugin.taskService.create({
       title,
       listId,
       tags: [...listTags],
-      myDayDate: isMyDay ? todayStr : null,
-      startDate: isMyDay ? todayStr + "T07:00:00" : null,
-      dueDate: isMyDay ? todayStr + "T23:30:00" : null,
+      startDate: isMyDay ? selectedDate + "T07:00:00" : null,
+      dueDate: isMyDay ? selectedDate + "T23:30:00" : null,
     });
 
     this.quickInputEl.value = "";
@@ -3290,7 +3299,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     if (mode === "day") {
       title = isEnglish() ? "Tasks for " + title : title + " 待办";
       items = allTasks
-        .filter((task) => task.myDayDate === dateStr || (task.startDate && extractLocalDate(task.startDate) === dateStr) || (task.dueDate && extractLocalDate(task.dueDate) === dateStr))
+        .filter((task) => this.getTaskMyDayDate(task) === dateStr)
         .sort((a, b) => Number(a.isCompleted) - Number(b.isCompleted) || a.title.localeCompare(b.title))
         .map((task) => ({
           id: task.id,
@@ -3758,7 +3767,6 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const todayStr = today.getFullYear() + "-" + pad(today.getMonth() + 1) + "-" + pad(today.getDate());
     const alldayTasks = allTasks.filter(t => !t.isCompleted && (
       (t.dueDate && extractLocalDate(t.dueDate) === dateStr && this.isAllDayTask(t))
-      || (t.myDayDate === dateStr && this.isAllDayTask(t))
     ));
     let gridEl: HTMLDivElement;
     const allday = view.createDiv({ cls: "todo-day-allday" });
@@ -3867,7 +3875,6 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         listId: defaultList.id,
         startDate: this.minuteToIso(dateStr, startMin),
         dueDate: this.minuteToIso(dateStr, endMin),
-        myDayDate: dateStr,
       });
       this.scheduleScrollTarget = "preserve";
       this.renderScheduleView();
@@ -3921,7 +3928,6 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     // All-day row
     const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
     const datedAllday = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.dueDate && this.isAllDayTask(t));
-    const undatedMyDay = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.myDayDate && !t.startDate && !t.dueDate);
     const alldayRow = thead.createDiv({ cls: "todo-week-allday" });
     alldayRow.createDiv({ cls: "todo-week-allday-label", text: isEnglish() ? "All day" : "全天" });
     for (let i = 0; i < 7; i++) {
@@ -3929,7 +3935,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       d.setDate(d.getDate() + i);
       const ds = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
       const cell = alldayRow.createDiv({ cls: "todo-week-allday-cell" + (ds === todayStr ? " todo-week-today-col" : "") });
-      const cellTasks = [...datedAllday.filter(t => extractLocalDate(t.dueDate!) === ds), ...(ds === todayStr ? undatedMyDay : [])];
+      const cellTasks = datedAllday.filter(t => extractLocalDate(t.dueDate!) === ds);
       for (const t of cellTasks) {
         const card = cell.createDiv({ cls: "todo-day-allday-card" });
         card.style.backgroundColor = this.getTaskBlockColor(t);
@@ -4056,7 +4062,6 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           listId: defaultList.id,
           startDate: this.minuteToIso(ds, startMin),
           dueDate: this.minuteToIso(ds, endMin),
-          myDayDate: ds,
         });
         this.scheduleScrollTarget = "preserve";
         this.renderScheduleView();
@@ -4236,11 +4241,9 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         return;
       }
     }
-    const today = localTodayStr();
     await this.plugin.taskService.update(ds.taskId, {
       startDate: this.minuteToIso(finalDateStr, newStart),
       dueDate: this.minuteToIso(finalDateStr, newEnd),
-      myDayDate: finalDateStr === today ? today : null,
     });
     this.refreshDetailIfActive(ds.taskId);
       this.scheduleScrollTarget = { taskId: ds.taskId };
@@ -4395,16 +4398,24 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     }
 
     if (currentView !== 'plan') {
+      const isMyDayTask = this.getTaskMyDayDate(task) !== null;
       menu.addItem((item) =>
         item
-          .setTitle(task.myDayDate ? "从“我的一天”移除" : "添加到“我的一天”")
-          .setIcon(task.myDayDate ? "calendar-minus" : "calendar-plus")
+          .setTitle(isMyDayTask ? "从“我的一天”移除" : "添加到“我的一天”")
+          .setIcon(isMyDayTask ? "calendar-minus" : "calendar-plus")
           .onClick(async () => {
             const todayStr = localTodayStr();
-            if (task.myDayDate) {
-              await this.plugin.taskService.update(task.id, { myDayDate: null });
+            if (isMyDayTask) {
+              await this.plugin.taskService.update(task.id, { startDate: null, dueDate: null });
             } else {
-              await this.plugin.taskService.update(task.id, { myDayDate: todayStr, startDate: todayStr + "T07:00:00", dueDate: todayStr + "T23:30:00" });
+              const shiftToToday = (value: string | null, fallback: string): string => {
+                if (!value || !value.includes("T")) return todayStr + fallback;
+                return todayStr + value.substring(value.indexOf("T"));
+              };
+              await this.plugin.taskService.update(task.id, {
+                startDate: shiftToToday(task.startDate, "T07:00:00"),
+                dueDate: shiftToToday(task.dueDate, "T23:30:00"),
+              });
             }
             await this.renderTasks(currentView);
           }),
@@ -4429,7 +4440,6 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           const newDueDate = formatNewDate(shiftDays(baseDate, 1)) + dueTimeSuffix;
           const changes: Partial<Task> = { dueDate: newDueDate };
           if (hasStart && startBase) { changes.startDate = formatNewDate(shiftDays(startBase, 1)) + startTimeSuffix; }
-          if (task.myDayDate && extractLocalDate(newDueDate) !== localTodayStr()) { changes.myDayDate = null; }
           await this.plugin.taskService.update(task.id, changes);
           await this.renderTasks(currentView);
         }),
@@ -4439,7 +4449,6 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           const newDueDate = formatNewDate(shiftDays(baseDate, 2)) + dueTimeSuffix;
           const changes: Partial<Task> = { dueDate: newDueDate };
           if (hasStart && startBase) { changes.startDate = formatNewDate(shiftDays(startBase, 2)) + startTimeSuffix; }
-          if (task.myDayDate && extractLocalDate(newDueDate) !== localTodayStr()) { changes.myDayDate = null; }
           await this.plugin.taskService.update(task.id, changes);
           await this.renderTasks(currentView);
         }),
@@ -4448,7 +4457,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
 
     // Move to My Day group
-    if (currentView === "myday" && task.myDayDate) {
+    if (currentView === "myday" && this.getTaskMyDayDate(task)) {
       menu.addSeparator();
       MYDAY_GROUPS.forEach(({ key, label }) => {
         menu.addItem((item) =>

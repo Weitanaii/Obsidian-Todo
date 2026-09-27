@@ -84,7 +84,10 @@ export class StatsService {
     const active = this.getActiveTasks();
     const today = this.localToday();
     const overdue = this.getOverdueTasks(today);
-    const myDayTasks = this.taskService.getAll().filter(t => this.isIncludedInStats(t) && t.myDayDate === date);
+    const myDayTasks = this.taskService.getAll().filter(t =>
+      this.isIncludedInStats(t) &&
+      (t.dueDate ? extractLocalDate(t.dueDate) : t.startDate ? extractLocalDate(t.startDate) : null) === date,
+    );
     const myDayCompleted = myDayTasks.filter(t => t.isCompleted && t.completedAt && extractLocalDate(t.completedAt) === date).length;
 
     const completedCount = completed.length;

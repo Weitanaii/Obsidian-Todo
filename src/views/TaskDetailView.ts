@@ -330,13 +330,19 @@ export class TaskDetailView {
   }
 
   private createMyDayRow(parent: HTMLElement, task: Task): void {
+    const today = localTodayStr();
+    const assignedDate = task.dueDate ? task.dueDate.substring(0, 10) : task.startDate ? task.startDate.substring(0, 10) : null;
+    const shiftToDate = (value: string | null, date: string, fallbackTime: string): string => {
+      if (!value || !value.includes("T")) return date + fallbackTime;
+      return date + value.substring(value.indexOf("T"));
+    };
     this.createPropertyRow(parent, task, {
       icon: "sun",
       unsetText: "添加到\u201c我的一天\u201d",
-      isSet: task.myDayDate === localTodayStr(),
+      isSet: assignedDate === today,
       displayText: "\u5df2\u5728\u201c\u6211\u7684\u4e00\u5929\u201d\u4e2d",
-      onClick: () => { void this.saveChanges({ myDayDate: task.myDayDate ? null : localTodayStr() }); },
-      onClear: () => { void this.saveChanges({ myDayDate: null }); },
+      onClick: () => { void this.saveChanges({ startDate: shiftToDate(task.startDate, today, "T07:00:00"), dueDate: shiftToDate(task.dueDate, today, "T23:30:00") }); },
+      onClear: () => { void this.saveChanges({ startDate: null, dueDate: null }); },
     });
   }
 

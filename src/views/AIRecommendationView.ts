@@ -65,7 +65,8 @@ export class AIRecommendationView {
     if (item.isImportant) head.createSpan({ cls: "todo-ai-important", text: "★" });
     const meta = body.createDiv({ cls: "todo-ai-card-meta" });
     meta.createSpan({ text: `${t("预计时间")} ${item.durationMinutes} min` });
-    if (item.myDayDate) meta.createSpan({ text: ` · ${item.myDayDate}` });
+    const recommendationDate = item.dueDate?.substring(0, 10) ?? item.startDate?.substring(0, 10);
+    if (recommendationDate) meta.createSpan({ text: ` · ${recommendationDate}` });
     if (item.myDayGroup) meta.createSpan({ text: ` · ${t(item.myDayGroup === "morning" ? "早上" : item.myDayGroup === "afternoon" ? "下午" : item.myDayGroup === "evening" ? "晚上" : "全天")}` });
     if (item.planPeriodKey) meta.createSpan({ text: ` · ${item.planPeriodKey}` });
     if (item.weekStart && item.weekEnd) meta.createDiv({ text: `${item.weekStart} ~ ${item.weekEnd}` });

@@ -55,11 +55,18 @@ export class TaskService {
         ...t,
         status: (t as any).status ?? "active",
       }));
-      // 数据迁移：重复实例的我的一天日期应与实例截止日期同步
+      // 数据迁移：将旧的 myDayDate 转换为开始/截止日期，避免旧任务丢失“我的一天”安排。
       this.tasks = this.tasks.map(t => {
-        if (t.recurrenceGroupId && !t.isRecurrenceSource && !t.myDayDate && t.dueDate) {
-          return { ...t, myDayDate: extractLocalDate(t.dueDate) };
+        const legacyDate = (t as Task & { myDayDate?: string | null }).myDayDate;
+        if (legacyDate) {
+          const timeOf = (value: string | null, fallback: string): string => {
+            if (!value || !value.includes("T")) return fallback;
+            return value.substring(value.indexOf("T"));
+          };
+          t.startDate = legacyDate + timeOf(t.startDate, "T07:00:00");
+          t.dueDate = legacyDate + timeOf(t.dueDate, "T23:30:00");
         }
+        delete (t as Task & { myDayDate?: string | null }).myDayDate;
         return t;
       });
 
@@ -72,12 +79,8 @@ export class TaskService {
         }
         return t;
       });
-        // 数据迁移：isMyDay -> myDayDate
+        // 数据迁移：清理旧的 isMyDay 字段
         this.tasks = this.tasks.map(t => {
-          if ((t as any).isMyDay && !t.myDayDate) {
-            const d = (t.updatedAt || t.createdAt || "").substring(0, 10);
-            t.myDayDate = d || null;
-          }
           delete (t as any).isMyDay;
           return t;
         });
@@ -116,7 +119,7 @@ export class TaskService {
   getMyDay(): Task[] {
     this.ensureLoaded();
     const today = localTodayStr();
-    return this.tasks.filter((t) => t.myDayDate === today && !t.isDeleted && !t.isRecurrenceTemplate);
+    return this.tasks.filter((t) => this.taskLocalDate(t) === today && !t.isDeleted && !t.isRecurrenceTemplate);
   }
 
   getInbox(defaultListId: string): Task[] {
@@ -419,7 +422,6 @@ export class TaskService {
 
   private taskLocalDate(task: Task): string | null {
     if (task.dueDate) return extractLocalDate(task.dueDate);
-    if (task.myDayDate) return task.myDayDate;
     if (task.startDate) return extractLocalDate(task.startDate);
     return null;
   }
@@ -441,7 +443,7 @@ export class TaskService {
       const hasInstance = this.tasks.some((task) => task.recurrenceGroupId === source.recurrenceGroupId && !task.isRecurrenceTemplate && !task.isDeleted && this.taskLocalDate(task) !== null);
       if (!hasInstance) {
         const date = this.taskLocalDate(source) || today;
-        this.tasks.push(createTask({ ...source, id: crypto.randomUUID(), isRecurrenceTemplate: false, isRecurrenceSource: false, isCompleted: false, completedAt: null, myDayDate: date, startDate: source.startDate || date + "T07:00:00", dueDate: source.dueDate || date + "T23:30:00" }));
+        this.tasks.push(createTask({ ...source, id: crypto.randomUUID(), isRecurrenceTemplate: false, isRecurrenceSource: false, isCompleted: false, completedAt: null, startDate: source.startDate || date + "T07:00:00", dueDate: source.dueDate || date + "T23:30:00" }));
       }
     }
     if (changed) await this.save();
@@ -484,15 +486,12 @@ export class TaskService {
     if (!task.startDate && !task.dueDate) {
       task.startDate = today + "T07:00:00";
       task.dueDate = today + "T23:30:00";
-      task.myDayDate = today;
     } else if (!task.dueDate) {
       const startDate = extractLocalDate(task.startDate!);
       task.dueDate = startDate + "T23:30:00";
-      task.myDayDate = task.myDayDate || startDate;
     } else if (!task.startDate) {
       const dueDate = extractLocalDate(task.dueDate);
       task.startDate = dueDate + "T07:00:00";
-      task.myDayDate = task.myDayDate || dueDate;
     }
 
     // 如果已有重复组且规则变化，删除旧的未完成实例（不含 source 自身）
@@ -605,7 +604,6 @@ export class TaskService {
         relatedPaths: [...template.relatedPaths],
         relatedFolders: [...template.relatedFolders],
         myDayGroup: template.myDayGroup,
-        myDayDate: dueDateOnly,
         recurrence: template.recurrence,
         recurrenceGroupId: template.recurrenceGroupId,
         recurrenceEndDate: template.recurrenceEndDate,
@@ -712,7 +710,6 @@ export class TaskService {
         relatedPaths: [...source.relatedPaths],
         relatedFolders: [...source.relatedFolders],
         myDayGroup: source.myDayGroup,
-        myDayDate: dueStr,
         recurrence: source.recurrence,
         recurrenceGroupId: groupId,
         recurrenceEndDate: source.recurrenceEndDate,
