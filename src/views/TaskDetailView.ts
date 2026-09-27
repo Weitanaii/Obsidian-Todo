@@ -461,6 +461,32 @@ export class TaskDetailView {
     });
 
   }
+  private async scheduleWeekPlan(task: Task, date: string): Promise<void> {
+    const shift = (value: string | null, fallback: string): string => !value || !value.includes("T") ? date + fallback : date + value.substring(value.indexOf("T"));
+    await this.saveChanges({ startDate: shift(task.startDate, "T07:00:00"), dueDate: shift(task.dueDate, "T23:30:00") });
+    new Notice(t("周计划已安排"));
+  }
+
+  private async splitWeekPlan(task: Task): Promise<void> {
+    const value = await new WeekSplitModal(this.app).openAndGetValue();
+    const count = Number(value);
+    if (!Number.isInteger(count) || count < 1 || count > 7) return;
+    const baseDate = new Date((task.startDate ? task.startDate.substring(0, 10) : localTodayStr()) + "T00:00:00");
+    for (let i = 0; i < count; i++) {
+      const day = new Date(baseDate); day.setDate(day.getDate() + i);
+      const date = day.getFullYear() + "-" + String(day.getMonth() + 1).padStart(2, "0") + "-" + String(day.getDate()).padStart(2, "0");
+      await this.plugin.taskService.create({ title: count === 1 ? task.title : `${task.title} · 第${i + 1}/${count}天`, note: task.note, listId: task.listId, tags: [...task.tags], isImportant: task.isImportant, parentId: task.id, startDate: date + "T07:00:00", dueDate: date + "T23:30:00", myDayGroup: "allday" });
+    }
+    new Notice(t("已拆分为日任务"));
+    this.onTaskUpdated?.(task.id);
+  }
+
+  private createWeekPlanActionRows(parent: HTMLElement, task: Task): void {
+    this.createPropertyRow(parent, task, { icon: "sun", unsetText: "安排到今天", isSet: false, displayText: "安排到今天", onClick: () => { void this.scheduleWeekPlan(task, localTodayStr()); }, onClear: () => undefined });
+    this.createPropertyRow(parent, task, { icon: "calendar-days", unsetText: "安排到指定日期", isSet: false, displayText: "安排到指定日期", onClick: () => { new DatePickerModal(this.app, task.startDate, "start", (date) => { if (date) void this.scheduleWeekPlan(task, date.substring(0, 10)); }, undefined, !isEnglish() && this.plugin.settings.showLunarCalendar).open(); }, onClear: () => undefined });
+    this.createPropertyRow(parent, task, { icon: "split", unsetText: "拆分为日任务", isSet: false, displayText: "拆分为日任务", onClick: () => { void this.splitWeekPlan(task); }, onClear: () => undefined });
+  }
+
   private applyValues(task: Task): void {
     if (!this.root.hasClass("todo-detail-active")) return;
     this.titleInput.value = task.title || "";
@@ -579,6 +605,7 @@ export class TaskDetailView {
       this.createTagRow(container, task, true);
       this.createChildrenSection(container, task);
     } else if (task.planKind === 'year' || task.planKind === 'quarter' || task.planKind === 'month' || task.planKind === 'week') {
+      if (task.planKind === 'week') this.createWeekPlanActionRows(container, task);
       this.createTagRow(container, task);
       this.createParentSection(container, task);
       this.createChildrenSection(container, task);
@@ -848,6 +875,24 @@ class ConfirmModal extends Modal {
     this.resolve(value);
     this.close();
   }
+}
+
+class WeekSplitModal extends Modal {
+  private resolve!: (value: string | null) => void;
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.createEl("p", { text: t("请输入拆分天数（1-7）") });
+    const input = contentEl.createEl("input", { type: "number", cls: "todo-prompt-input" });
+    input.min = "1"; input.max = "7"; input.step = "1"; input.value = "2";
+    const actions = contentEl.createDiv({ cls: "todo-prompt-actions" });
+    const cancel = actions.createEl("button", { text: t("取消") });
+    const confirm = actions.createEl("button", { text: t("确认"), cls: "mod-cta" });
+    cancel.addEventListener("click", () => { this.resolve(null); this.close(); });
+    confirm.addEventListener("click", () => { this.resolve(input.value); this.close(); });
+    window.setTimeout(() => input.focus(), 30);
+  }
+  onClose(): void { this.contentEl.empty(); }
+  openAndGetValue(): Promise<string | null> { return new Promise((resolve) => { this.resolve = resolve; this.open(); }); }
 }
 
 class DatePickerModal extends Modal {

@@ -94,6 +94,25 @@ class PromptModal extends Modal {
     this.close();
   }
 }
+
+class DateOnlyModal extends Modal {
+  private resolve!: (value: string | null) => void;
+  constructor(app: App, private initialDate: string) { super(app); }
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.createEl("p", { text: t("请选择日期") });
+    const input = contentEl.createEl("input", { type: "date", cls: "todo-prompt-input" });
+    input.value = this.initialDate;
+    const actions = contentEl.createDiv({ cls: "todo-prompt-actions" });
+    const cancel = actions.createEl("button", { text: t("取消") });
+    const confirm = actions.createEl("button", { text: t("确认"), cls: "mod-cta" });
+    cancel.addEventListener("click", () => { this.resolve(null); this.close(); });
+    confirm.addEventListener("click", () => { const value = input.value; if (!value) return; this.resolve(value); this.close(); });
+    window.setTimeout(() => input.focus(), 30);
+  }
+  onClose(): void { this.contentEl.empty(); }
+  openAndGetValue(): Promise<string | null> { return new Promise((resolve) => { this.resolve = resolve; this.open(); }); }
+}
 import { App, ItemView, Menu, Modal, Notice, setIcon, WorkspaceLeaf } from "obsidian";
 import type ObsidianTodoPlugin from "../../main";
 import { Task, MyDayGroup, PlanKind } from "../models/Task";
@@ -248,6 +267,7 @@ export class TodoView extends ItemView {
   private activePlanKind: PlanKind | null = null;
   private goalPeriodKey: string | null = null;
   private expandedGoalIds = new Set<string>();
+  private goalRenderToken = 0;
   private goalKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private scheduleMode: "day" | "week" | "month" = "month";
   private scheduleSidebarOpen = false;
@@ -2361,6 +2381,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
 
   private async renderGoalDashboard(kind: "year"|"month"): Promise<void> {
+    const renderToken = ++this.goalRenderToken;
     this.taskListEl.removeClass("todo-life-active");
     this.taskListEl.empty();
     this.taskListEl.addClass("todo-goal-active");
@@ -2368,6 +2389,8 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     if (!this.goalPeriodKey || (kind === "year" && this.goalPeriodKey.length !== 4) || (kind === "month" && this.goalPeriodKey.length !== 7)) {
       this.goalPeriodKey = curNow;
     }
+    const periodKey = this.goalPeriodKey;
+    const isCurrentRender = () => this.goalRenderToken === renderToken && this.goalPeriodKey === periodKey;
     if (this.goalKeyHandler) { document.removeEventListener("keydown", this.goalKeyHandler); this.goalKeyHandler = null; }
 
     const stickyHeader = this.taskListEl.createDiv({ cls: "todo-goal-sticky-header" });
@@ -2375,7 +2398,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const nav = stickyHeader.createDiv({ cls: "todo-goal-nav" });
     const prevBtn = nav.createEl("button", { cls: "todo-goal-nav-btn", text: "◀" });
     prevBtn.setAttribute("aria-label", "上一周期");
-    const labelEl = nav.createSpan({ cls: "todo-goal-nav-label", text: kind === "year" ? this.goalPeriodKey + " 年" : this.goalPeriodKey });
+    const labelEl = nav.createSpan({ cls: "todo-goal-nav-label", text: kind === "year" ? periodKey + " 年" : periodKey });
     const nextBtn = nav.createEl("button", { cls: "todo-goal-nav-btn", text: "▶" });
     nextBtn.setAttribute("aria-label", "下一周期");
     const backBtn = nav.createEl("button", { cls: "todo-goal-nav-btn todo-goal-nav-back", text: kind === "year" ? "回到今年" : "回到本月" });
@@ -2424,7 +2447,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     const prevScrollTop = goalContent.scrollTop;
     const goalAllTasks = this.plugin.taskService.getAll();
-    const periodTasks = goalAllTasks.filter((t) => t.planKind === kind && t.planPeriodKey === this.goalPeriodKey && !t.isDeleted && !t.isRecurrenceTemplate);
+    const periodTasks = goalAllTasks.filter((t) => t.planKind === kind && t.planPeriodKey === periodKey && !t.isDeleted && !t.isRecurrenceTemplate);
     const totalCount = periodTasks.length;
     const completedCount = periodTasks.filter((t) => t.isCompleted).length;
     const inProgressCount = periodTasks.filter((t) => !t.isCompleted && t.status === "active").length;
@@ -2454,9 +2477,24 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     localizeDom(this.taskListEl);
 
     let quarterDropZone: HTMLDivElement | null = null;
+    let isDraggingQuarterGoal = false;
+    if (kind === "month") {
+      goalContent.addEventListener("dragover", (ev) => {
+        if (!isDraggingQuarterGoal) return;
+        const rect = goalContent.getBoundingClientRect();
+        const edge = 56;
+        let delta = 0;
+        if (ev.clientY < rect.top + edge) {
+          delta = -Math.ceil(((rect.top + edge - ev.clientY) / edge) * 24);
+        } else if (ev.clientY > rect.bottom - edge) {
+          delta = Math.ceil(((ev.clientY - (rect.bottom - edge)) / edge) * 24);
+        }
+        if (delta !== 0) goalContent.scrollTop += delta;
+      });
+    }
     // Monthly view: show quarterly goals as draggable cards
-    if (kind === "month" && this.goalPeriodKey) {
-      const quarterKey = getParentPeriodKey("month", this.goalPeriodKey);
+    if (kind === "month") {
+      const quarterKey = getParentPeriodKey("month", periodKey);
       if (quarterKey) {
         const quarterTasks = this.plugin.taskService.getByPlanKindAndPeriod("quarter", quarterKey);
         const qSection = goalContent.createDiv({ cls: "todo-goal-quarter-section" });
@@ -2472,10 +2510,12 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           }
           qCard.addEventListener("dragstart", (ev) => {
             ev.dataTransfer!.setData("text/plain", qt.id);
+            isDraggingQuarterGoal = true;
             qCard.addClass("dragging");
             quarterDropZone?.addClass("is-active");
           });
           qCard.addEventListener("dragend", () => {
+            isDraggingQuarterGoal = false;
             qCard.removeClass("dragging");
             quarterDropZone?.removeClass("is-active");
           });
@@ -2498,10 +2538,10 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         quarterDropZone?.removeClass("is-active");
         const dragId = ev.dataTransfer?.getData("text/plain");
         const quarterGoal = this.plugin.taskService.getAll().find((task) => task.id === dragId && task.planKind === "quarter");
-        if (!quarterGoal || !this.goalPeriodKey) return;
+        if (!quarterGoal || !isCurrentRender()) return;
 
         const linkedMonthlyGoal = this.plugin.taskService.getChildrenOf(quarterGoal.id)
-          .find((task) => task.planKind === "month" && task.planPeriodKey === this.goalPeriodKey);
+          .find((task) => task.planKind === "month" && task.planPeriodKey === periodKey);
         if (linkedMonthlyGoal) {
           new Notice(t("该季度目标已关联当前月份目标"));
           return;
@@ -2514,8 +2554,9 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           false,
         ).openAndConfirm();
         if (!confirmed) return;
+        if (!isCurrentRender()) return;
 
-        const currentMonthGoals = this.plugin.taskService.getByPlanKindAndPeriod("month", this.goalPeriodKey);
+        const currentMonthGoals = this.plugin.taskService.getByPlanKindAndPeriod("month", periodKey);
         const sameTitleGoal = currentMonthGoals.find((task) => task.title.trim().toLocaleLowerCase() === quarterGoal.title.trim().toLocaleLowerCase());
         if (sameTitleGoal) {
           await this.plugin.taskService.update(sameTitleGoal.id, { parentId: quarterGoal.id });
@@ -2523,7 +2564,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
           await this.plugin.taskService.create({
             title: quarterGoal.title,
             planKind: "month",
-            planPeriodKey: this.goalPeriodKey,
+            planPeriodKey: periodKey,
             parentId: quarterGoal.id,
             tags: [...quarterGoal.tags],
             isImportant: quarterGoal.isImportant,
@@ -2559,7 +2600,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     if (this.plugin.settings.goalViewMode === "list") {
       const contentEl = goalContent.createDiv({ cls: "todo-goal-list-content" });
-      this.renderGoalListContent(kind, contentEl);
+      this.renderGoalListContent(kind, contentEl, periodKey);
     } else {
     const cards = goalContent.createDiv({ cls: "todo-goal-cards" });
     const goalScrollTarget = cards.createDiv({ cls: "todo-goal-scroll-target" });
@@ -2692,7 +2733,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
         if (collapsed && !bodyRendered) {
           bodyRendered = true;
           const subKind = kind === "year" ? "quarter" : "week";
-          const subKeys = getSubPeriodKeysForParent(kind, this.goalPeriodKey!);
+          const subKeys = getSubPeriodKeysForParent(kind, periodKey);
           const grouped = new Map<string, { task: Task; completed: boolean }[]>();
           for (const sk of subKeys) grouped.set(sk, []);
           for (const c of children) {
@@ -3009,10 +3050,10 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     }
   }
 
-  private renderGoalListContent(kind: "year" | "month", container: HTMLElement): void {
+  private renderGoalListContent(kind: "year" | "month", container: HTMLElement, periodKey: string): void {
     const ts = this.plugin.taskService;
     const subKind: PlanKind | null = kind === "year" ? "quarter" : kind === "month" ? "week" : null;
-    const pk = this.goalPeriodKey!;
+    const pk = periodKey;
     const parentTasks = ts.getByPlanKindAndPeriod(kind, pk);
     const groupEl = container.createDiv({ cls: "todo-plan-group" });
     const headerEl = groupEl.createDiv({ cls: "todo-plan-group-header" });
@@ -4344,6 +4385,45 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     if (layout) layout.removeClass("todo-layout-detail-open");
   }
 
+  private async scheduleWeekPlan(task: Task, date: string): Promise<void> {
+    const shift = (value: string | null, fallback: string): string => {
+      if (!value || !value.includes("T")) return date + fallback;
+      return date + value.substring(value.indexOf("T"));
+    };
+    await this.plugin.taskService.update(task.id, {
+      startDate: shift(task.startDate, "T07:00:00"),
+      dueDate: shift(task.dueDate, "T23:30:00"),
+    });
+    new Notice(t("周计划已安排"));
+  }
+
+  private async splitWeekPlan(task: Task, currentView: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" | "review"): Promise<void> {
+    const value = await new PromptModal(this.app, "请输入拆分天数（1-7）").openAndGetValue();
+    const count = Number(value);
+    if (!Number.isInteger(count) || count < 1 || count > 7) return;
+    const base = task.startDate ? extractLocalDate(task.startDate) : localTodayStr();
+    const baseDate = new Date(base + "T00:00:00");
+    for (let i = 0; i < count; i++) {
+      const day = new Date(baseDate);
+      day.setDate(day.getDate() + i);
+      const date = day.getFullYear() + "-" + String(day.getMonth() + 1).padStart(2, "0") + "-" + String(day.getDate()).padStart(2, "0");
+      const title = count === 1 ? task.title : `${task.title} · 第${i + 1}/${count}天`;
+      await this.plugin.taskService.create({
+        title,
+        note: task.note,
+        listId: task.listId,
+        tags: [...task.tags],
+        isImportant: task.isImportant,
+        parentId: task.id,
+        startDate: date + "T07:00:00",
+        dueDate: date + "T23:30:00",
+        myDayGroup: "allday",
+      });
+    }
+    new Notice(t("已拆分为日任务"));
+    await this.renderTasks(currentView);
+  }
+
   private showTaskContextMenu(ev: MouseEvent, task: Task, currentView: "myday" | "all" | "inbox" | "trash" | "list" | "plan" | "schedule" | "review"): void {
     const menu = new Menu();
 
@@ -4489,6 +4569,21 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
             }),
         );
       });
+    }
+
+    if (task.planKind === "week") {
+      menu.addSeparator();
+      menu.addItem((item) => item.setTitle(t("安排到今天")).setIcon("sun").onClick(async () => {
+        await this.scheduleWeekPlan(task, localTodayStr());
+        await this.renderTasks(currentView);
+      }));
+      menu.addItem((item) => item.setTitle(t("安排到指定日期")).setIcon("calendar-days").onClick(async () => {
+        const selected = await new DateOnlyModal(this.app, this.getTaskMyDayDate(task) || localTodayStr()).openAndGetValue();
+        if (!selected) return;
+        await this.scheduleWeekPlan(task, selected);
+        await this.renderTasks(currentView);
+      }));
+      menu.addItem((item) => item.setTitle(t("拆分为日任务")).setIcon("split").onClick(() => this.splitWeekPlan(task, currentView)));
     }
 
     if (!task.planKind) {

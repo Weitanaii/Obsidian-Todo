@@ -85,7 +85,10 @@ export function currentSubPeriodKeys(kind: PlanKind): string[] {
     for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
       const wy = getISOWeekYear(d);
       const wn = getISOWeekNumber(d);
-      weekSet.add(wy + "-W" + String(wn).padStart(2, "0"));
+      const weekStart = getISOWeekRange(wy, wn).start;
+      if (weekStart.getFullYear() === y && weekStart.getMonth() === m) {
+        weekSet.add(wy + "-W" + String(wn).padStart(2, "0"));
+      }
     }
     return Array.from(weekSet).sort();
   }
@@ -117,7 +120,11 @@ export function getSubPeriodKeysForParent(kind: PlanKind, parentKey: string): st
     for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
       const wy = getISOWeekYear(d);
       const wn = getISOWeekNumber(d);
-      weekSet.add(wy + "-W" + String(wn).padStart(2, "0"));
+      // 跨月 ISO 周只归属于周一所在的月份，避免同一周同时出现在两个月度计划中。
+      const weekStart = getISOWeekRange(wy, wn).start;
+      if (weekStart.getFullYear() === y && weekStart.getMonth() === m) {
+        weekSet.add(wy + "-W" + String(wn).padStart(2, "0"));
+      }
     }
     return Array.from(weekSet).sort();
   }
