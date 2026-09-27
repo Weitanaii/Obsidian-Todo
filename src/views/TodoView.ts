@@ -309,6 +309,7 @@ export class TodoView extends ItemView {
   private _lastDragMoved = false;
   private touchStartX: number | null = null;
   private touchStartY: number | null = null;
+  private touchStartedInHorizontalScroll = false;
   private _onTouchStart: ((ev: TouchEvent) => void) | null = null;
   private _onTouchEnd: ((ev: TouchEvent) => void) | null = null;
   private scheduleScrollTarget: "now" | { taskId: string } | "preserve" = "now";
@@ -342,14 +343,18 @@ export class TodoView extends ItemView {
       if (!this.isMobile() || !ev.touches.length) return;
       this.touchStartX = ev.touches[0].clientX;
       this.touchStartY = ev.touches[0].clientY;
+      this.touchStartedInHorizontalScroll = ev.target instanceof Element && !!ev.target.closest(".todo-goal-quarter-scroll");
     };
     this._onTouchEnd = (ev: TouchEvent) => {
       if (!this.isMobile() || this.touchStartX === null || this.touchStartY === null || !ev.changedTouches.length) return;
       const touch = ev.changedTouches[0];
       const dx = touch.clientX - this.touchStartX;
       const dy = touch.clientY - this.touchStartY;
+      const startedInHorizontalScroll = this.touchStartedInHorizontalScroll;
       this.touchStartX = null;
       this.touchStartY = null;
+      this.touchStartedInHorizontalScroll = false;
+      if (startedInHorizontalScroll) return;
       if (dx > -60 || Math.abs(dx) < Math.abs(dy)) return;
       // The shared detail root can be replaced by task/goal details while the
       // AI view instance still exists. Check the rendered panel as the source
