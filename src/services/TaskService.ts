@@ -177,6 +177,45 @@ export class TaskService {
     }
   }
 
+  /** Mark incomplete ancestors as completed once all valid children are done. */
+  private async completeAncestorsIfReady(parentId?: string): Promise<void> {
+    let currentParentId = parentId;
+    let changed = false;
+    while (currentParentId) {
+      const parent = this.tasks.find((task) => task.id === currentParentId && !task.isDeleted && !task.isRecurrenceTemplate);
+      if (!parent) break;
+      if (parent.planKind === "life") break;
+      const children = this.tasks.filter((task) => task.parentId === parent.id && !task.isDeleted && !task.isRecurrenceTemplate);
+      if (children.length === 0 || children.some((child) => !child.isCompleted)) break;
+      if (!parent.isCompleted) {
+        parent.isCompleted = true;
+        parent.completedAt = new Date().toISOString();
+        parent.updatedAt = new Date().toISOString();
+        changed = true;
+      }
+      currentParentId = parent.parentId;
+    }
+    if (changed) await this.save();
+  }
+
+  /** Uncomplete non-life ancestors when a child is marked incomplete. */
+  private async uncompleteAncestors(parentId?: string): Promise<void> {
+    let currentParentId = parentId;
+    let changed = false;
+    while (currentParentId) {
+      const parent = this.tasks.find((task) => task.id === currentParentId && !task.isDeleted && !task.isRecurrenceTemplate);
+      if (!parent || parent.planKind === "life") break;
+      if (parent.isCompleted) {
+        parent.isCompleted = false;
+        parent.completedAt = null;
+        parent.updatedAt = new Date().toISOString();
+        changed = true;
+      }
+      currentParentId = parent.parentId;
+    }
+    if (changed) await this.save();
+  }
+
   async update(id: string, changes: Partial<Task>): Promise<Task | null> {
     this.ensureLoaded();
     const index = this.tasks.findIndex((t) => t.id === id);
@@ -219,6 +258,12 @@ export class TaskService {
         this.cascadeTags(id, newTags);
         await this.save();
       }
+    }
+
+    if (changes.isCompleted === true) {
+      await this.completeAncestorsIfReady(updated.parentId);
+    } else if (changes.isCompleted === false) {
+      await this.uncompleteAncestors(updated.parentId);
     }
 
     return this.tasks[index];
