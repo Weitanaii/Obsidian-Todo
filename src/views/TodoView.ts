@@ -228,6 +228,9 @@ export interface TodoPluginLike {
     taskFilterStatus: "all" | "active" | "shelved" | "abandoned" | "completed";
     goalViewMode: "card" | "list";
     showLunarCalendar: boolean;
+    showDailyRecurringInDaySchedule: boolean;
+    showDailyRecurringInWeekSchedule: boolean;
+    showDailyRecurringInMonthSchedule: boolean;
     planningIntensity: "light" | "balanced" | "high";
   };
   saveSettings(): Promise<void>;
@@ -1047,7 +1050,7 @@ private async activateNav(nav: ViewNav): Promise<void> {
     this.activePlanKind = null;
     this.plugin.settings.activePlanKind = null;
     this.plugin.settings.selectedQuadrant = null;
-    this.sortBtnEl.style.display = "";
+    this.sortBtnEl.style.display = nav === "myday" ? "none" : "";
     this.quickContainerEl.style.display = "";
     this.taskListEl.removeClass("todo-schedule-active");
     this.taskListEl.removeClass("todo-trash-active");
@@ -1543,7 +1546,9 @@ private async activateNav(nav: ViewNav): Promise<void> {
       }
       return;
     }
-    this.sortBtnEl.style.display = "";
+    // My Day uses fixed time-group ordering and must never expose the global sort control.
+    const isMyDayView = view === "myday" && !this.plugin.settings.selectedListId;
+    this.sortBtnEl.style.display = isMyDayView ? "none" : "";
     this.taskListEl.removeClass("todo-goal-active");
     this.taskListEl.removeClass("todo-life-active");
     this.quickContainerEl.style.display = this.plugin.settings.activeViewNav === "inbox" ? "none" : "";
@@ -3639,12 +3644,12 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     }
     // 渲染任务到月历格子
     const allTasks = this.plugin.taskService.getAll();
-    const monthTasks = allTasks.filter(t => !t.isCompleted && t.dueDate);
+    const monthTasks = allTasks.filter(t => this.isVisibleInSchedule(t, "month") && t.dueDate);
     for (const task of monthTasks) {
       const taskDate = extractLocalDate(task.dueDate!);
       const targetCell = grid.querySelector('[data-date-str="' + taskDate + '"] .todo-schedule-cell-tasks') as HTMLElement;
       if (!targetCell) continue;
-      const card = targetCell.createDiv({ cls: "todo-month-task-card" });
+      const card = targetCell.createDiv({ cls: "todo-month-task-card" + (task.isCompleted ? " todo-schedule-completed" : "") });
       card.style.backgroundColor = this.getTaskBlockColor(task);
       card.style.color = this.getContrastColor(this.getTaskBlockColor(task));
       card.createSpan({ cls: "todo-month-task-title", text: task.title });
@@ -3667,7 +3672,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     const timeStr = pad(sd.getHours()) + ":" + pad(sd.getMinutes()) + " - " + pad(ed.getHours()) + ":" + pad(ed.getMinutes());
     const blockColor = this.getTaskBlockColor(task);
 
-    const card = container.createDiv({ cls: "todo-time-event-block" });
+    const card = container.createDiv({ cls: "todo-time-event-block" + (task.isCompleted ? " todo-schedule-completed" : "") });
     card.dataset.taskId = task.id;
     card.style.backgroundColor = blockColor;
     const textColor = this.getContrastColor(blockColor);
@@ -3777,10 +3782,20 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
   }
 
   private isAllDayTask(task: Task): boolean {
+    // An explicit My Day group is authoritative for schedule placement.
+    if (task.myDayGroup && task.myDayGroup !== "allday") return false;
+    if (task.myDayGroup === "allday" && task.startDate && task.dueDate) {
+      const start = new Date(task.startDate);
+      const due = new Date(task.dueDate);
+      if (!isNaN(start.getTime()) && !isNaN(due.getTime())) {
+        const allDayStart = start.getHours() === 7 && start.getMinutes() === 0;
+        const allDayDue = due.getHours() === 23 && (due.getMinutes() === 30 || due.getMinutes() === 59);
+        return allDayStart && allDayDue;
+      }
+    }
+    if (task.myDayGroup === "allday") return true;
     // 无任何日期
     if (!task.startDate && !task.dueDate) return true;
-    // “我的一天”中的明确时段应进入时间轴，即使只有截止时间。
-    if (task.myDayGroup && task.myDayGroup !== "allday") return false;
     // 只有截止日期且没有具体时段时才视为全天任务。
     if (task.dueDate && !task.startDate) {
       const due = new Date(task.dueDate);
@@ -3795,25 +3810,32 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
     return false;
   }
 
+  private isVisibleInSchedule(task: Task, view: "day" | "week" | "month"): boolean {
+    if (task.recurrence !== "daily") return true;
+    if (view === "day") return this.plugin.settings.showDailyRecurringInDaySchedule;
+    if (view === "week") return this.plugin.settings.showDailyRecurringInWeekSchedule;
+    return this.plugin.settings.showDailyRecurringInMonthSchedule;
+  }
+
   private renderDayView(container: HTMLDivElement): void {
     const HOUR_HEIGHT = 60;
     const dateStr = this.scheduleYear + "-" + String(this.scheduleMonth + 1).padStart(2, "0") + "-" + String(this.scheduleDate).padStart(2, "0");
     const allTasks = this.plugin.taskService.getAll();
-    const dayTasks = allTasks.filter(t => !t.isCompleted && t.dueDate && extractLocalDate(t.dueDate) === dateStr && !this.isAllDayTask(t));
+    const dayTasks = allTasks.filter(t => this.isVisibleInSchedule(t, "day") && t.dueDate && extractLocalDate(t.dueDate) === dateStr && !this.isAllDayTask(t));
 
     const view = container.createDiv({ cls: "todo-schedule-day-view" });
 
     const pad = (n: number) => String(n).padStart(2, "0");
     const today = new Date();
     const todayStr = today.getFullYear() + "-" + pad(today.getMonth() + 1) + "-" + pad(today.getDate());
-    const alldayTasks = allTasks.filter(t => !t.isCompleted && (
+    const alldayTasks = allTasks.filter(t => this.isVisibleInSchedule(t, "day") && (
       (t.dueDate && extractLocalDate(t.dueDate) === dateStr && this.isAllDayTask(t))
     ));
     let gridEl: HTMLDivElement;
     const allday = view.createDiv({ cls: "todo-day-allday" });
     allday.createSpan({ cls: "todo-day-allday-label", text: isEnglish() ? "All day" : "全天" });
     for (const t of alldayTasks) {
-      const card = allday.createDiv({ cls: "todo-day-allday-card" });
+      const card = allday.createDiv({ cls: "todo-day-allday-card" + (t.isCompleted ? " todo-schedule-completed" : "") });
       card.style.backgroundColor = this.getTaskBlockColor(t);
       card.style.color = this.getContrastColor(this.getTaskBlockColor(t));
       card.createSpan({ text: t.title });
@@ -3968,7 +3990,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
 
     // All-day row
     const todayStr = today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0");
-    const datedAllday = this.plugin.taskService.getAll().filter(t => !t.isCompleted && t.dueDate && this.isAllDayTask(t));
+    const datedAllday = this.plugin.taskService.getAll().filter(t => this.isVisibleInSchedule(t, "week") && t.dueDate && this.isAllDayTask(t));
     const alldayRow = thead.createDiv({ cls: "todo-week-allday" });
     alldayRow.createDiv({ cls: "todo-week-allday-label", text: isEnglish() ? "All day" : "全天" });
     for (let i = 0; i < 7; i++) {
@@ -3978,7 +4000,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       const cell = alldayRow.createDiv({ cls: "todo-week-allday-cell" + (ds === todayStr ? " todo-week-today-col" : "") });
       const cellTasks = datedAllday.filter(t => extractLocalDate(t.dueDate!) === ds);
       for (const t of cellTasks) {
-        const card = cell.createDiv({ cls: "todo-day-allday-card" });
+        const card = cell.createDiv({ cls: "todo-day-allday-card" + (t.isCompleted ? " todo-schedule-completed" : "") });
         card.style.backgroundColor = this.getTaskBlockColor(t);
         card.style.color = this.getContrastColor(this.getTaskBlockColor(t));
         card.createSpan({ text: t.title });
@@ -4064,7 +4086,7 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
       d.setDate(d.getDate() + i);
       const ds = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
       const col = columns.createDiv({ cls: "todo-week-column" });
-      const dayTasks = allTasks.filter(t => !t.isCompleted && t.startDate && t.dueDate && extractLocalDate(t.dueDate) === ds && !this.isAllDayTask(t));
+      const dayTasks = allTasks.filter(t => this.isVisibleInSchedule(t, "week") && t.startDate && t.dueDate && extractLocalDate(t.dueDate) === ds && !this.isAllDayTask(t));
       const placements = this.layoutOverlapTasks(dayTasks);
       for (const p of placements) {
         const sd = new Date(p.task.startDate!);
@@ -4546,8 +4568,9 @@ private async renderMyDayGroups(tasks: Task[]): Promise<void> {
             .setChecked((task.myDayGroup || "allday") === key)
             .onClick(async () => {
               // Update dates based on group
-              const now = new Date();
-              const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+              const targetDate = this.myDayViewDate || this.getTaskMyDayDate(task) || localTodayStr();
+              const [targetYear, targetMonth, targetDay] = targetDate.split("-").map(Number);
+              const today = new Date(targetYear, targetMonth - 1, targetDay);
               const groupTimes: Record<MyDayGroup, { startH: number; startM: number; endH: number; endM: number }> = {
                 allday: { startH: 7, startM: 0, endH: 23, endM: 30 },
                 morning: { startH: 7, startM: 0, endH: 11, endM: 59 },

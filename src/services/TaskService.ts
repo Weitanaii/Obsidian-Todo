@@ -3,6 +3,7 @@ import { Task, PlanKind, TaskStatus, createTask } from "../models/Task";
 import { StorageService } from "./StorageService";
 import { logger } from "../utils/logger";
 import { localTodayStr } from "../utils/period";
+import { getMyDayGroupFromTime } from "../utils/sort";
 import { getNextOccurrenceDate, getPreGenerateCount, parseLocalDate, formatDateStr, extractLocalDate } from "../utils/recurrence";
 import type { RecurrenceSeriesService } from "./RecurrenceSeriesService";
 import { createRecurrenceSeries } from "../models/RecurrenceSeries";
@@ -648,7 +649,7 @@ export class TaskService {
         tags: [...template.tags],
         relatedPaths: [...template.relatedPaths],
         relatedFolders: [...template.relatedFolders],
-        myDayGroup: template.myDayGroup,
+        myDayGroup: getMyDayGroupFromTime(instanceStartDate, dueDateOnly + dueTime),
         recurrence: template.recurrence,
         recurrenceGroupId: template.recurrenceGroupId,
         recurrenceEndDate: template.recurrenceEndDate,
@@ -754,7 +755,7 @@ export class TaskService {
         tags: [...source.tags],
         relatedPaths: [...source.relatedPaths],
         relatedFolders: [...source.relatedFolders],
-        myDayGroup: source.myDayGroup,
+        myDayGroup: getMyDayGroupFromTime(instanceStartDate, dueStr + dueTime),
         recurrence: source.recurrence,
         recurrenceGroupId: groupId,
         recurrenceEndDate: source.recurrenceEndDate,

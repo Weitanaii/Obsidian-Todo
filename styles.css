@@ -2784,6 +2784,7 @@
 }
 .todo-time-event-block:hover { filter: brightness(1.08); cursor: grab; }
 .todo-time-event-block.dragging { opacity: 0.3; pointer-events: none; }
+.todo-schedule-completed { background: var(--background-modifier-border) !important; color: var(--text-muted) !important; text-decoration: line-through; }
 .todo-resize-handle {
   position: absolute;
   bottom: 0; left: 0; right: 0;

@@ -27,6 +27,9 @@ export interface ObsidianTodoSettings {
   taskFilterStatus: "all" | "active" | "shelved" | "abandoned" | "completed";
   goalViewMode: "card" | "list";
   showLunarCalendar: boolean;
+  showDailyRecurringInDaySchedule: boolean;
+  showDailyRecurringInWeekSchedule: boolean;
+  showDailyRecurringInMonthSchedule: boolean;
   planningIntensity: "light" | "balanced" | "high";
 }
 
@@ -54,6 +57,9 @@ export const DEFAULT_SETTINGS: ObsidianTodoSettings = {
   taskFilterStatus: "active",
   goalViewMode: "card",
   showLunarCalendar: true,
+  showDailyRecurringInDaySchedule: true,
+  showDailyRecurringInWeekSchedule: true,
+  showDailyRecurringInMonthSchedule: true,
   planningIntensity: "balanced",
 };
 
@@ -161,6 +167,36 @@ export class ObsidianTodoSettingTab extends PluginSettingTab {
               })
           );
       }
+
+      new Setting(group)
+        .setName(t("在日视图显示每日重复任务"))
+        .setDesc(t("控制每日重复任务是否出现在日视图的日程中"))
+        .addToggle((toggle) => toggle
+          .setValue(this.plugin.settings.showDailyRecurringInDaySchedule)
+          .onChange(async (value) => {
+            this.plugin.settings.showDailyRecurringInDaySchedule = value;
+            await this.plugin.saveSettings();
+          }));
+
+      new Setting(group)
+        .setName(t("在周视图显示每日重复任务"))
+        .setDesc(t("控制每日重复任务是否出现在周视图的日程中"))
+        .addToggle((toggle) => toggle
+          .setValue(this.plugin.settings.showDailyRecurringInWeekSchedule)
+          .onChange(async (value) => {
+            this.plugin.settings.showDailyRecurringInWeekSchedule = value;
+            await this.plugin.saveSettings();
+          }));
+
+      new Setting(group)
+        .setName(t("在月视图显示每日重复任务"))
+        .setDesc(t("控制每日重复任务是否出现在月视图的日程中"))
+        .addToggle((toggle) => toggle
+          .setValue(this.plugin.settings.showDailyRecurringInMonthSchedule)
+          .onChange(async (value) => {
+            this.plugin.settings.showDailyRecurringInMonthSchedule = value;
+            await this.plugin.saveSettings();
+          }));
     });
 
     // --- Tag Management ---
